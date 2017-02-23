@@ -1,0 +1,137 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{95032BC9-057A-42E1-A698-82A64DB1A360}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Pachyderm_Acoustic</RootNamespace>
+    <AssemblyName>Pachyderm_Acoustic_Universal</AssemblyName>
+    <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Hare">
+      <HintPath>..\..\..\PachydermAcoustic_Rhinoceros\Resources\Hare.dll</HintPath>
+    </Reference>
+    <Reference Include="LibOptimization, Version=1.8.1.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\LibOptimization.1.8.1\lib\net40\LibOptimization.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="MathNet.Numerics, Version=3.17.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\MathNet.Numerics.3.17.0\lib\net40\MathNet.Numerics.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="NAudio, Version=1.8.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\NAudio.1.8.0\lib\net35\NAudio.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Numerics" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+    <Reference Include="ZedGraph, Version=5.1.7.430, Culture=neutral, PublicKeyToken=02a83cbd123fcd60, processorArchitecture=MSIL">
+      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\ZedGraph.5.1.7\lib\net35-Client\ZedGraph.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Pach_Graphics.cs" />
+    <Compile Include="Pach_Map_Receiver.cs" />
+    <Compile Include="Pach_Properties.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Pach_Properties.Designer.cs">
+      <DependentUpon>Pach_Properties.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Classes_Absorption_Analytics.cs" />
+    <Compile Include="Classes_Absorption_Matrices.cs" />
+    <Compile Include="Classes_Balloons.cs" />
+    <Compile Include="Classes_Compact_FDTD.cs" />
+    <Compile Include="Classes_Compact_FDTD_Boundaries.cs" />
+    <Compile Include="Classes_Complete_Trace.cs" />
+    <Compile Include="Classes_Direct.cs" />
+    <Compile Include="Classes_Edges.cs" />
+    <Compile Include="Classes_ImageSource.cs" />
+    <Compile Include="Classes_IO.cs" />
+    <Compile Include="Classes_IS_Trace.cs" />
+    <Compile Include="Classes_Materials.cs" />
+    <Compile Include="Classes_Math.cs" />
+    <Compile Include="Classes_Medium_Props.cs" />
+    <Compile Include="Classes_Rays.cs" />
+    <Compile Include="Classes_Receivers.cs" />
+    <Compile Include="Classes_Scenes.cs" />
+    <Compile Include="Classes_Simulation_Type.cs" />
+    <Compile Include="Classes_Sources.cs" />
+    <Compile Include="Classes_VoxelGrid_PolyRefractive.cs" />
+    <Compile Include="FFTW_Interop.cs" />
+    <Compile Include="FFTW_Managed.cs" />
+    <Compile Include="LineSources.cs" />
+    <Compile Include="Materials.cs" />
+    <Compile Include="Pach_SP.cs" />
+    <Compile Include="Pach_SP_IIR.cs" />
+    <Compile Include="ProgressBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="ProgressBox.Designer.cs">
+      <DependentUpon>ProgressBox.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="SrfSources.cs" />
+    <Compile Include="VisualizeGraph.cs">
+      <SubType>Form</SubType>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Pach_Properties.resx">
+      <DependentUpon>Pach_Properties.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ProgressBox.resx">
+      <DependentUpon>ProgressBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="VisualizeGraph.resx">
+      <DependentUpon>VisualizeGraph.cs</DependentUpon>
+    </EmbeddedResource>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>
+    </PostBuildEvent>
+  </PropertyGroup>
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>
