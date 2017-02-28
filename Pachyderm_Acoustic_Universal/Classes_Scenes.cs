@@ -149,6 +149,18 @@ namespace Pachyderm_Acoustic
             /// <returns>true if successful, false if no hit</returns>
             public abstract bool shoot(Ray R, out double u, out double v, out int Poly_ID, out List<Hare.Geometry.Point> X_PT, out List<double> t, out List<int> code);
             /// <summary>
+            /// cast a ray within the model.
+            /// </summary>
+            /// <param name="R">A ray, complete with origin point and direction...</param>
+            /// <param name="u">optional surface coordinate</param>
+            /// <param name="v">optional surface coordinate</param>
+            /// <param name="Poly_ID">the polygon of intersection</param>
+            /// <param name="X_PT">the point of intersection</param>
+            /// <param name="t">the distance traveled by the ray</param>
+            /// <param name="code">returns code indicating where the ray has been (for polyrefractive)</param>
+            /// <returns>true if successful, false if no hit</returns>
+            public abstract bool shoot(Ray R, int topo, out X_Event Xpt);
+            /// <summary>
             /// The local normal of a surface.
             /// </summary>
             /// <param name="i">surface index</param>
@@ -697,7 +709,7 @@ namespace Pachyderm_Acoustic
                 return false;
             }
 
-            public bool shoot(Hare.Geometry.Ray R, int top_id, out Hare.Geometry.X_Event X)
+            public override bool shoot(Hare.Geometry.Ray R, int top_id, out Hare.Geometry.X_Event X)
             {
                 if (SP.Shoot(R, top_id, out X)) return true;
                 return false;
@@ -903,6 +915,161 @@ namespace Pachyderm_Acoustic
             public override Hare.Geometry.Point Min()
             {
                 return this.Topo[0].Min;
+            }
+        }
+
+        public class Empty_Scene : Scene
+        {
+            Hare.Geometry.Point minpt;
+            Hare.Geometry.Point maxpt;
+
+            public Empty_Scene(double Temp, double hr, double Pa, int Air_Choice, bool EdgeCorrection, bool IsAcoustic, Hare.Geometry.Point min, Hare.Geometry.Point max)
+                : base(Temp, hr, Pa, Air_Choice, EdgeCorrection, IsAcoustic)
+            {
+                minpt = min;
+                maxpt = max;
+            }
+
+            public override void Absorb(ref BroadRay Ray, out double cos_theta, double u, double v)
+            {
+                cos_theta = 0;
+            }
+
+            public override void Absorb(ref OctaveRay Ray, out double cos_theta, double u, double v)
+            {
+                cos_theta = 0;
+            }
+
+            public override Hare.Geometry.Point ClosestPt(Hare.Geometry.Point P, ref double D)
+            {
+                return new Hare.Geometry.Point(0, 0, 0);
+            }
+
+            public override int Count()
+            {
+                return 0;
+            }
+
+            public override void EdgeFrame_Tangents(Hare.Geometry.Point Origin, Vector Normal, int[] SrfIDs, ref List<double> dist2, List<Vector> Dir, List<int> IDs)
+            {
+                return;
+            }
+
+            public override bool IsPlanar(int i)
+            {
+                return false;
+            }
+
+            public override Hare.Geometry.Point Max()
+            {
+                return maxpt;
+            }
+
+            public override Hare.Geometry.Point Min()
+            {
+                return minpt;
+            }
+
+            public override Vector Normal(int i)
+            {
+                return new Vector(0, 0, 0);
+            }
+
+            public override void partition()
+            {
+                return;
+            }
+
+            public override void partition(Hare.Geometry.Point[] P, int SP_PARAM)
+            {
+                return;
+            }
+
+            public override void partition(int SP_Param)
+            {
+                return;
+            }
+
+            public override void partition(List<Hare.Geometry.Point> P, int SP_PARAM)
+            {
+                return;
+            }
+
+            public override Vector Normal(int i, double u, double v)
+            {
+                return new Vector(0, 0, 0);
+            }
+
+            public override bool PointsInScene(List<Hare.Geometry.Point> PTS)
+            {
+                return false;
+            }
+
+            public override void Register_Edges(IEnumerable<Hare.Geometry.Point> S, IEnumerable<Hare.Geometry.Point> R)
+            {
+                return;
+            }
+
+            public override void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v)
+            {
+                return;
+            }
+
+            public override void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v)
+            {
+                return;
+            }
+
+            public override void Scatter_Simple(ref OctaveRay Ray, ref Random rand, double cos_theta, double u, double v)
+            {
+                return;
+            }
+
+            public override string Scene_Type()
+            {
+                return "Empty Scene";
+            }
+
+            public override bool shoot(Ray R, out double u, out double v, out int Poly_ID, out Hare.Geometry.Point X_PT, out double t)
+            {
+                u = -1;
+                v = -1;
+                Poly_ID = -1;
+                X_PT = new Hare.Geometry.Point();
+                t = -1;
+                return false;
+            }
+
+            public override bool shoot(Ray R, int topo, out X_Event Xpt)
+            {
+                Xpt = new X_Event(new Hare.Geometry.Point(), -1, -1, -1, -1);
+                return false;
+            }
+
+            public override bool shoot(Ray R, out double u, out double v, out int Poly_ID, out List<Hare.Geometry.Point> X_PT, out List<double> t, out List<int> code)
+            {
+                u = -1;
+                v = -1;
+                Poly_ID = -1;
+                X_PT = new List<Hare.Geometry.Point>();
+                t = new List<double>();
+                code = new List<int>();
+                return false;
+            }
+
+            public override double Sound_speed(Hare.Geometry.Point pt)
+            {
+                return Env_Prop.Sound_Speed(pt);
+            }
+
+            public override double Sound_speed(int arg)
+            {
+                return Env_Prop.Sound_Speed(arg);
+            }
+
+            public override double SurfaceArea(int x)
+            {
+                return 0;
             }
         }
     }

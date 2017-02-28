@@ -231,6 +231,192 @@ namespace Pachyderm_Acoustic
                         Pnf *= abDenom;
                     }
 
+                    //public override void Link_Nodes(ref P_Node[, ,] Frame, int x, int y, int z)
+                    //{
+                    //    Complex[] abs_poles = new Complex[] { new Complex(-0.212854, -0.285357), new Complex(-.212854, 0.285357) };
+                    //    Complex[] abs_zeros = new Complex[] { 0.876, 0.876 };
+
+                    //    Complex[] ref_poles = new Complex[] { new Complex(0, 0), new Complex(0, 0) };
+                    //    Complex[] ref_zeros = new Complex[] { new Complex(0, 0), new Complex(0, 0) };
+
+                    //    Boundary BFlags = Flags;
+                    //    base.Link_Nodes(ref Frame, x, y, z);
+
+                    //    #region General Node Setup Algorithm
+                    //    foreach (Boundary B in Face_Combos)
+                    //    {
+                    //        switch ((BFlags & B))
+                    //        {
+                    //            case Boundary.AXNeg | Boundary.AXPos | Boundary.AYNeg | Boundary.AYPos | Boundary.AZNeg | Boundary.AZPos:
+                    //                Xpos_Link = Xneg_Link = Ypos_Link = Yneg_Link = Zpos_Link = Zneg_Link = new Null_Node();
+                    //                BFlags ^= (Boundary.AXNeg | Boundary.AXPos | Boundary.AYNeg | Boundary.AYPos | Boundary.AZNeg | Boundary.AZPos);
+                    //                break;
+                    //            case Boundary.AXNeg | Boundary.AXPos:
+                    //                Xpos_Link = Xneg_Link = new Null_Node();
+                    //                BFlags ^= (Boundary.AXNeg | Boundary.AXPos);
+                    //                break;
+                    //            case Boundary.AYNeg | Boundary.AYPos:
+                    //                Ypos_Link = Yneg_Link = new Null_Node();
+                    //                BFlags ^= (Boundary.AYNeg | Boundary.AYPos);
+                    //                break;
+                    //            case Boundary.AZNeg | Boundary.AZPos:
+                    //                Ypos_Link = Yneg_Link = new Null_Node();
+                    //                BFlags ^= (Boundary.AZNeg | Boundary.AZPos);
+                    //                break;
+                    //            case Boundary.AXPos:
+                    //                Xpos_Link = new Null_Node();
+                    //                BFlags ^= Boundary.AXPos;
+                    //                break;
+                    //            case Boundary.AXNeg:
+                    //                Xneg_Link = new Null_Node();
+                    //                BFlags ^= Boundary.AXNeg;
+                    //                break;
+                    //            case Boundary.AYPos:
+                    //                Ypos_Link = new Null_Node();
+                    //                BFlags ^= Boundary.AYPos;
+                    //                break;
+                    //            case Boundary.AYNeg:
+                    //                Yneg_Link = new Null_Node();
+                    //                BFlags ^= Boundary.AYNeg;
+                    //                break;
+                    //            case Boundary.AZPos:
+                    //                Zpos_Link = new Null_Node();
+                    //                BFlags ^= Boundary.AZPos;
+                    //                break;
+                    //            case Boundary.AZNeg:
+                    //                Zneg_Link = new Null_Node();
+                    //                BFlags ^= Boundary.AZNeg;
+                    //                break;
+                    //        }
+                    //        if (BFlags == Boundary.None) break;
+                    //    }
+
+                    //    Set the filters
+                    //    List<DIF_IWB_2p> f = new List<DIF_IWB_2p>();
+                    //    for (int i = 0; i < B_List.Count; i++)
+                    //    {
+                    //        if (B_List[i] < Boundary.SDXPosYPos)
+                    //        {
+                    //            if (acoef[i][4] < 0.2)
+                    //            {
+                    //                f.Add(new DIF_IWB_2p(ref_zeros, ref_poles, 0.01, 1));
+                    //            }
+                    //            else
+                    //            {
+                    //                f.Add(new DIF_IWB_2p(abs_zeros, abs_poles, 0.81, 1));
+                    //            }
+                    //        }
+                    //    }
+                    //    for (int i = 0; i < f.Count; i++) ab1 += f[i].a_b;
+                    //    filter = f.ToArray();
+                    //    this.abDenom = 1 / (ab1 + 1);
+                    //    ab1 -= 1;
+
+                    //    int xdim = Frame.GetUpperBound(0);
+                    //    int ydim = Frame.GetUpperBound(1);
+                    //    int zdim = Frame.GetUpperBound(2);
+
+                    //    if ((Boundary.DXPosYPosZPos & Flags) == Boundary.DXPosYPosZPos)
+                    //    {
+                    //        Links3[0] = new Null_Node();
+                    //    }
+                    //    if ((Boundary.DXNegYNegZNeg & Flags) == Boundary.DXNegYNegZNeg)
+                    //    {
+                    //        Links3[1] = new Null_Node();
+                    //    }
+                    //    if ((Boundary.DXNegYNegZPos & Flags) == Boundary.DXNegYNegZPos)
+                    //    {
+                    //        Links3[2] = new Null_Node();
+                    //    }
+                    //    if ((Boundary.DXPosYPosZNeg & Flags) == Boundary.DXPosYPosZNeg)
+                    //    {
+                    //        Links3[3] = new Null_Node();
+                    //    }
+                    //    if ((Boundary.DXNegYPosZPos & Flags) == Boundary.DXNegYPosZPos)
+                    //    {
+                    //        Links3[4] = new Null_Node();
+                    //    }
+                    //    if ((Boundary.DXPosYNegZNeg & Flags) == Boundary.DXPosYNegZNeg)
+                    //    {
+                    //        Links3[5] = new Null_Node();
+                    //    }
+                    //    if ((Boundary.DXNegYPosZNeg & Flags) == Boundary.DXNegYPosZNeg)
+                    //    {
+                    //        Links3[6] = new Null_Node();
+                    //    }
+                    //    if ((Boundary.DXPosYNegZPos & Flags) == Boundary.DXPosYNegZPos)
+                    //    {
+                    //        Links3[7] = new Null_Node();
+                    //    }
+
+                    //    Edges
+                    //    todo - find the problem in this block of code. Links2 has a leak.
+                    //    if (x < xdim && y < ydim) Links2[0] = Frame[x + 1, y + 1, z]; else Links2[0] = new Null_Node();
+                    //    if ((Boundary.SDXPosYPos & Flags) == Boundary.SDXPosYPos)
+                    //    {
+                    //        Links2[0] = new Null_Node();
+                    //    }
+                    //    if (x > 0 && y > 0) Links2[1] = Frame[x - 1, y - 1, z]; else Links2[1] = new Null_Node();
+                    //    if ((Boundary.SDXNegYNeg & Flags) == Boundary.SDXNegYNeg)
+                    //    {
+                    //        Links2[1] = new Null_Node();
+                    //    }
+                    //    if (x < xdim && y > 0) Links2[2] = Frame[x + 1, y - 1, z]; else Links2[2] = new Null_Node();
+                    //    if ((Boundary.SDXPosYNeg & Flags) == Boundary.SDXPosYNeg)
+                    //    {
+                    //        Links2[2] = new Null_Node();
+                    //    }
+                    //    if (x > 0 && y < ydim) Links2[3] = Frame[x - 1, y + 1, z]; else Links2[3] = new Null_Node();
+                    //    if ((Boundary.SDXNegYPos & Flags) == Boundary.SDXNegYPos) 
+                    //    {
+                    //        Links2[3] = new Null_Node();
+                    //    }
+                    //    if (x < xdim && z < zdim) Links2[4] = Frame[x + 1, y, z + 1]; else Links2[4] = new Null_Node();
+                    //    if ((Boundary.SDXPosZPos & Flags) == Boundary.SDXPosZPos)
+                    //    {
+                    //        Links2[4] = new Null_Node();
+                    //    }
+                    //    if (x > 0 && z > 0) Links2[5] = Frame[x - 1, y, z - 1]; else Links2[5] = new Null_Node();
+                    //    if ((Boundary.SDXNegZNeg & Flags) == Boundary.SDXNegZNeg)
+                    //    {
+                    //        Links2[5] = new Null_Node();
+                    //    }
+                    //    if (x > 0 && z < zdim) Links2[6] = Frame[x - 1, y, z + 1]; else Links2[6] = new Null_Node();
+                    //    if ((Boundary.SDXNegZPos & Flags) == Boundary.SDXNegZPos)
+                    //    {
+                    //        Links2[6] = new Null_Node();
+                    //    }
+                    //    if (x < xdim && z > 0) Links2[7] = Frame[x + 1, y, z - 1]; else Links2[7] = new Null_Node();
+                    //    if ((Boundary.SDXPosZNeg & Flags) == Boundary.SDXPosZNeg)
+                    //    {
+                    //        Links2[7] = new Null_Node();
+                    //    }
+                    //    if (y < ydim && z < zdim) Links2[8] = Frame[x, y + 1, z + 1]; else Links2[8] = new Null_Node();
+                    //    if ((Boundary.SDYPosZPos & Flags) == Boundary.SDYPosZPos)
+                    //    {
+                    //        Links2[8] = new Null_Node();
+                    //    }
+                    //    if (y > 0 && z > 0) Links2[9] = Frame[x, y - 1, z - 1]; else Links2[9] = new Null_Node();
+                    //    if ((Boundary.SDYNegZNeg & Flags) == Boundary.SDYNegZNeg)    
+                    //    {
+                    //        Links2[9] = new Null_Node();
+                    //    }
+                    //    if (y > 0 && z < zdim) Links2[10] = Frame[x, y - 1, z + 1]; else Links2[10] = new Null_Node();
+                    //    if ((Boundary.SDYNegZPos & Flags) == Boundary.SDYNegZPos)
+                    //    {
+                    //        Links2[10] = new Null_Node();
+                    //    }
+                    //    if (y < ydim && z > 0) Links2[11] = Frame[x, y + 1, z - 1]; else Links2[11] = new Null_Node();
+                    //    if ((Boundary.SDYPosZNeg & Flags) == Boundary.SDYPosZNeg)
+                    //    {
+                    //        Links2[11] = new Null_Node();
+                    //    }
+
+                    //    Rhino.RhinoApp.WriteLine("Meep");
+                    //    if (BFlags == Boundary.None) return; else throw new Exception("Node does not fit the strict corner requirements. Raise the node density.");
+                    //    #endregion
+                    //}
+
                     public override void Link_Nodes(ref Node[][][] Frame, int x, int y, int z)
                     {
                         double[] abs_poles = new double[] { -0.212854, -.212854 };
@@ -1050,7 +1236,7 @@ namespace Pachyderm_Acoustic
 
                     //Kowalczyk Boundary Filter Node.
                     IIR_DIF filter;
-                    List<double[]> acoef;
+                    //List<double[]> acoef;
                     double ab1 = 0;
                     double abDenom = 0;
 
@@ -1240,6 +1426,140 @@ namespace Pachyderm_Acoustic
                         [11] = z-
                         */
                     }
+
+                    //public override void UpdateP()
+                    //{
+                    //    base.UpdateP();
+                    //    Pnf *= R;
+                    //}
+
+                    //public override void Link_Nodes(ref Node[][][] Frame, int x, int y, int z)
+                    //{
+                    //    double[] abs_poles = new double[] { -0.212854, -.212854 };
+                    //    double[] abs_zeros = new double[] { 0.876, 0.876 };
+
+                    //    double[] ref_poles = new double[] { 0, 0 };
+                    //    double[] ref_zeros = new double[] { 0, 0 };
+
+                    //    Bound_Node.Boundary BFlags = Flags;
+
+                    //    int mod = x % 2;
+
+                    //    #region General Node Setup Algorithm
+
+                    //    //Set the filters
+                    //    //Edges
+                    //    //todo - find the problem in this block of code. Links2 has a leak.
+                    //    if (x == Frame.Length - 1 || y == 0 || z == Frame[mod][y].Length - 1 - mod || (Bound_Node.Boundary.SDXPosYPos & Flags) == Bound_Node.Boundary.SDXPosYPos)
+                    //    {
+                    //        //Links2[0] = Links2[1];
+                    //        Links2[0] = new Null_Node();
+                    //    }
+                    //    else
+                    //    {
+                    //        Links2[0] = Frame[x + 1 - mod][y + 1 - mod][z];
+                    //    }
+                    //    if (x == 0 || y == 0 || (Bound_Node.Boundary.SDXNegYNeg & Flags) == Bound_Node.Boundary.SDXNegYNeg)
+                    //    {
+                    //        //Links2[1] = Links2[0];
+                    //        Links2[1] = new Null_Node();
+                    //    }
+                    //    else
+                    //    {
+                    //        Links2[1] = Frame[x - mod][y - mod][z];
+                    //    }
+                    //    if (x == Frame.Length - 1 || y == 0 || z == Frame[mod][y].Length - 1 + mod || (Bound_Node.Boundary.SDXPosYNeg & Flags) == Bound_Node.Boundary.SDXPosYNeg)
+                    //    {
+                    //        //Links2[2] = Links2[3];
+                    //        Links2[2] = new Null_Node();
+                    //    }
+                    //    else
+                    //    {
+                    //        Links2[2] = Frame[x + 1 - mod][y - mod][z];
+                    //    }
+                    //    if (x == 0 || y == Frame[mod].Length - 1 || z == Frame[mod][y].Length - 1 + mod ||(Bound_Node.Boundary.SDXNegYPos & Flags) == Bound_Node.Boundary.SDXNegYPos)
+                    //    {
+                    //        //Links2[3] = Links2[2];
+                    //        Links2[3] = new Null_Node();
+                    //    }
+                    //    else
+                    //    {
+                    //        Links2[3] = Frame[x - mod][y + 1 - mod][z];
+                    //    }
+                    //    if (x == Frame.Length - 1 || z == Frame[mod][y].Length - 1 || z == Frame[mod][y].Length - 1 + mod || (Bound_Node.Boundary.SDXPosZPos & Flags) == Boundary.SDXPosZPos)
+                    //    {
+                    //        //Links2[4] = Links2[5];
+                    //        Links2[4] = new Null_Node();
+                    //    }
+                    //    else
+                    //    {
+                    //        Links2[4] = Frame[x + 1 - mod][y][z + 1 - mod];
+                    //    }
+                    //    if (x == 0 || z == 0 || (Bound_Node.Boundary.SDXNegZNeg & Flags) == Bound_Node.Boundary.SDXNegZNeg)
+                    //    {
+                    //        //Links2[5] = Links2[4];
+                    //        Links2[5] = new Null_Node();
+                    //    }
+                    //    else
+                    //    {
+                    //        Links2[5] = Frame[x - mod][y][z - mod];
+                    //    }
+                    //    if (x == 0 || z == Frame[mod][y].Length - 1 || (Bound_Node.Boundary.SDXNegZPos & Flags) == Bound_Node.Boundary.SDXNegZPos)
+                    //    {
+                    //        //Links2[6] = Links2[7];
+                    //        Links2[6] = new Null_Node();
+                    //    }
+                    //    else
+                    //    {
+                    //        Links2[6] = Frame[x - mod][y][z + 1 - mod];
+                    //    }
+                    //    if (x == Frame.Length - 1 || z == 0 || (Bound_Node.Boundary.SDXPosZNeg & Flags) == Bound_Node.Boundary.SDXPosZNeg)
+                    //    {
+                    //        //Links2[7] = Links2[6];
+                    //        Links2[7] = new Null_Node();
+                    //    }
+                    //    else
+                    //    {
+                    //        Links2[7] = Frame[x + 1 - mod][y][z - mod];
+                    //    }
+                    //    if (y == Frame[mod].Length - 1 || z == Frame[mod][y].Length - 1 || (Bound_Node.Boundary.SDYPosZPos & Flags) == Bound_Node.Boundary.SDYPosZPos)
+                    //    {
+                    //        //Links2[8] = Links2[9];
+                    //        Links2[8] = new Null_Node();
+                    //    }
+                    //    else
+                    //    {
+                    //        Links2[8] = Frame[x][y + 1 - mod][z + 1 - mod];
+                    //    }
+                    //    if (y == 0 || z == 0 || (Bound_Node.Boundary.SDYNegZNeg & Flags) == Bound_Node.Boundary.SDYNegZNeg)
+                    //    {
+                    //        //Links2[9] = Links2[8];
+                    //        Links2[9] = new Null_Node();
+                    //    }
+                    //    else
+                    //    {
+                    //        Links2[9] = Frame[x][y - mod][z - mod];
+                    //    }
+                    //    if (y == 0 || z == Frame[mod][y].Length - 1 || (Bound_Node.Boundary.SDYNegZPos & Flags) == Bound_Node.Boundary.SDYNegZPos)
+                    //    {
+                    //        //Links2[10] = Links2[11];
+                    //        Links2[10] = new Null_Node();
+                    //    }
+                    //    else
+                    //    {
+                    //        Links2[10] = Frame[x][y - mod][z + 1 - mod];
+                    //    }
+                    //    if (y == Frame[mod].Length - 1 || z == 0 || (Bound_Node.Boundary.SDYPosZNeg & Flags) == Bound_Node.Boundary.SDYPosZNeg)
+                    //    {
+                    //        //Links2[11] = Links2[10];
+                    //        Links2[11] = new Null_Node();
+                    //    }
+                    //    else
+                    //    {
+                    //        Links2[11] = Frame[x][y + 1 - mod][z - mod];
+                    //    }
+                    //    #endregion
+                    //}
                 }
 
                 public class DIF_IWB_2p : IIR_DIF
