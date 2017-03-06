@@ -55,6 +55,31 @@ namespace Pachyderm_Acoustic
             {
             }
 
+            public Receiver_Bank(IList<Point> Pt, Point SrcPT, Scene Sc, int SampleRate_in, double COTime_in, double delayinms, Type Type)
+            {
+                delay_ms = delayinms;
+                SampleRate = SampleRate_in;
+                SampleCT = (int)Math.Floor(COTime_in * SampleRate_in / 1000);
+                this.CutOffTime = COTime_in;
+                Rec_Type = Type;
+                Point[] arrPts = Pt.ToArray<Point>();
+                Rec_List = new Spherical_Receiver[arrPts.Length];
+                Min = new Hare.Geometry.Point(double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity);
+                Max = new Hare.Geometry.Point(double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity);
+
+                for (int i = 0; i < arrPts.Length; i++)
+                {
+                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT, RayCount, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+
+                    if (arrPts[i].x > Max.x) Max.x = arrPts[i].x;
+                    if (arrPts[i].y > Max.y) Max.y = arrPts[i].y;
+                    if (arrPts[i].z > Max.z) Max.z = arrPts[i].z;
+                    if (arrPts[i].x < Min.x) Min.x = arrPts[i].x;
+                    if (arrPts[i].y < Min.y) Min.y = arrPts[i].y;
+                    if (arrPts[i].z < Min.z) Min.z = arrPts[i].z;
+                }
+            }
             /// <summary>
             /// Private receiver bank constructer for file read-in.
             /// </summary>
