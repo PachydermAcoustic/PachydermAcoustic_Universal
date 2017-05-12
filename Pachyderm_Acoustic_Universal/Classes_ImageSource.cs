@@ -1334,8 +1334,7 @@ namespace Pachyderm_Acoustic
 
             Random rnd = new Random(Rnd);
             float time = (float)(Length / C_Sound);
-            double[] phase = Src.Phase(DIR, ref rnd);
-
+            
             ///Energy based formulation
             double[] Power = Src.DirPower(thread, Rnd, DIR);
             Identify(Src.Source_ID(), Direct_Time);
@@ -1389,7 +1388,6 @@ namespace Pachyderm_Acoustic
             //double[] tank = new double[Pspec.Length];
             //for (int i = 0; i < tank.Length; i++) tank[i] = Pspec[i].Real;
             //P = Audio.Pach_SP.Minimum_Phase_Response(tank, 44100, thread);
-            //TODO: Investigate phase propoerties of this for special materials filters...
             //double[] pre = Audio.Pach_SP.IFFT_Real4096(Pspec, thread);
             //P = new double[pre.Length];
             //double scale = Math.Sqrt(P.Length);

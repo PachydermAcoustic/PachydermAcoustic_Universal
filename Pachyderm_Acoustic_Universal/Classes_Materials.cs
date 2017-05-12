@@ -106,7 +106,6 @@ namespace Pachyderm_Acoustic
             public override void Absorb(ref OctaveRay Ray, Hare.Geometry.Vector Normal)
             {
                 Ray.Intensity *= (Ref[Ray.Octave]);
-                Ray.phase += PD[Ray.Octave];
             }
 
             public override void Absorb(ref OctaveRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
@@ -114,7 +113,6 @@ namespace Pachyderm_Acoustic
                 cos_theta = Hare.Geometry.Hare_math.Dot(Normal, Ray.direction);
 
                 Ray.Intensity *= (Ref[Ray.Octave]);
-                Ray.phase += PD[Ray.Octave];
             }
 
             public override void Absorb(ref BroadRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
@@ -122,41 +120,25 @@ namespace Pachyderm_Acoustic
                 cos_theta = Hare.Geometry.Hare_math.Dot(Normal, Ray.direction);
 
                 Ray.Energy[0] *= (Ref[0]);
-                Ray.phase[0] += PD[0];
                 Ray.Energy[1] *= (Ref[1]);
-                Ray.phase[1] += PD[1];
                 Ray.Energy[2] *= (Ref[2]);
-                Ray.phase[2] += PD[2];
                 Ray.Energy[3] *= (Ref[3]);
-                Ray.phase[3] += PD[3];
                 Ray.Energy[4] *= (Ref[4]);
-                Ray.phase[4] += PD[4];
                 Ray.Energy[5] *= (Ref[5]);
-                Ray.phase[5] += PD[5];
                 Ray.Energy[6] *= (Ref[6]);
-                Ray.phase[6] += PD[6];
                 Ray.Energy[7] *= (Ref[7]);
-                Ray.phase[7] += PD[7];
             }
 
             public override void Absorb(ref BroadRay Ray, Hare.Geometry.Vector Normal)
             {
                 Ray.Energy[0] *= (Ref[0]);
-                Ray.phase[0] += PD[0];
                 Ray.Energy[1] *= (Ref[1]);
-                Ray.phase[1] += PD[1];
                 Ray.Energy[2] *= (Ref[2]);
-                Ray.phase[2] += PD[2];
                 Ray.Energy[3] *= (Ref[3]);
-                Ray.phase[3] += PD[3];
                 Ray.Energy[4] *= (Ref[4]);
-                Ray.phase[4] += PD[4];
                 Ray.Energy[5] *= (Ref[5]);
-                Ray.phase[5] += PD[5];
                 Ray.Energy[6] *= (Ref[6]);
-                Ray.phase[6] += PD[6];
                 Ray.Energy[7] *= (Ref[7]);
-                Ray.phase[7] += PD[7];
             }
 
             public override double[] Coefficient_A_Broad()

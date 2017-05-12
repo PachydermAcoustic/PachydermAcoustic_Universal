@@ -153,7 +153,7 @@ namespace Pachyderm_Acoustic
                     D.Delay_ms = 0;
             }
 
-            D.Src = new GeodesicSource(D.SWL, new double[8]{0,0,0,0,0,0,0,0}, SrcPt, 0, 0);
+            D.Src = new GeodesicSource(D.SWL, SrcPt, 0, 0);
             D.Validity = new Boolean[RecPts.Count<Hare.Geometry.Point>()];
             D.Time_Pt = new double[RecPts.Count<Hare.Geometry.Point>()];
             D.Io = new double[RecPts.Count<Hare.Geometry.Point>()][][];
@@ -368,7 +368,6 @@ namespace Pachyderm_Acoustic
                 Random rnd = new Random();
                 Validity = new bool[Receiver.Count];
                 Io = new double[Receiver.Count][][];
-                //Phase = new double[Receiver.Count][,];
                 Time_Pt = new double[Receiver.Count];
                 //P = new double[Receiver.Count][];
 
@@ -385,7 +384,7 @@ namespace Pachyderm_Acoustic
                         Dir_Rec_Pos[i][oct][0] = new float[3];
                         Dir_Rec_Neg[i][oct][0] = new float[3];
                     }
-                    //P[i] = new double[1];
+
                     double[] transmod;
                     Check_Validity(i, rnd.Next(), out transmod);
                     Rho_C[i] = Room.Rho_C(Receiver[i]);
@@ -395,8 +394,6 @@ namespace Pachyderm_Acoustic
                     dir.Normalize();
 
                     double[] Power = Src.DirPower(0, rnd.Next(), dir);
-                    double[] phase_in = Src.Phase(dir, ref rnd);
-                    //for (int o = 0; o < 8; o++) Phase[i][0, o] = phase_in[o];
 
                     Io[i][0][0] = Power[0] * Math.Pow(10, -.1 * Room.Attenuation(0)[0] * Length) * transmod[0] / (4 * Math.PI * Length * Length);
                     Io[i][1][0] = Power[1] * Math.Pow(10, -.1 * Room.Attenuation(0)[1] * Length) * transmod[1] / (4 * Math.PI * Length * Length);
@@ -408,14 +405,10 @@ namespace Pachyderm_Acoustic
                     Io[i][7][0] = Power[7] * Math.Pow(10, -.1 * Room.Attenuation(0)[7] * Length) * transmod[7] / (4 * Math.PI * Length * Length);
 
                     float time = (float)(Length / C_Sound) + (float)Src.Delay;
-                    //float real, imag;
 
                     for (int oct = 0; oct < 8; oct++)
                     {
-                        //Utilities.Numerics.ExpComplex(0, (float)(Utilities.Numerics.angularFrequency[oct] * time + phase_in[oct]), out real, out imag);
-                        //P[i][0, oct] = Math.Sqrt(Io[i][0, oct] * Room.Rho_C(Receiver[i]));
                         Vector V = dir * Io[i][oct][0];
-
                         if (V.x > 0) Dir_Rec_Pos[i][oct][0][0] += (float)V.x; else Dir_Rec_Neg[i][oct][0][0] += (float)V.x;
                         if (V.y > 0) Dir_Rec_Pos[i][oct][0][1] += (float)V.y; else Dir_Rec_Neg[i][oct][0][1] += (float)V.y;
                         if (V.z > 0) Dir_Rec_Pos[i][oct][0][2] += (float)V.z; else Dir_Rec_Neg[i][oct][0][2] += (float)V.z;
@@ -957,39 +950,34 @@ namespace Pachyderm_Acoustic
                     zn_Spline[oct] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaSorted(t_dump, zn_dump[oct]);
                 }
                 int taumin = (int)Math.Ceiling(tmin / dt);
-                int taumax = (int)Math.Floor(tmax / dt);
+                int taumax = (int)Math.Floor(tmax / dt); //Io[rec_id][0].Length;
 
-                if (Io[rec_id][0].Length < taumax)
+                if (Io[rec_id][0].Length < Io[rec_id][0].Length)
                 {
                     int tau_present = Io[rec_id][0].Length;
                     //resize the intensity histograms...
                     for (int oct = 0; oct < 8; oct++)
                     {
-                        Array.Resize(ref Io[rec_id][oct], taumax);
+                        Array.Resize(ref Dir_Rec_Pos[rec_id][oct], Io[rec_id][oct].Length);
+                        Array.Resize(ref Dir_Rec_Neg[rec_id][oct], Io[rec_id][oct].Length);
                         for (int j = tau_present; j < Io[rec_id][oct].Length; j++)
                         {
                             Dir_Rec_Pos[rec_id][oct][j] = new float[3];
                             Dir_Rec_Neg[rec_id][oct][j] = new float[3];
                         }
                     }
-                    Array.Resize(ref Io[rec_id][8], taumax);
                 }
 
                 //Adjust for energy differential between what might be two different sample rates...
                 double mod = (double)(taumax - taumin) / t.Count;
 
-                for (int tau = taumin; tau < taumax; tau++)
+                for (int tau = taumin; tau < taumax; tau++)//Io[rec_id][0].Length; tau++)
                 {
                     for (int oct = 0; oct < 8; oct++)
                     {
                         double tdbl = (double)tau * dt;
                         double spl = I_Spline[oct].Interpolate(tdbl);
-                        Io[rec_id][oct][tau] += Math.Pow(10, spl);// * mod;
-
-                        //if (Io[rec_id][oct][tau] < 0 || double.IsInfinity(Io[rec_id][oct][tau]) || double.IsNaN(Io[rec_id][oct][tau]))
-                        //{
-                        //    Rhino.RhinoApp.Write("MEEP");
-                        //}
+                        Io[rec_id][oct][tau] += Math.Pow(10, spl);
 
                         this.Dir_Rec_Pos[rec_id][oct][tau][0] += (float)(Math.Pow(10, xp_Spline[oct].Interpolate(tdbl)) * mod);
                         this.Dir_Rec_Neg[rec_id][oct][tau][0] += (float)(Math.Pow(10, xn_Spline[oct].Interpolate(tdbl)) * mod);
@@ -1000,10 +988,6 @@ namespace Pachyderm_Acoustic
                     }
                 }
             }
-            //else
-            //{
-            //    Rhino.RhinoApp.Write("MEEP");
-            //}
 
             t = new List<double>();
             I = new List<double[]>();
@@ -1020,8 +1004,8 @@ namespace Pachyderm_Acoustic
             for (int i = 0; i < Receiver.Count; i++) rnd[i] = RndGen.Next();
             Hare.Geometry.AABB b = LSrc.bounds;
 
-            //for (int i = 0; i < Receiver.Count; i++)
-            System.Threading.Tasks.Parallel.For(0, Receiver.Count, i =>
+            for (int i = 0; i < Receiver.Count; i++)
+            //System.Threading.Tasks.Parallel.For(0, Receiver.Count, i =>
             {
                 Random RAND = new Random(rnd[i]);
                 double mintime = double.PositiveInfinity, maxtime = double.NegativeInfinity;
@@ -1127,14 +1111,16 @@ namespace Pachyderm_Acoustic
                         else
                         {
                             //obstructed connection.
-                            if (time.Count > 0) Record_Line_Segment(ref time, ref I, ref I_d, i);
+                            if (time.Count > 0)
+                                Record_Line_Segment(ref time, ref I, ref I_d, i);
                             break;
                         }
                     }
                     while (true);
                 }
 
-                if (time.Count > 0) Record_Line_Segment(ref time, ref I, ref I_d, i);
+                if (time.Count > 0)
+                    Record_Line_Segment(ref time, ref I, ref I_d, i);
 
                 //Finalize Receiver point
                 Time_Pt[i] = mintime;
@@ -1166,7 +1152,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
                 Validity[i] = (total != 0);
-            });
+            }//);
 
             return true;
         }

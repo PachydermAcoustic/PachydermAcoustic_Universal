@@ -597,9 +597,9 @@ namespace Pachyderm_Acoustic
                     double t = (Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time;
                     if (z > t) z = t;
                 }
-                zero = (int)(z * Rec_List[0].SampleRate * 44.1);
+                zero = (int)(z * Rec_List[0].SampleRate); //*44.1
 
-                hist = new double[(int)Math.Ceiling(Rec_List[0].SampleCT * 44.1)];
+                hist = new double[(int)Math.Ceiling(Rec_List[0].SampleCT * 44.1) + 4096];
 
                 foreach (int S_ID in SrcID)
                 {
@@ -1469,14 +1469,14 @@ namespace Pachyderm_Acoustic
                 {
                     double raydist = t / C_Sound + r.t_sum - Direct_Time;
                     Vector dir = r.direction * -1;
-                    Recs.Add(raydist, r.Energy[0] * Math.Pow(10, -.1 * Atten[0] * raydist) * SizeMod, dir, r.phase[0], Rho_C, 0);
-                    Recs.Add(raydist, r.Energy[1] * Math.Pow(10, -.1 * Atten[1] * raydist) * SizeMod, dir, r.phase[1], Rho_C, 1);
-                    Recs.Add(raydist, r.Energy[2] * Math.Pow(10, -.1 * Atten[2] * raydist) * SizeMod, dir, r.phase[2], Rho_C, 2);
-                    Recs.Add(raydist, r.Energy[3] * Math.Pow(10, -.1 * Atten[3] * raydist) * SizeMod, dir, r.phase[3], Rho_C, 3);
-                    Recs.Add(raydist, r.Energy[4] * Math.Pow(10, -.1 * Atten[4] * raydist) * SizeMod, dir, r.phase[4], Rho_C, 4);
-                    Recs.Add(raydist, r.Energy[5] * Math.Pow(10, -.1 * Atten[5] * raydist) * SizeMod, dir, r.phase[5], Rho_C, 5);
-                    Recs.Add(raydist, r.Energy[6] * Math.Pow(10, -.1 * Atten[6] * raydist) * SizeMod, dir, r.phase[6], Rho_C, 6);
-                    Recs.Add(raydist, r.Energy[7] * Math.Pow(10, -.1 * Atten[7] * raydist) * SizeMod, dir, r.phase[7], Rho_C, 7);
+                    Recs.Add(raydist, r.Energy[0] * Math.Pow(10, -.1 * Atten[0] * raydist) * SizeMod, dir, Rho_C, 0);
+                    Recs.Add(raydist, r.Energy[1] * Math.Pow(10, -.1 * Atten[1] * raydist) * SizeMod, dir, Rho_C, 1);
+                    Recs.Add(raydist, r.Energy[2] * Math.Pow(10, -.1 * Atten[2] * raydist) * SizeMod, dir, Rho_C, 2);
+                    Recs.Add(raydist, r.Energy[3] * Math.Pow(10, -.1 * Atten[3] * raydist) * SizeMod, dir, Rho_C, 3);
+                    Recs.Add(raydist, r.Energy[4] * Math.Pow(10, -.1 * Atten[4] * raydist) * SizeMod, dir, Rho_C, 4);
+                    Recs.Add(raydist, r.Energy[5] * Math.Pow(10, -.1 * Atten[5] * raydist) * SizeMod, dir, Rho_C, 5);
+                    Recs.Add(raydist, r.Energy[6] * Math.Pow(10, -.1 * Atten[6] * raydist) * SizeMod, dir, Rho_C, 6);
+                    Recs.Add(raydist, r.Energy[7] * Math.Pow(10, -.1 * Atten[7] * raydist) * SizeMod, dir, Rho_C, 7);
                 }
             }
 
@@ -1499,7 +1499,7 @@ namespace Pachyderm_Acoustic
                 if (t > 0 && t * t < SqDistance(endPt, R.origin))
                 {
                     double raydist = t / C_Sound + R.t_sum;
-                    Recs.Add(raydist - Direct_Time, R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * raydist) * SizeMod, R.direction * -1, R.phase, Rho_C, R.Octave);// / (1.33333333333333 * Math.PI * Min_Radius2 * Min_Radius), EndPt - R.origin, R.Octave);//R.Scat_Mod * 
+                    Recs.Add(raydist - Direct_Time, R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * raydist) * SizeMod, R.direction * -1, Rho_C, R.Octave);// / (1.33333333333333 * Math.PI * Min_Radius2 * Min_Radius), EndPt - R.origin, R.Octave);//R.Scat_Mod * 
                 }
             }
 

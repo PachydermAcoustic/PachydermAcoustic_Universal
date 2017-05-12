@@ -705,14 +705,14 @@ namespace Pachyderm_Acoustic
                     double RayTime = t*Inv_C_Sound + R.t_sum;
                     Vector Dir = R.direction * -1;
                     Dir.Normalize();
-                    Recs.Add(RayTime, R.Energy[0] * Math.Pow(10,-.1 * Atten[0] * t) * SizeMod * tsphere, Dir, R.phase[0], Rho_C, 0);
-                    Recs.Add(RayTime, R.Energy[1] * Math.Pow(10,-.1 * Atten[1] * t) * SizeMod * tsphere, Dir, R.phase[1], Rho_C, 1);
-                    Recs.Add(RayTime, R.Energy[2] * Math.Pow(10,-.1 * Atten[2] * t) * SizeMod * tsphere, Dir, R.phase[2], Rho_C, 2);
-                    Recs.Add(RayTime, R.Energy[3] * Math.Pow(10,-.1 * Atten[3] * t) * SizeMod * tsphere, Dir, R.phase[3], Rho_C, 3);
-                    Recs.Add(RayTime, R.Energy[4] * Math.Pow(10,-.1 * Atten[4] * t) * SizeMod * tsphere, Dir, R.phase[4], Rho_C, 4);
-                    Recs.Add(RayTime, R.Energy[5] * Math.Pow(10,-.1 * Atten[5] * t) * SizeMod * tsphere, Dir, R.phase[5], Rho_C, 5);
-                    Recs.Add(RayTime, R.Energy[6] * Math.Pow(10,-.1 * Atten[6] * t) * SizeMod * tsphere, Dir, R.phase[6], Rho_C, 6);
-                    Recs.Add(RayTime, R.Energy[7] * Math.Pow(10,-.1 * Atten[7] * t) * SizeMod * tsphere, Dir, R.phase[7], Rho_C, 7);
+                    Recs.Add(RayTime, R.Energy[0] * Math.Pow(10,-.1 * Atten[0] * t) * SizeMod * tsphere, Dir, Rho_C, 0);
+                    Recs.Add(RayTime, R.Energy[1] * Math.Pow(10,-.1 * Atten[1] * t) * SizeMod * tsphere, Dir, Rho_C, 1);
+                    Recs.Add(RayTime, R.Energy[2] * Math.Pow(10,-.1 * Atten[2] * t) * SizeMod * tsphere, Dir, Rho_C, 2);
+                    Recs.Add(RayTime, R.Energy[3] * Math.Pow(10,-.1 * Atten[3] * t) * SizeMod * tsphere, Dir, Rho_C, 3);
+                    Recs.Add(RayTime, R.Energy[4] * Math.Pow(10,-.1 * Atten[4] * t) * SizeMod * tsphere, Dir, Rho_C, 4);
+                    Recs.Add(RayTime, R.Energy[5] * Math.Pow(10,-.1 * Atten[5] * t) * SizeMod * tsphere, Dir, Rho_C, 5);
+                    Recs.Add(RayTime, R.Energy[6] * Math.Pow(10,-.1 * Atten[6] * t) * SizeMod * tsphere, Dir, Rho_C, 6);
+                    Recs.Add(RayTime, R.Energy[7] * Math.Pow(10,-.1 * Atten[7] * t) * SizeMod * tsphere, Dir, Rho_C, 7);
                 }
             }
 
@@ -739,7 +739,7 @@ namespace Pachyderm_Acoustic
                     Vector Dir = R.direction * -1;
                     Dir.Normalize();
                     double Raydist = t*Inv_C_Sound + R.t_sum;
-                    Recs.Add(Raydist, R.Intensity * Math.Pow(10,-.1 * Atten[R.Octave] * t) * SizeMod * tsphere, Dir, R.phase, Rho_C, R.Octave);
+                    Recs.Add(Raydist, R.Intensity * Math.Pow(10,-.1 * Atten[R.Octave] * t) * SizeMod * tsphere, Dir, Rho_C, R.Octave);
                 }
             }
 
@@ -852,9 +852,9 @@ namespace Pachyderm_Acoustic
             /// <param name="Energy_in">the energy to be recorded</param>
             /// <param name="direction">The incoming direction of the ray</param>
             /// <param name="Octave">the octave band index</param>
-            public void Add(double Distance, double Energy_in, Vector direction, double phase, int Octave)
+            public void Add(double Distance, double Energy_in, Vector direction, int Octave)
             {
-                Recs.Add(Distance, Energy_in, direction, phase, Rho_C, Octave);
+                Recs.Add(Distance, Energy_in, direction, Rho_C, Octave);
             }
 
             /// <summary>
@@ -864,9 +864,9 @@ namespace Pachyderm_Acoustic
             /// <param name="Energy_in"></param>
             /// <param name="direction"></param>
             /// <param name="Octave"></param>
-            public void Add(int Sample, double Energy_in, Vector direction, double phase, int Octave)
+            public void Add(int Sample, double Energy_in, Vector direction, int Octave)
             {
-                Recs.Add(Sample, Energy_in, direction, phase, Rho_C, Octave);
+                Recs.Add(Sample, Energy_in, direction, Rho_C, Octave);
             }
 
             public void Combine_Sample(int sample, double Energy_in, Vector direction_pos, Vector direction_neg, int Octave)// float p_real, float p_imag,
@@ -953,14 +953,11 @@ namespace Pachyderm_Acoustic
                 /// <param name="Energy_in">the energy to be recorded</param>
                 /// <param name="direction">the incoming direction of the ray</param>
                 /// <param name="Octave">the index of the octave band.</param>
-                public virtual void Add(double time, double Energy_in, Vector direction, double phase, double Rho_C, int Octave)
+                public virtual void Add(double time, double Energy_in, Vector direction, double Rho_C, int Octave)
                 {
                     int sample = (int)(time * SampleRate);
                     if (sample >= Energy[Octave].Length) return;
                     if (sample < 0) return;
-                    float real, imag;
-                    Utilities.Numerics.ExpComplex(0, (float)(Utilities.Numerics.angularFrequency[Octave] * time + phase), out real, out imag);
-                    float pmag = (float)Math.Sqrt(Energy_in * Rho_C);
                     Energy[Octave][sample] += Energy_in;
                 }
 
@@ -1111,16 +1108,9 @@ namespace Pachyderm_Acoustic
                 /// <param name="Energy_in">the energy to be recorded</param>
                 /// <param name="direction">the incoming direction of the ray</param>
                 /// <param name="Octave">the index of the octave band.</param>
-                public override void Add(double time, double Energy_in, Vector direction, double phase, double Rho_C, int Octave)
+                public override void Add(double time, double Energy_in, Vector direction, double Rho_C, int Octave)
                 {
                     Energy[Octave][0] += Energy_in;
-                    //float real, imag;
-                    //Utilities.Numerics.ExpComplex(0, (float)(Utilities.Numerics.angularFrequency[Octave] * time + phase), out real, out imag);
-                    ////float pmag = (float)Math.Sqrt(Energy_in * Rho_C);
-                    ///Not sure how to address this pressure at one point... Maybe we need to keep the full histogram till the end, and then add together h^2.
-                    ///Maybe this is an intensity only technique...
-                    //P_Real[Octave][0] += pmag * real;
-                    //P_Imag[Octave][0] += pmag * imag;
                 }
             }
 
@@ -1232,7 +1222,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                public override void Add(double time, double Energy_in, Vector direction, double phase, double Rho_C, int Octave)
+                public override void Add(double time, double Energy_in, Vector direction, double Rho_C, int Octave)
                 {
                     int sample = (int)(time * SampleRate);
                     if (sample >= Energy[Octave].Length) return;
@@ -1243,9 +1233,6 @@ namespace Pachyderm_Acoustic
                     else Dir_Rec_Neg[1][Octave][sample] += (float)(direction.y * Energy_in);
                     if (direction.z > 0) Dir_Rec_Pos[2][Octave][sample] += (float)(direction.z * Energy_in);
                     else Dir_Rec_Pos[2][Octave][sample] += (float)(direction.z * Energy_in);
-                    float real, imag;
-                    Utilities.Numerics.ExpComplex(0, (float)(Utilities.Numerics.angularFrequency[Octave] * time + phase), out real, out imag);
-                    float pmag = (float)Math.Sqrt(Energy_in * Rho_C);
                 }
 
                 /// <summary>
@@ -1402,7 +1389,7 @@ namespace Pachyderm_Acoustic
                 {
                     double Raydist = t * Inv_C_Sound + R.t_sum;
                     double Ei = R.Intensity * Math.Pow(10,-.1 * Atten[R.Octave] * t) / (Math.PI * Radius2);
-                    Recs.Add(Raydist, Ei, R.direction * -1, R.phase,Rho_C, R.Octave);
+                    Recs.Add(Raydist, Ei, R.direction * -1, Rho_C, R.Octave);
                 }
                 return;
             }
@@ -1435,14 +1422,14 @@ namespace Pachyderm_Acoustic
                     Vector Dir = R.direction * -1;
                     double Area = Math.PI * Radius2;
 
-                    Recs.Add(RayTime, (R.Energy[0] * Math.Pow(10,-.1 * Atten[0] * t) / Area), Dir, R.phase[0], Rho_C, 0);
-                    Recs.Add(RayTime, (R.Energy[1] * Math.Pow(10,-.1 * Atten[1] * t) / Area), Dir, R.phase[1], Rho_C, 1);
-                    Recs.Add(RayTime, (R.Energy[2] * Math.Pow(10,-.1 * Atten[2] * t) / Area), Dir, R.phase[2], Rho_C, 2);
-                    Recs.Add(RayTime, (R.Energy[3] * Math.Pow(10,-.1 * Atten[3] * t) / Area), Dir, R.phase[3], Rho_C, 3);
-                    Recs.Add(RayTime, (R.Energy[4] * Math.Pow(10,-.1 * Atten[4] * t) / Area), Dir, R.phase[4], Rho_C, 4);
-                    Recs.Add(RayTime, (R.Energy[5] * Math.Pow(10,-.1 * Atten[5] * t) / Area), Dir, R.phase[5], Rho_C, 5);
-                    Recs.Add(RayTime, (R.Energy[6] * Math.Pow(10,-.1 * Atten[6] * t) / Area), Dir, R.phase[6], Rho_C, 6);
-                    Recs.Add(RayTime, (R.Energy[7] * Math.Pow(10,-.1 * Atten[7] * t) / Area), Dir, R.phase[7], Rho_C, 7);   
+                    Recs.Add(RayTime, (R.Energy[0] * Math.Pow(10,-.1 * Atten[0] * t) / Area), Dir, Rho_C, 0);
+                    Recs.Add(RayTime, (R.Energy[1] * Math.Pow(10,-.1 * Atten[1] * t) / Area), Dir, Rho_C, 1);
+                    Recs.Add(RayTime, (R.Energy[2] * Math.Pow(10,-.1 * Atten[2] * t) / Area), Dir, Rho_C, 2);
+                    Recs.Add(RayTime, (R.Energy[3] * Math.Pow(10,-.1 * Atten[3] * t) / Area), Dir, Rho_C, 3);
+                    Recs.Add(RayTime, (R.Energy[4] * Math.Pow(10,-.1 * Atten[4] * t) / Area), Dir, Rho_C, 4);
+                    Recs.Add(RayTime, (R.Energy[5] * Math.Pow(10,-.1 * Atten[5] * t) / Area), Dir, Rho_C, 5);
+                    Recs.Add(RayTime, (R.Energy[6] * Math.Pow(10,-.1 * Atten[6] * t) / Area), Dir, Rho_C, 6);
+                    Recs.Add(RayTime, (R.Energy[7] * Math.Pow(10,-.1 * Atten[7] * t) / Area), Dir, Rho_C, 7);   
                 }
                 return;
             }

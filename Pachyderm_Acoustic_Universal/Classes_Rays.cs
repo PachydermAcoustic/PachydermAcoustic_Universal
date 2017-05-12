@@ -30,30 +30,27 @@ namespace Pachyderm_Acoustic
         public class OctaveRay: Ray
         {
             public double Intensity;
-            public double phase = 0;
             public int Octave;
             public double t_sum;
             public int Surf_ID;
             public int Source_ID;
 
-            public OctaveRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double phase_in, double Time, int octave, int SrcID, int srf_id)
+            public OctaveRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave, int SrcID, int srf_id)
                 : base(StartPt, Direction, ThreadID_IN, ID)
             {
                 t_sum = Time;
                 Octave = octave;
                 Intensity = Intensity_in;
-                phase = phase_in;
                 Source_ID = SrcID;
                 Surf_ID = srf_id;
             }
 
-            public OctaveRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double phase_in, int octave, double Scat_Mod_in, int SrcID)
+            public OctaveRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, int octave, double Scat_Mod_in, int SrcID)
                 : base(StartPt, Direction, ThreadID_IN, ID)
             {
                 t_sum = 0;
                 Octave = octave;
                 Intensity = Intensity_in;
-                phase = phase_in;
                 Source_ID = SrcID;
                 Surf_ID = -1;
             }
@@ -74,7 +71,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public OctaveRay SplitRay( double E_Mod_Coef)
             {
-                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Intensity * E_Mod_Coef, phase, t_sum, Octave, Source_ID, Surf_ID);
+                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Surf_ID);
                 //O.Surf_ID = Surf_ID;
                 this.Intensity *= (1 - E_Mod_Coef);
                 return O;
@@ -89,15 +86,13 @@ namespace Pachyderm_Acoustic
             public OctaveRay SplitRay(double E_Mod_Coef, double phase_delay)
             {
                 OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Surf_ID);
-                //O.Surf_ID = Surf_ID;
                 this.Intensity *= (1 - E_Mod_Coef);
-                this.phase += phase_delay;
                 return O;
             }
 
             public OctaveRay Clone()
             {
-                return new OctaveRay(this.origin, this.direction, this.Ray_ID, this.ThreadID, this.Intensity, this.phase, this.t_sum, this.Octave, this.Source_ID, this.Surf_ID);
+                return new OctaveRay(this.origin, this.direction, this.Ray_ID, this.ThreadID, this.Intensity, this.t_sum, this.Octave, this.Source_ID, this.Surf_ID);
             }
         }
 
@@ -107,30 +102,27 @@ namespace Pachyderm_Acoustic
         public class BroadRay : Ray
         {
             public double[] Energy;
-            public double[] phase;
             public double t_sum;
             public int Surf_ID;
             public int Source_ID;
             public int[] Octaves = new int[] { 0, 1, 2, 3, 4, 5, 6, 7 };
 
-            public BroadRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double[] energy_in, double[] phase_in, double time, int SrcID)
+            public BroadRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double[] energy_in, double time, int SrcID)
                 : base(StartPt, Direction, ThreadID_IN, ID)
             {
                 t_sum += time;
                 Energy = new double[8];
                 energy_in.CopyTo(Energy,0);
-                phase = phase_in;
                 Source_ID = SrcID;
                 Surf_ID = -1;
             }
 
-            public BroadRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double[] energy_in, double[] phase_in, double time, int SrcID, int[] _Octaves)
+            public BroadRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double[] energy_in, double time, int SrcID, int[] _Octaves)
                 : base(StartPt, Direction, ThreadID_IN, ID)
             {
                 t_sum += time;
                 Energy = new double[8];
                 energy_in.CopyTo(Energy, 0);
-                phase = phase_in;
                 Source_ID = SrcID;
                 Surf_ID = -1;
                 Octaves = _Octaves;
@@ -147,7 +139,7 @@ namespace Pachyderm_Acoustic
 
             public BroadRay Clone()
             {
-                return new BroadRay(origin, direction, Ray_ID, ThreadID, Energy, phase, t_sum, Source_ID);
+                return new BroadRay(origin, direction, Ray_ID, ThreadID, Energy, t_sum, Source_ID);
             }
 
             /// <summary>
@@ -157,7 +149,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public OctaveRay SplitRay(int Octave)
             {
-                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Energy[Octave], phase[Octave], t_sum, Octave, Source_ID, Surf_ID);
+                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Energy[Octave], t_sum, Octave, Source_ID, Surf_ID);
                 this.Energy[Octave] = 0;
                 return O;
             }
@@ -170,7 +162,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public OctaveRay SplitRay(int Octave, double E_Mod_Coef)
             {
-                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Energy[Octave] * E_Mod_Coef, phase[Octave],  t_sum, Octave, Source_ID, Surf_ID);
+                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Energy[Octave] * E_Mod_Coef,  t_sum, Octave, Source_ID, Surf_ID);
                 this.Energy[Octave] *= (1 - E_Mod_Coef);
                 return O;
             }

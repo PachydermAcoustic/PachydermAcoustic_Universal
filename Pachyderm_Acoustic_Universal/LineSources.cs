@@ -51,7 +51,9 @@ namespace Pachyderm_Acoustic
             /// Private member controlling the directional characteristics of the line source.
             /// </summary>
             public Directionality D;
-
+            /// <summary>
+            /// The bounding box of line/curve source.
+            /// </summary>
             public AABB bounds;
             /// <summary>
             /// Describes construction for a simple (generic) line source, with no unusual directionality characteristics.
@@ -78,19 +80,19 @@ namespace Pachyderm_Acoustic
                 for(int x = 0; x < Samples.Length; x++)
                 {
                     minx = Math.Min(minx, Samples[x].x);
-                    maxx = Math.Min(maxx, Samples[x].x);
+                    maxx = Math.Max(maxx, Samples[x].x);
                 }
                 double miny = double.PositiveInfinity, maxy = double.NegativeInfinity;
                 for (int x = 0; x < Samples.Length; x++)
                 {
-                    miny = Math.Min(miny, Samples[x].x);
-                    maxy = Math.Min(maxy, Samples[x].x);
+                    miny = Math.Min(miny, Samples[x].y);
+                    maxy = Math.Max(maxy, Samples[x].y);
                 }
                 double minz = double.PositiveInfinity, maxz = double.NegativeInfinity;
                 for (int x = 0; x < Samples.Length; x++)
                 {
-                    minz = Math.Min(minz, Samples[x].x);
-                    maxz = Math.Min(maxz, Samples[x].x);
+                    minz = Math.Min(minz, Samples[x].z);
+                    maxz = Math.Max(maxz, Samples[x].z);
                 }
 
                 bounds = new AABB(new Point(minx, miny, minz), new Point(maxx, maxy, maxz));
@@ -189,16 +191,13 @@ namespace Pachyderm_Acoustic
                 {
                     ct++;
                     double pos = random.NextDouble();
-                    Point P = samples[ct%samples.Length];
+                    Point P = samples[(int)Math.Floor(pos * samples.Length)];//ct%samples.Length];
 
                     double Theta = random.NextDouble() * 2 * System.Math.PI;
                     double Phi = random.NextDouble() * 2 * System.Math.PI;
                     Vector Direction = new Hare.Geometry.Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
-                    double[] phase = new double[8];
-                    if (ph == Phase_Regime.Random) for (int o = 0; o < 8; o++) phase[o] = random.Next() * 2 * Math.PI;
-                    else for (int o = 0; o < 8; o++) phase[o] = 0 - Delay * Utilities.Numerics.angularFrequency[o];
 
-                    return new BroadRay(P, Direction, random.Next(), thread, DomainPower, phase, Delay, S_ID);
+                    return new BroadRay(P, Direction, random.Next(), thread, DomainPower, Delay, S_ID);
                 }
 
                 public override double[] DirPower(Vector Direction, ref Hare.Geometry.Point[] samples, int i, ref double[] DomainPower)
@@ -288,11 +287,8 @@ namespace Pachyderm_Acoustic
 
                     double[] power = new double[8];
                     for (int oct = 0; oct < 8; oct++) power[oct] = DomainPower[oct] * reciprocal_velocity * dLinf * F_r;
-                    double[] phase = new double[8];
-                    if (ph == Phase_Regime.Random) for (int o = 0; o < 8; o++) phase[o] = random.Next() * 2 * Math.PI;
-                    else for (int o = 0; o < 8; o++) phase[o] = 0 - Delay * Utilities.Numerics.angularFrequency[o];
 
-                    return new BroadRay(P, Direction, random.Next(), thread, DomainPower, phase, Delay, S_ID);
+                    return new BroadRay(P, Direction, random.Next(), thread, DomainPower, Delay, S_ID);
                 }
             }
         }

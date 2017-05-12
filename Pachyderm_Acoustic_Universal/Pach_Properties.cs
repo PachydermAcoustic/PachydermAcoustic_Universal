@@ -44,8 +44,7 @@ namespace Pachyderm_Acoustic
             Thread_Spec.Maximum = System.Environment.ProcessorCount;
             Thread_Spec.Value = System.Environment.ProcessorCount;
 
-            SettingsPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            SettingsPath = System.IO.Path.GetDirectoryName(SettingsPath);
+            SettingsPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData) + "\\Pachyderm";
             SettingsPath += "\\Pach_Settings.pset";
 
             FileStream S = new FileStream(SettingsPath, FileMode.OpenOrCreate);
@@ -153,12 +152,12 @@ namespace Pachyderm_Acoustic
             //5. Spatial Partition Selection (int)
             Writer.Write(1);
             //6. Voxel Grid Domain(int)
-            Writer.Write(15);
+            Writer.Write(7);
             //7. Octree Depth(int)
             Writer.Write(3);
             //8. Material Library Path
-            string mlPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            mlPath = System.IO.Path.GetDirectoryName(mlPath);
+            string mlPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData) + "\\Pachyderm";
+            //mlPath = System.IO.Path.GetDirectoryName(mlPath);
             Library_Path.Text = mlPath;
             Writer.Write(mlPath);
             //9. Save Results after simulation?

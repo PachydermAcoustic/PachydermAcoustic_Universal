@@ -92,11 +92,8 @@ namespace Pachyderm_Acoustic
                 double Theta = random.NextDouble() * 2 * System.Math.PI;
                 double Phi = random.NextDouble() * 2 * System.Math.PI;
                 Hare.Geometry.Vector Direction = new Hare.Geometry.Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
-                double[] phase = new double[8];
-                if (ph == Phase_Regime.Random) for(int o = 0; o < 8; o++) phase[o] = random.Next() * 2 * Math.PI;
-                else for(int o = 0; o < 8; o++) phase[o] = 0 - Delay * Utilities.Numerics.angularFrequency[o];
-
-                return new BroadRay(P, Direction, random.Next(), thread, DomainPower, phase, delay, S_ID);
+                
+                return new BroadRay(P, Direction, random.Next(), thread, DomainPower, delay, S_ID);
             }
         }
     }
