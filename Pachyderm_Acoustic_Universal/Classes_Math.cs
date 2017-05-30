@@ -2183,23 +2183,35 @@ namespace Pachyderm_Acoustic
                     case "Summation: All Octaves":
                         return 8;
                     case "62.5 Hz.":
+                    case "63":
                         return 0;
                     case "125 Hz.":
+                    case "125":
                         return 1;
                     case "250 Hz.":
+                    case "250":
                         return 2;
                     case "500 Hz.":
+                    case "500":
                         return 3;
                     case "1 kHz.":
+                    case "1k":
+                    case "1000":
                         return 4;
                     case "2 kHz.":
+                    case "2k":
+                    case "2000":
                         return 5;
                     case "4 kHz.":
+                    case "4k":
+                    case "4000":
                         return 6;
                     case "8 kHz.":
+                    case "8k":
+                    case "8000":
                         return 7;
                 }
-                return 8;
+                return -1;
             }
 
             public static System.Drawing.Color HsvColor(double h, double S, double V)

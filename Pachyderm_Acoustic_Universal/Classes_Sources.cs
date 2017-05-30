@@ -395,17 +395,17 @@ namespace Pachyderm_Acoustic
         }
 
         [Serializable]
-        public class SpeakerSource : GeodesicSource
+        public class DirectionalSource : GeodesicSource
         {
             Hare.Geometry.Voxel_Grid Balloon;
 
-            public SpeakerSource(Speaker_Balloon S, double[] power_in_db, Point Source, int[] Bands, double delay_in, int ID)
+            public DirectionalSource(Balloon S, double[] power_in_db, Point Source, int[] Bands, double delay_in, int ID)
             :this(S, power_in_db, Source, Bands, ID)
             {
                 delay = delay_in;
             }
 
-            public SpeakerSource(Speaker_Balloon S, double[] power_in_db, Point Source, int[] Bands, int ID)
+            public DirectionalSource(Balloon S, double[] power_in_db, Point Source, int[] Bands, int ID)
                 :base(power_in_db, Source, 0, ID)
             {
                 for (int oct = 0; oct < 8; oct++)
@@ -417,7 +417,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                type = "Loudspeaker";
+                type = "Directional";
                 Balloon = new Voxel_Grid(S.Balloons(power_in_db), 1);
                 ///Testing///
                 //Utilities.PachTools.Plot_Hare_Topology(Balloon.Model[0]);
@@ -441,10 +441,10 @@ namespace Pachyderm_Acoustic
             public override BroadRay Directions(int index, int thread, ref Random random)
             {
                 X_Event X = new X_Event();
-                
+
                 double[] RayPower = new double[8];
 
-                Hare.Geometry.Point Pt = T.Polys[base.rayct%T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
+                Hare.Geometry.Point Pt = T.Polys[base.rayct % T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
                 Hare.Geometry.Vector P = new Vector(Pt.x, Pt.y, Pt.z);
                 P.Normalize();
 
@@ -456,7 +456,7 @@ namespace Pachyderm_Acoustic
                     }
                     else
                     {
-                        Balloon.Shoot(new Ray(new Hare.Geometry.Point(0,0,0), P, thread, random.Next()), oct, out X);
+                        Balloon.Shoot(new Ray(new Hare.Geometry.Point(0, 0, 0), P, thread, random.Next()), oct, out X);
                         RayPower[oct] = 1E-12 * Math.Pow(10, .1 * X.t);
                     }
                 }
@@ -488,7 +488,7 @@ namespace Pachyderm_Acoustic
                     }
                     else
                     {
-                        Balloon.Shoot(new Ray(new Hare.Geometry.Point(0,0,0), DIR, thread, random), oct, out X);
+                        Balloon.Shoot(new Ray(new Hare.Geometry.Point(0, 0, 0), DIR, thread, random), oct, out X);
                         RayPower[oct] = 1E-12 * Math.Pow(10, .1 * X.t);
                     }
                 }

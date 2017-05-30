@@ -500,11 +500,6 @@ namespace Pachyderm_Acoustic
                         }
                     }
 
-                    //if (E_Sum < 0)
-                    //{
-                    //    Rhino.RhinoApp.Write("MEEP");
-                    //}
-
                     SPL_Values[i] = AcousticalMath.SPL_Intensity(Math.Abs(E_Sum));
                 }
             }
