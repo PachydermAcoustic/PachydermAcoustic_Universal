@@ -52,7 +52,13 @@ namespace Pachyderm_Acoustic
             double[] Abs = new double[8];
             double[] Ref = new double[8];
             double[] PD = new double[8];
+            double[] Pdefault = new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
             MathNet.Numerics.Interpolation.CubicSpline Transfer_Function;
+    
+            public Basic_Material(double[] ABS)
+                :this(ABS, new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 })
+            {
+            }
 
             public Basic_Material(double[] ABS, double[] Phase_Delay)
             {
