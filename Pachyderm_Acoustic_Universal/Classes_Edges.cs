@@ -683,19 +683,24 @@ namespace Pachyderm_Acoustic
             List<Hare.Geometry.Point> Dpt = new List<Hare.Geometry.Point>();
 
             //Find the secondary source spacing DeltaZ
-            Dpt.AddRange(RPT);
-            Dpt.AddRange(SPT);
+            //Dpt.AddRange(RPT);
+            //Dpt.AddRange(SPT);
 
             double i = 0;
             do
             {
-                double MinAngle = double.PositiveInfinity;
+                double MinAngle = double.NegativeInfinity;
 
-                foreach (Point pt in Dpt)
+                foreach (Point spt in SPT)
                 {
-                    double angle = Math.Abs(Hare_math.Dot(pt1 - pt, Z_Dir));
-                    if (angle < MinAngle) MinAngle = angle;
-                }
+                    foreach (Point pt in RPT)
+                    {
+                        Vector D1 = (pt1 - pt);
+                        Vector D2 = (pt1 - spt);
+                        D1.Normalize(); D2.Normalize();
+                        double angle = Math.Abs(Hare_math.Dot((D2 + D1) / 2, Z_Dir));
+                        if (angle > MinAngle) MinAngle = angle;
+                    } }
                 DeltaZ = Att_Props.Sound_Speed(pt1) / (fs * MinAngle);
 
                 i += DeltaZ;

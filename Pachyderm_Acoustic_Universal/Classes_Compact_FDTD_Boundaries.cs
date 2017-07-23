@@ -1225,59 +1225,24 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                public class Bound_Node_RDD : RDD_Node
+
+                /// <summary>
+                /// Default boundary node - This node is a dirichlet condition. If you need absorption, use Bound_Node_RDD_MaterialFilter. Help me finish it if you can!
+                /// </summary>
+                public class Bound_Node_RDD: RDD_Node
                 {
-                    //IIR_DIF[] filter;
-                    List<double> Rcoef;
-                    double R = 0;
+                    protected List<double> Rcoef;
                     public List<Bound_Node.Boundary> B_List;
-                    Bound_Node.Boundary Flags;
-                    int[] id;
+                    protected Bound_Node.Boundary Flags;
+                    protected int[] id;
 
-                    //Kowalczyk Boundary Filter Node.
-                    IIR_DIF filter;
-                    //List<double[]> acoef;
-                    double ab1 = 0;
-                    double abDenom = 0;
-
-                    public Bound_Node_RDD(Point loc, double rho0, double dt, double dx, double C, int[] id_in, List<double> Rcoef_in, List<Bound_Node.Boundary> B_in)
+                    public Bound_Node_RDD(Point loc, double rho0, double dt, double dx, double C, int[] id_in, List<Bound_Node.Boundary> B_in)
                     : base(loc)
                     {
                         id = id_in;
-                        Rcoef = Rcoef_in;
                         B_List = B_in;
                         Flags = Bound_Node.Boundary.None;
                         for (int i = 0; i < B_in.Count; i++) Flags |= B_in[i];
-                        for (int i = 0; i < Rcoef.Count; i++) R += Rcoef[i];
-                        R /= Rcoef.Count;
-
-                        double[] abs_zeros = new double[2] { 0,0};
-                        double[] abs_poles = new double[2] { 0,0};
-
-                        filter = new DIF_IWB_2p(abs_zeros, abs_poles, 0.81, IIR_DIF.IWB_Mask.Axial);
-
-                        ab1 += filter.a_b;
-                        this.abDenom = 1 / (ab1 + 1);
-                        ab1 -= 1;
-                    }
-
-                    public override void UpdateP()
-                    {
-                        double p2 = 0;
-                        foreach (Node node in Links2) p2 += node.P;
-                        Pnf = p2 * 0.25 - Pn - Pn_1 * ab1 + filter.g_b_term();
-
-                        Pnf *= abDenom;
-
-                        filter.Update(Pnf, Pn_1);
-                    }
-
-                    public override void UpdateT()
-                    {
-                        Pn_1 = Pn;
-                        Pn = Pnf * Attenuation;
-
-                        base.UpdateT();
                     }
 
                     public void Complete_Boundary()
@@ -1380,8 +1345,8 @@ namespace Pachyderm_Acoustic
                                 //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(Utilities.PachTools.HPttoRPt(Pt), Utilities.PachTools.HPttoRPt(Links2[8].Pt));
                                 (Links2[8] as RDD_Node).Links2[9] = new Null_Node();
                                 Links2[8] = new Null_Node();
-                            //    (Links2[8] as RDD_Node).Links2[9] = (Links2[8] as RDD_Node).Links2[8];
-                            //    Links2[8] = Links2[9];
+                                //    (Links2[8] as RDD_Node).Links2[9] = (Links2[8] as RDD_Node).Links2[8];
+                                //    Links2[8] = Links2[9];
                             }
                             else if (b == Bound_Node.Boundary.AYNeg)
                             {
@@ -1427,139 +1392,52 @@ namespace Pachyderm_Acoustic
                         */
                     }
 
-                    //public override void UpdateP()
-                    //{
-                    //    base.UpdateP();
-                    //    Pnf *= R;
-                    //}
+                }
 
-                    //public override void Link_Nodes(ref Node[][][] Frame, int x, int y, int z)
-                    //{
-                    //    double[] abs_poles = new double[] { -0.212854, -.212854 };
-                    //    double[] abs_zeros = new double[] { 0.876, 0.876 };
+                public class Bound_Node_RDD_MaterialFilter : Bound_Node_RDD
+                {
+                    double R = 0;
 
-                    //    double[] ref_poles = new double[] { 0, 0 };
-                    //    double[] ref_zeros = new double[] { 0, 0 };
+                    //Kowalczyk Boundary Filter Node.
+                    IIR_DIF filter;
+                    double ab1 = 0;
+                    double abDenom = 0;
 
-                    //    Bound_Node.Boundary BFlags = Flags;
+                    public Bound_Node_RDD_MaterialFilter(Point loc, double rho0, double dt, double dx, double C, int[] id_in, List<double> Rcoef_in, List<Bound_Node.Boundary> B_in)
+                    : base(loc, rho0, dt, dx, C, id_in, B_in)
+                    {
+                        Rcoef = Rcoef_in;
+                        for (int i = 0; i < Rcoef.Count; i++) R += Rcoef[i];
+                        R /= Rcoef.Count;
 
-                    //    int mod = x % 2;
+                        double[] abs_zeros = new double[2] { 0,0};
+                        double[] abs_poles = new double[2] { 0,0};
 
-                    //    #region General Node Setup Algorithm
+                        filter = new DIF_IWB_2p(abs_zeros, abs_poles, 0.81, IIR_DIF.IWB_Mask.Axial);
 
-                    //    //Set the filters
-                    //    //Edges
-                    //    //todo - find the problem in this block of code. Links2 has a leak.
-                    //    if (x == Frame.Length - 1 || y == 0 || z == Frame[mod][y].Length - 1 - mod || (Bound_Node.Boundary.SDXPosYPos & Flags) == Bound_Node.Boundary.SDXPosYPos)
-                    //    {
-                    //        //Links2[0] = Links2[1];
-                    //        Links2[0] = new Null_Node();
-                    //    }
-                    //    else
-                    //    {
-                    //        Links2[0] = Frame[x + 1 - mod][y + 1 - mod][z];
-                    //    }
-                    //    if (x == 0 || y == 0 || (Bound_Node.Boundary.SDXNegYNeg & Flags) == Bound_Node.Boundary.SDXNegYNeg)
-                    //    {
-                    //        //Links2[1] = Links2[0];
-                    //        Links2[1] = new Null_Node();
-                    //    }
-                    //    else
-                    //    {
-                    //        Links2[1] = Frame[x - mod][y - mod][z];
-                    //    }
-                    //    if (x == Frame.Length - 1 || y == 0 || z == Frame[mod][y].Length - 1 + mod || (Bound_Node.Boundary.SDXPosYNeg & Flags) == Bound_Node.Boundary.SDXPosYNeg)
-                    //    {
-                    //        //Links2[2] = Links2[3];
-                    //        Links2[2] = new Null_Node();
-                    //    }
-                    //    else
-                    //    {
-                    //        Links2[2] = Frame[x + 1 - mod][y - mod][z];
-                    //    }
-                    //    if (x == 0 || y == Frame[mod].Length - 1 || z == Frame[mod][y].Length - 1 + mod ||(Bound_Node.Boundary.SDXNegYPos & Flags) == Bound_Node.Boundary.SDXNegYPos)
-                    //    {
-                    //        //Links2[3] = Links2[2];
-                    //        Links2[3] = new Null_Node();
-                    //    }
-                    //    else
-                    //    {
-                    //        Links2[3] = Frame[x - mod][y + 1 - mod][z];
-                    //    }
-                    //    if (x == Frame.Length - 1 || z == Frame[mod][y].Length - 1 || z == Frame[mod][y].Length - 1 + mod || (Bound_Node.Boundary.SDXPosZPos & Flags) == Boundary.SDXPosZPos)
-                    //    {
-                    //        //Links2[4] = Links2[5];
-                    //        Links2[4] = new Null_Node();
-                    //    }
-                    //    else
-                    //    {
-                    //        Links2[4] = Frame[x + 1 - mod][y][z + 1 - mod];
-                    //    }
-                    //    if (x == 0 || z == 0 || (Bound_Node.Boundary.SDXNegZNeg & Flags) == Bound_Node.Boundary.SDXNegZNeg)
-                    //    {
-                    //        //Links2[5] = Links2[4];
-                    //        Links2[5] = new Null_Node();
-                    //    }
-                    //    else
-                    //    {
-                    //        Links2[5] = Frame[x - mod][y][z - mod];
-                    //    }
-                    //    if (x == 0 || z == Frame[mod][y].Length - 1 || (Bound_Node.Boundary.SDXNegZPos & Flags) == Bound_Node.Boundary.SDXNegZPos)
-                    //    {
-                    //        //Links2[6] = Links2[7];
-                    //        Links2[6] = new Null_Node();
-                    //    }
-                    //    else
-                    //    {
-                    //        Links2[6] = Frame[x - mod][y][z + 1 - mod];
-                    //    }
-                    //    if (x == Frame.Length - 1 || z == 0 || (Bound_Node.Boundary.SDXPosZNeg & Flags) == Bound_Node.Boundary.SDXPosZNeg)
-                    //    {
-                    //        //Links2[7] = Links2[6];
-                    //        Links2[7] = new Null_Node();
-                    //    }
-                    //    else
-                    //    {
-                    //        Links2[7] = Frame[x + 1 - mod][y][z - mod];
-                    //    }
-                    //    if (y == Frame[mod].Length - 1 || z == Frame[mod][y].Length - 1 || (Bound_Node.Boundary.SDYPosZPos & Flags) == Bound_Node.Boundary.SDYPosZPos)
-                    //    {
-                    //        //Links2[8] = Links2[9];
-                    //        Links2[8] = new Null_Node();
-                    //    }
-                    //    else
-                    //    {
-                    //        Links2[8] = Frame[x][y + 1 - mod][z + 1 - mod];
-                    //    }
-                    //    if (y == 0 || z == 0 || (Bound_Node.Boundary.SDYNegZNeg & Flags) == Bound_Node.Boundary.SDYNegZNeg)
-                    //    {
-                    //        //Links2[9] = Links2[8];
-                    //        Links2[9] = new Null_Node();
-                    //    }
-                    //    else
-                    //    {
-                    //        Links2[9] = Frame[x][y - mod][z - mod];
-                    //    }
-                    //    if (y == 0 || z == Frame[mod][y].Length - 1 || (Bound_Node.Boundary.SDYNegZPos & Flags) == Bound_Node.Boundary.SDYNegZPos)
-                    //    {
-                    //        //Links2[10] = Links2[11];
-                    //        Links2[10] = new Null_Node();
-                    //    }
-                    //    else
-                    //    {
-                    //        Links2[10] = Frame[x][y - mod][z + 1 - mod];
-                    //    }
-                    //    if (y == Frame[mod].Length - 1 || z == 0 || (Bound_Node.Boundary.SDYPosZNeg & Flags) == Bound_Node.Boundary.SDYPosZNeg)
-                    //    {
-                    //        //Links2[11] = Links2[10];
-                    //        Links2[11] = new Null_Node();
-                    //    }
-                    //    else
-                    //    {
-                    //        Links2[11] = Frame[x][y + 1 - mod][z - mod];
-                    //    }
-                    //    #endregion
-                    //}
+                        ab1 += filter.a_b;
+                        this.abDenom = 1 / (ab1 + 1);
+                        ab1 -= 1;
+                    }
+
+                    public override void UpdateP()
+                    {
+                        double p2 = 0;
+                        foreach (Node node in Links2) p2 += node.P;
+                        Pnf = p2 * 0.25 - Pn - Pn_1 * ab1 + filter.g_b_term();
+
+                        Pnf *= abDenom;
+
+                        filter.Update(Pnf, Pn_1);
+                    }
+
+                    public override void UpdateT()
+                    {
+                        Pn_1 = Pn;
+                        Pn = Pnf * Attenuation;
+
+                        base.UpdateT();
+                    }                    
                 }
 
                 public class DIF_IWB_2p : IIR_DIF

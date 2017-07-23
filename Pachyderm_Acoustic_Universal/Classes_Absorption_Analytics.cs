@@ -312,6 +312,54 @@ namespace Pachyderm_Acoustic
                 return numerator;
             }
 
+            public static Complex[] Random_Incidence_Paris_Finite(Complex[][] absorption_Coefficient)
+            {
+                double dt = Math.PI / (absorption_Coefficient.Length);
+                Complex[] numerator = new Complex[absorption_Coefficient[0].Length];
+                //double denominator = 0;
+                for (int a = 0; a < absorption_Coefficient.Length; a++)
+                {
+                    double theta = a * dt - (Math.PI / 2);
+                    double d_mod = Math.Abs(Math.Sin(theta) * dt);//; * Math.Abs(dt);
+                                                                  //denominator += d_mod;
+                    for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+                    {
+                        numerator[f] += Complex.Abs(absorption_Coefficient[a][f] * d_mod);
+                    }
+                }
+
+                //for (int f = 0; f < absorption_Coefficient[0].Length; f++)
+                //{
+                //    numerator[f] /= denominator;
+                //}
+
+                return numerator;
+            }
+
+            public static Complex[] Random_Incidence_Paris(Complex[][] absorption_Coefficient)
+            {
+                double dt = Math.PI / (absorption_Coefficient.Length);
+                Complex[] numerator = new Complex[absorption_Coefficient[0].Length];
+                double denominator = 0;
+                for (int a = 0; a < absorption_Coefficient.Length; a++)
+                {
+                    double theta = a * dt - (Math.PI / 2);
+                    double d_mod = Math.Abs(Math.Cos(theta) * dt);
+                    denominator += d_mod;
+                    for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+                    {
+                        numerator[f] += absorption_Coefficient[a][f] * d_mod;
+                    }
+                }
+
+                for (int f = 0; f < absorption_Coefficient[0].Length; f++)
+                {
+                    numerator[f] /= denominator;
+                }
+
+                return numerator;
+            }
+
             public static double[] Random_Incidence_Paris(double[][] absorption_Coefficient)
             {
                 double dt = Math.PI / (absorption_Coefficient.Length);
@@ -336,6 +384,30 @@ namespace Pachyderm_Acoustic
                 return numerator;
             }
 
+            public static Complex[] Random_Incidence_Paris(Complex[][] absorption_Coefficient, Complex[][] Zr, double rho_C)
+            {
+                double dt = Math.PI / (absorption_Coefficient.Length);
+                Complex[] numerator = new Complex[absorption_Coefficient[0].Length];
+                //double denominator = 0;
+                for (int a = 0; a < absorption_Coefficient.Length; a++)
+                {
+                    double theta = a * dt - (Math.PI / 2);
+                    double d_mod = Math.Abs(Math.Sin(theta) * dt);
+                    //denominator += d_mod;
+                    for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+                    {
+                        numerator[f] += absorption_Coefficient[a][f] * d_mod / (Zr[f][a].Real / rho_C);
+                    }
+                }
+
+                //for (int f = 0; f < absorption_Coefficient[0].Length; f++)
+                //{
+                //    numerator[f] /= denominator;
+                //}
+
+                return numerator;
+            }
+
             public static double[] Random_Incidence_Paris(double[][] absorption_Coefficient, Complex[][] Zr, double rho_C)
             {
                 double dt = Math.PI / (absorption_Coefficient.Length);
@@ -356,6 +428,45 @@ namespace Pachyderm_Acoustic
                 //{
                 //    numerator[f] /= denominator;
                 //}
+
+                return numerator;
+            }
+
+            public static Complex[] Random_Incidence_0_78(Complex[][] absorption_Coefficient)
+            {
+                double dt = 180 / (absorption_Coefficient.Length - 1);
+                Complex[] numerator = new Complex[absorption_Coefficient[0].Length];
+                double denominator = 0;
+                double mod78 = 78 % dt;
+                for (int a = 0; a < absorption_Coefficient.Length; a++)
+                {
+                    double theta = Math.Abs(a * dt - 90);
+                    if (theta > 78)
+                    {
+                        if (theta < 80)
+                        {
+                            denominator += mod78;
+                            for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+                            {
+                                numerator[f] += absorption_Coefficient[a][f] * mod78;
+                            }
+                        }
+                        else continue;
+                    }
+                    else
+                    {
+                        denominator += dt;
+                        for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+                        {
+                            numerator[f] += absorption_Coefficient[a][f] * dt;
+                        }
+                    }
+                }
+
+                for (int f = 0; f < absorption_Coefficient[0].Length; f++)
+                {
+                    numerator[f] /= denominator;
+                }
 
                 return numerator;
             }
@@ -422,6 +533,29 @@ namespace Pachyderm_Acoustic
                 return numerator;
             }
 
+            public static Complex[] Random_Incidence_NoWeights(Complex[][] absorption_Coefficient)
+            {
+                //double dt = Math.PI * (absorption_Coefficient.Length - 1) / 180;
+                Complex[] numerator = new Complex[absorption_Coefficient[0].Length];
+                double denominator = 0;
+                for (int a = 0; a < absorption_Coefficient.Length; a++)
+                {
+                    //double theta = a * dt;
+                    denominator++;
+                    for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+                    {
+                        numerator[f] += absorption_Coefficient[a][f];
+                    }
+                }
+
+                for (int f = 0; f < absorption_Coefficient[0].Length; f++)
+                {
+                    numerator[f] /= denominator;
+                }
+
+                return numerator;
+            }
+
             public static double[] Random_Incidence_0_78(double[][] absorption_Coefficient, Complex[][] Zr, double Rho_C)
             {
                 double dt = 180 / (absorption_Coefficient.Length - 1);
@@ -450,6 +584,68 @@ namespace Pachyderm_Acoustic
                         {
                             numerator[f] += absorption_Coefficient[a][f] * dt;
                         }
+                    }
+                }
+
+                for (int f = 0; f < absorption_Coefficient[0].Length; f++)
+                {
+                    numerator[f] /= denominator;
+                }
+
+                return numerator;
+            }
+
+            public static Complex[] Random_Incidence_0_78(Complex[][] absorption_Coefficient, Complex[][] Zr, double Rho_C)
+            {
+                double dt = 180 / (absorption_Coefficient.Length - 1);
+                Complex[] numerator = new Complex[absorption_Coefficient[0].Length];
+                double denominator = 0;
+                double mod78 = 78 % dt;
+                for (int a = 0; a < absorption_Coefficient.Length; a++)
+                {
+                    double theta = Math.Abs(a * dt - 90);
+                    if (theta > 78)
+                    {
+                        if (theta < 80)
+                        {
+                            denominator += mod78;
+                            for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+                            {
+                                numerator[f] += absorption_Coefficient[a][f] * mod78 / (Zr[f][a].Real / Rho_C);
+                            }
+                        }
+                        else continue;
+                    }
+                    else
+                    {
+                        denominator += dt;
+                        for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+                        {
+                            numerator[f] += absorption_Coefficient[a][f] * dt;
+                        }
+                    }
+                }
+
+                for (int f = 0; f < absorption_Coefficient[0].Length; f++)
+                {
+                    numerator[f] /= denominator;
+                }
+
+                return numerator;
+            }
+
+            public static Complex[] Random_Incidence_NoWeights(Complex[][] absorption_Coefficient, Complex[][] Zr, double Rho_C)
+            {
+                //double dt = Math.PI * (absorption_Coefficient.Length - 1) / 180;
+                Complex[] numerator = new Complex[absorption_Coefficient[0].Length];
+                double denominator = 0;
+                for (int a = 0; a < absorption_Coefficient.Length; a++)
+                {
+                    //double theta = a * dt;
+                    denominator++;
+                    for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+                    {
+                        numerator[f] += absorption_Coefficient[a][f] / (Zr[f][a].Real / Rho_C);
                     }
                 }
 
@@ -505,7 +701,7 @@ namespace Pachyderm_Acoustic
 
                 return Alpha;
             }
-
+        
             public static double Finite_Unit_Absorption_Coefficient(Complex Z, Complex Zr, double rho, double c_sound)
             {
                 if (double.IsNaN(Z.Real) || double.IsNaN(Z.Imaginary)) return 0;

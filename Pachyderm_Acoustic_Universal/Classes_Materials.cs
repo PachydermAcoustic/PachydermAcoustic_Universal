@@ -342,8 +342,10 @@ namespace Pachyderm_Acoustic
             public System.Numerics.Complex[][] Trans_Coefficient;
             public double[] NI_Coef;
             public double[][] Ang_Coef_Oct;//[oct][angle]
+            public double[][] Ang_tau_Oct;//[oct][angle]
             public double[] RI_Coef = new double[8];
-            
+            public double[] TI_Coef = new double[8];
+
             private double angle_incr;
             
             public Smart_Material(bool Trans, List<AbsorptionModels.ABS_Layer> Layers, int Samplefreq, double Air_Density, double SoundSpeed, Finite_Field_Impedance Zr, double step, int Averaging_Choice, int Zf_incorp_Choice)
@@ -410,20 +412,46 @@ namespace Pachyderm_Acoustic
                     Transfer_FunctionI[Angles.Length/2 - i - 1] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(frequency, imag);
                 }
                 double[] RI_Averages;
+                System.Numerics.Complex[] TI_Averages;
 
                 if (Averaging_Choice == 0)
-                    if (Zf_incorp_Choice == 0) RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Angular_Absorption, Zr_interp, SoundSpeed*Air_Density);
-                    else RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Angular_Absorption);
-                else if(Averaging_Choice == 1)
-                    if (Zf_incorp_Choice == 0) RI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Angular_Absorption, Zr_interp, SoundSpeed * Air_Density);
-                    else RI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Angular_Absorption);
+                    if (Zf_incorp_Choice == 0)
+                    {
+                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Angular_Absorption, Zr_interp, SoundSpeed * Air_Density);
+                        TI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Trans_Coefficient, Zr_interp, SoundSpeed * Air_Density);
+                    }
+                    else
+                    {
+                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Angular_Absorption);
+                        TI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Trans_Coefficient);
+                    }
+                else if (Averaging_Choice == 1)
+                    if (Zf_incorp_Choice == 0)
+                    {
+                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Angular_Absorption, Zr_interp, SoundSpeed * Air_Density);
+                        TI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Trans_Coefficient, Zr_interp, SoundSpeed * Air_Density);
+                    }
+                    else
+                    {
+                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Angular_Absorption);
+                        TI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Trans_Coefficient, Zr_interp, SoundSpeed * Air_Density);
+                    }
                 else if (Averaging_Choice == 2)
-                    if (Zf_incorp_Choice == 0) RI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Angular_Absorption, Zr_interp, SoundSpeed * Air_Density);
-                    else RI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Angular_Absorption);
+                    if (Zf_incorp_Choice == 0)
+                    {
+                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Angular_Absorption, Zr_interp, SoundSpeed * Air_Density);
+                        TI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Trans_Coefficient, Zr_interp, SoundSpeed * Air_Density);
+                    }
+                    else
+                    {
+                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Angular_Absorption);
+                        TI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Trans_Coefficient);
+                    }
                 else throw new Exception("Averaging choice not valid or not implemented...");
 
                 NI_Coef = Angular_Absorption[18];
                 Ang_Coef_Oct = new double[8][];
+                Ang_tau_Oct = new double[8][];
 
                 //5 degree increments, in radians...
                 angle_incr = 5 * Math.PI / 180;
@@ -457,6 +485,7 @@ namespace Pachyderm_Acoustic
                     int RI_count = 0;
 
                     Ang_Coef_Oct[oct] = new double[Angles.Length];
+                    Ang_tau_Oct[oct] = new double[Angles.Length];
                     int[] fct = new int[Angular_Absorption.Length];
                     
                     do
@@ -466,12 +495,14 @@ namespace Pachyderm_Acoustic
                         if (f < f_id_l) { f++; continue; }
                         if (f >= frequency.Length) break;
                         RI_Coef[oct] += RI_Averages[f];
+                        TI_Coef[oct] += TI_Averages[f].Real;
                         for (int a = 0; a < 19; a++)
                         {
                             if (double.IsNaN(Angular_Absorption[a][f])) continue;
                             fct[a]++;
                             count++;
                             Ang_Coef_Oct[oct][a] += Angular_Absorption[a][f];
+                            Ang_tau_Oct[oct][a] += Trans_Coefficient[a][f].Real;
                         }
                         for (int a = 19; a < Angles.Length; a++)
                         {
@@ -479,11 +510,13 @@ namespace Pachyderm_Acoustic
                             fct[a]++;
                             count++;
                             Ang_Coef_Oct[oct][a] += Angular_Absorption[35 - a][f];
+                            Ang_tau_Oct[oct][a] += Trans_Coefficient[35-a][f].Real;
                         }
                     } while (frequency[f] < f_upper);
 
                     for (int a = 0; a < Angles.Length; a++) Ang_Coef_Oct[oct][a] /= fct[a];
-                    RI_Coef[oct] /=RI_count;
+                    RI_Coef[oct] /= RI_count;
+                    TI_Coef[oct] /= RI_count;
                 }
             }
 
@@ -539,43 +572,122 @@ namespace Pachyderm_Acoustic
                 double[][] Angular_Absorption = Pachyderm_Acoustic.AbsorptionModels.Operations.Absorption_Coef(Reflection_Coefficient);
                 NI_Coef = Angular_Absorption[18];
                 double[] RI_Averages;
+                System.Numerics.Complex[] TI_Averages;
 
-
-                if (Averaging_Choice == 0) RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Angular_Absorption);
-                else if (Averaging_Choice == 1) RI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Angular_Absorption);
-                else if (Averaging_Choice == 2) RI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Angular_Absorption);
+                if (Averaging_Choice == 0)
+                {
+                    RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Angular_Absorption);
+                    TI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Trans_Coefficient);
+                }
+                else if (Averaging_Choice == 1)
+                {
+                    RI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Angular_Absorption);
+                    TI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Trans_Coefficient);
+                }
+                else if (Averaging_Choice == 2)
+                {
+                    RI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Angular_Absorption);
+                    TI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Trans_Coefficient);
+                }
                 else throw new Exception("Averaging choice not valid or not implemented...");
 
                 Ang_Coef_Oct = new double[8][];
+
+                ////5 degree increments, in radians...
+                //angle_incr = 5 * Math.PI / 180;
+
+                //double root2 = Math.Sqrt(2);
+
+                //for (int oct = 0; oct < 8; oct++)
+                //{
+                //    double f_center = 62.5 * Math.Pow(2, oct);
+                //    int f_lower = (int)Math.Floor(f_center / root2) - min_freq;
+                //    int f_upper = (int)Math.Floor(f_center * root2) - min_freq;
+                //    int f_id_l = (int)Math.Floor((double)((f_lower) / 5));
+                //    int f_id_u = (int)Math.Floor((double)((f_upper) / 5));
+                //    int count = 0;
+                //    int RI_count = 0;
+                //    Ang_Coef_Oct[oct] = new double[Angles.Length];
+                //    int[] fct = new int[Angular_Absorption.Length];
+                //    int f = 0;
+
+                //    do
+                //    {
+                //        RI_Coef[oct] += RI_Averages[f];
+                //        RI_count++;
+                //        for (int a = 0; a < 19; a++)
+                //        {
+                //            if (double.IsNaN(Angular_Absorption[a][f])) continue;
+                //            fct[a]++;
+                //            count++;
+                //            Ang_Coef_Oct[oct][a] += Angular_Absorption[a][f];                            
+                //        }
+                //        for (int a = 19; a < Angles.Length; a++)
+                //        {
+                //            if (double.IsNaN(Angular_Absorption[35 - a][f])) continue;
+                //            fct[a]++;
+                //            count++;
+                //            Ang_Coef_Oct[oct][a] += Angular_Absorption[35 - a][f];
+                //        }
+                //        f++;
+                //    } while (frequency[f] < f_upper);
+
+                //    for (int a = 0; a < Angles.Length; a++) Ang_Coef_Oct[oct][a] /= fct[a];
+                //    RI_Coef[oct] /= RI_count;
+                //}
+
+                Ang_tau_Oct = new double[8][];
 
                 //5 degree increments, in radians...
                 angle_incr = 5 * Math.PI / 180;
 
                 double root2 = Math.Sqrt(2);
 
+                int f = -1;
+
                 for (int oct = 0; oct < 8; oct++)
                 {
                     double f_center = 62.5 * Math.Pow(2, oct);
-                    int f_lower = (int)Math.Floor(f_center / root2) - min_freq;
-                    int f_upper = (int)Math.Floor(f_center * root2) - min_freq;
-                    int f_id_l = (int)Math.Floor((double)((f_lower) / 5));
-                    int f_id_u = (int)Math.Floor((double)((f_upper) / 5));
+                    double f_lower = (int)((Math.Floor(f_center / root2)));// - min_freq)/df);
+                    double f_upper = (int)((Math.Floor(f_center * root2)));// - min_freq)/df);
+
+                    int f_id_l = 0;//(int)Math.Floor((double)((f_lower) / 5));
+
+                    for (int i = 0; i < frequency.Length; i++)
+                    {
+                        if (frequency[i] < f_lower) f_id_l = i;
+                        else break;
+                    }
+
+                    int f_id_u;//(int)Math.Floor((double)((f_upper) / 5));
+
+                    for (f_id_u = f_id_l; f_id_u < frequency.Length; f_id_u++)
+                    {
+                        if (frequency[f_id_u] > f_upper) break;
+                    }
+
                     int count = 0;
                     int RI_count = 0;
+
                     Ang_Coef_Oct[oct] = new double[Angles.Length];
+                    Ang_tau_Oct[oct] = new double[Angles.Length];
                     int[] fct = new int[Angular_Absorption.Length];
-                    int f = 0;
 
                     do
                     {
-                        RI_Coef[oct] += RI_Averages[f];
+                        f++;
                         RI_count++;
+                        if (f < f_id_l) { f++; continue; }
+                        if (f >= frequency.Length) break;
+                        RI_Coef[oct] += RI_Averages[f];
+                        TI_Coef[oct] += TI_Averages[f].Real;
                         for (int a = 0; a < 19; a++)
                         {
                             if (double.IsNaN(Angular_Absorption[a][f])) continue;
                             fct[a]++;
                             count++;
-                            Ang_Coef_Oct[oct][a] += Angular_Absorption[a][f];                            
+                            Ang_Coef_Oct[oct][a] += Angular_Absorption[a][f];
+                            Ang_tau_Oct[oct][a] += Trans_Coefficient[a][f].Real;
                         }
                         for (int a = 19; a < Angles.Length; a++)
                         {
@@ -583,13 +695,17 @@ namespace Pachyderm_Acoustic
                             fct[a]++;
                             count++;
                             Ang_Coef_Oct[oct][a] += Angular_Absorption[35 - a][f];
+                            Ang_tau_Oct[oct][a] += Trans_Coefficient[35 - a][f].Real;
                         }
-                        f++;
                     } while (frequency[f] < f_upper);
 
                     for (int a = 0; a < Angles.Length; a++) Ang_Coef_Oct[oct][a] /= fct[a];
                     RI_Coef[oct] /= RI_count;
+                    TI_Coef[oct] /= RI_count;
                 }
+
+
+
             }
 
             public override double[] Coefficient_A_Broad()

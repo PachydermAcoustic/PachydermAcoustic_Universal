@@ -543,7 +543,7 @@ namespace Pachyderm_Acoustic
                         length1 += dl[0];
                         length2 += dl[1];
 
-                        double duration_s = SampleRate * Math.Abs(length2 - length1) / c_sound;
+                        double duration_s = Math.Abs(length2 - length1) / c_sound;
 
                         Vector DIR;
                         DIR = PathVertices[i][c-1] - PathVertices[i][e-1];
@@ -704,7 +704,7 @@ namespace Pachyderm_Acoustic
                             //Audio.Pach_SP.Raised_Cosine_Window(ref pulse);
                             //Manual convolution of each distinct contribution of edge...
                             int index = (int)Math.Floor(t * SampleRate);
-                            double omni_pr = Pr_Spline[i].Interpolate(t);
+                            double omni_pr = Pr_Spline[i].Interpolate(t) * 88100/SampleRate; //88100 is the edge analysis sample frequency...
                             dir = new Vector(X_Spline[i].Interpolate(t), Y_Spline[i].Interpolate(t), Z_Spline[i].Interpolate(t));
                             double[] dir_c = new double[6];
                             if (dir.x > 0) dir_c[0] = dir.x; else dir_c[1] = -dir.x;
@@ -1193,7 +1193,6 @@ namespace Pachyderm_Acoustic
                         //6a.2. Write the number of samples in the pressure signal.(int)
                         //6b. Write the pressure values
                     }
-
                 }
             }
             return IS;
@@ -1237,7 +1236,6 @@ namespace Pachyderm_Acoustic
         {
             return ValidPaths[rec_id].Count;
         }
-
     }
 
     public abstract class Deterministic_Reflection

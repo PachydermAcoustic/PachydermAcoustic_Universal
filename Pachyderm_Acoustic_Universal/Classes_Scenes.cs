@@ -751,15 +751,11 @@ namespace Pachyderm_Acoustic
             public override double Sound_speed(Hare.Geometry.Point pt)
             {
                 return Env_Prop.Sound_Speed(pt);
-                //if (IsHomogeneous) return Env_Prop.Sound_Speed(pt);
-                //else return (SP as Environment.VoxelGrid_PolyRefractive).Sound_Speed(pt);
             }
 
             public override double Sound_speed(int arg)
             {
                 return Env_Prop.Sound_Speed(arg);
-                //if (IsHomogeneous) return Env_Prop.Sound_Speed(X,Y,Z);
-                //else return (SP as Environment.VoxelGrid_PolyRefractive).Sound_Speed(X, Y, Z);
             }
 
             public override Hare.Geometry.Vector Normal(int i, double u, double v)

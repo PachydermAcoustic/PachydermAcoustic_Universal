@@ -1103,6 +1103,7 @@ namespace Pachyderm_Acoustic
                 double maxfilt = Filter.Max();
                 double maxsig = SignalBuffer.Max();
                 double max = conv.Max();
+                double outmax = output.Max();
                 max++;
                 maxsig++;
                 maxfilt++;

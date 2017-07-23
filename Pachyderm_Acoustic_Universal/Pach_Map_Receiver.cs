@@ -677,14 +677,14 @@ namespace Pachyderm_Acoustic
 
                     for (int t = 0; t < hist.Length; t++) hist[t] *= hist[t];
 
-                    C_Values[i] = AcousticalMath.Clarity(hist, Rec_List[0].SampleRate, C_Cutoff / 1000, 0, false);
+                    C_Values[i] = AcousticalMath.Clarity(hist, Rec_List[0].SampleRate, (double)C_Cutoff/1000d, 0, false);
                 }
             }
             else
             {
                 for (int i = 0; i < Rec_List[0].Rec_List.Length; i++)
                 {
-                    C_Values[i] = AcousticalMath.Clarity(AcousticalMath.ETCurve(null, null, Rec_List, Rec_List[0].CutOffTime, Rec_List[0].SampleRate, Octave, i, SrcID, true), Rec_List[0].SampleRate, C_Cutoff / 1000, 0, false);
+                    C_Values[i] = AcousticalMath.Clarity(AcousticalMath.ETCurve(null, null, Rec_List, Rec_List[0].CutOffTime, Rec_List[0].SampleRate, Octave, i, SrcID, true), Rec_List[0].SampleRate, (double)C_Cutoff / 1000d, 0, false);
                 }
             }
 
