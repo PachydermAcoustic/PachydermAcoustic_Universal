@@ -551,6 +551,8 @@ namespace Pachyderm_Acoustic
                 else
                 {
                     Z = AbsorptionModels.Operations.Transfer_Matrix_Explicit_Z(false, 44100, 343, Layers, ref frequency, ref Angles);
+                    Trans_Coefficient = new System.Numerics.Complex[36][];
+                    for (int i = 0; i < Trans_Coefficient.Length; i++) Trans_Coefficient[i] = new System.Numerics.Complex[frequency.Length];
                 }
 
                 Reflection_Coefficient = Pachyderm_Acoustic.AbsorptionModels.Operations.Reflection_Coef(Z, Air_Density, SoundSpeed);
@@ -570,9 +572,10 @@ namespace Pachyderm_Acoustic
                 }
                 
                 double[][] Angular_Absorption = Pachyderm_Acoustic.AbsorptionModels.Operations.Absorption_Coef(Reflection_Coefficient);
+                
                 NI_Coef = Angular_Absorption[18];
                 double[] RI_Averages;
-                System.Numerics.Complex[] TI_Averages;
+                System.Numerics.Complex[] TI_Averages = new System.Numerics.Complex[0];
 
                 if (Averaging_Choice == 0)
                 {
