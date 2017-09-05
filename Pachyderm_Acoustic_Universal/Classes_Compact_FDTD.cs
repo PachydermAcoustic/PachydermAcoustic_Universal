@@ -119,9 +119,9 @@ namespace Pachyderm_Acoustic
                     MinPt.z -= z_length /2;
                     //}
 
-                    x_length += (no_of_Layers * 2 + 1) * dx;
-                    y_length += (no_of_Layers * 2 + 1) * dydz;
-                    z_length += (no_of_Layers * 2 + 1) * dydz;
+                    x_length += (no_of_Layers * 4 + 1) * dx;
+                    y_length += (no_of_Layers * 4 + 1) * dydz;
+                    z_length += (no_of_Layers * 4 + 1) * dydz;
 
                     //estimated distance between nodes
                     xDim = (int)Math.Ceiling(x_length / (2 * dx));                                //set number of nodes in x direction
@@ -163,7 +163,7 @@ namespace Pachyderm_Acoustic
                     int yDimt = yDim;
                     int zDimt = zDim;
 
-                    MinPt -= new Point(dx * no_of_Layers / 2, dy * no_of_Layers, 0);
+                    MinPt -= new Point(2 * dx * no_of_Layers, 2 * dy * no_of_Layers, 2 * dz * no_of_Layers);
                     Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
 
                     //System.Threading.Tasks.Parallel.For(0, xDim, (x) =>
@@ -193,7 +193,7 @@ namespace Pachyderm_Acoustic
                         }
                     }//);
 
-                    Node.Attenuation = Math.Sqrt(Math.Pow(10, -.1 * Rm.AttenuationPureTone(Bounds.Min_PT, SD.frequency) * dt));//PFrame[0][0][0].Pt, SD.frequency
+                    //Node.Attenuation = Math.Sqrt(Math.Pow(10, -.1 * Rm.AttenuationPureTone(Bounds.Min_PT, SD.frequency) * dt));//PFrame[0][0][0].Pt, SD.frequency
 
                     bool failed = false;
                     //Make Mesh Templates:
@@ -258,9 +258,9 @@ namespace Pachyderm_Acoustic
                     //MinPt.z -= z_length / 2;
                     //}
 
-                    x_length += (no_of_Layers * 2 + 1) * dx;
-                    y_length += (no_of_Layers * 2 + 1) * dydz;
-                    z_length += (no_of_Layers + 1) * dydz;
+                    x_length += (no_of_Layers * 4 + 1) * dx;
+                    y_length += (no_of_Layers * 4 + 1) * dydz;
+                    z_length += (no_of_Layers * 2 + 1) * dydz;
 
                     //estimated distance between nodes
                     xDim = (int)Math.Ceiling(x_length / (2*dx));                                //set number of nodes in x direction
@@ -302,7 +302,7 @@ namespace Pachyderm_Acoustic
                     int yDimt = yDim;
                     int zDimt = zDim;
 
-                    MinPt -= new Point(dx * no_of_Layers / 2, dy * no_of_Layers, 0);
+                    MinPt -= new Point(2 * dx * no_of_Layers, 2 * dy * no_of_Layers, 0);
                     Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
 
                     //System.Threading.Tasks.Parallel.For(0, xDim, (x) =>
@@ -333,7 +333,7 @@ namespace Pachyderm_Acoustic
                         }
                     }//);
 
-                    Node.Attenuation = Math.Sqrt(Math.Pow(10, -.1 * Rm.AttenuationPureTone(Bounds.Min_PT, SD.frequency) * dt));//PFrame[0][0][0].Pt, SD.frequency
+                    //Node.Attenuation = Math.Sqrt(Math.Pow(10, -.1 * Rm.AttenuationPureTone(Bounds.Min_PT, SD.frequency) * dt));//PFrame[0][0][0].Pt, SD.frequency
 
                     bool failed = false;
                     //Make Mesh Templates:
@@ -366,7 +366,7 @@ namespace Pachyderm_Acoustic
                     double rt3 = Math.Sqrt(3);
 
                     double dydz = Rm.Sound_speed(0) / fmax * .1;
-                    dx = dydz / Math.Sqrt(2);
+                    dx = 2 * dydz / Math.Sqrt(2);
 
                     Bounds = new AABB(Rm.Min() - new Point(.05 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.05 * dx, .05 * dydz, .05 * dydz));
 
@@ -397,12 +397,12 @@ namespace Pachyderm_Acoustic
                         MinPt.z -= (zmin - z_length) / 2;
                     }
 
-                    x_length += (no_of_Layers * 2 + 1) * dx;
-                    y_length += (no_of_Layers * 2 + 1) * dydz;
-                    z_length += (no_of_Layers * 2 + 1) * dydz;
+                    x_length += (no_of_Layers * 4 + 1) * dx;
+                    y_length += (no_of_Layers * 4 + 1) * dydz;
+                    z_length += (no_of_Layers * 4 + 1) * dydz;
 
                     //estimated distance between nodes
-                    xDim = (int)Math.Ceiling(x_length / (2*dx));                                //set number of nodes in x direction
+                    xDim = (int)Math.Ceiling(x_length / (dx));                                //set number of nodes in x direction
                     dx = x_length / xDim;                                                   //refined distance between nodes
                     yDim = (int)Math.Ceiling(y_length / dydz);                                //set number of nodes in y direction
                     dy = y_length / yDim;
@@ -441,7 +441,7 @@ namespace Pachyderm_Acoustic
                     int yDimt = yDim;
                     int zDimt = zDim;
 
-                    MinPt -= new Point(dx * no_of_Layers / 2, dy * no_of_Layers, dz * no_of_Layers);
+                    MinPt -= new Point(2 * dx * no_of_Layers, 2 * dy * no_of_Layers, 2 * dz * no_of_Layers);
                     Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
 
                     //System.Threading.Tasks.Parallel.For(0, xDim, (x) =>
@@ -472,7 +472,7 @@ namespace Pachyderm_Acoustic
                         }
                     }//);
 
-                    Node.Attenuation = Math.Sqrt(Math.Pow(10, -.1 * Rm.AttenuationPureTone(Bounds.Min_PT, SD.frequency) * dt)); //PFrame[0][0][0].Pt, SD.frequency
+                    //Node.Attenuation = Math.Sqrt(Math.Pow(10, -.1 * Rm.AttenuationPureTone(Bounds.Min_PT, SD.frequency) * dt)); //PFrame[0][0][0].Pt, SD.frequency
 
                     bool failed = false;
                     //Make Mesh Templates:

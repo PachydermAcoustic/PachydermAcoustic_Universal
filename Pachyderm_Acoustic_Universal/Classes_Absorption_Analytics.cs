@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2015, Arthur van der Harten 
+//'Copyright (c) 2008-2017, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -319,7 +319,7 @@ namespace Pachyderm_Acoustic
                 //double denominator = 0;
                 for (int a = 0; a < absorption_Coefficient.Length; a++)
                 {
-                    double theta = a * dt - (Math.PI / 2);
+                    double theta = (a + .5)* dt - (Math.PI / 2);
                     double d_mod = Math.Abs(Math.Sin(theta) * dt);//; * Math.Abs(dt);
                                                                   //denominator += d_mod;
                     for (int f = 0; f < absorption_Coefficient[a].Length; f++)
@@ -1057,6 +1057,31 @@ namespace Pachyderm_Acoustic
                 return R;
             }
 
+            public static double[][] Absorption_Coefficient(Complex[][] Z, double[] freq)
+            {
+                double dt = Math.PI / (Z.Length - 1);
+                double[][] alpha = new double[Z.Length][];
+
+                //Complex[] Zc = Equivalent_Fluids.DB_Miki_Impedance(1.2, 343, 25000, freq);
+
+                for (int a = 0; a < Z.Length; a++)
+                {
+                    double theta = a * dt - (Math.PI / 2);
+                    alpha[a] = new double[Z[a].Length];
+                    for (int f = 0; f < Z[0].Length; f++)
+                    {
+                        //Complex Za = (1 / Z[a][f]);
+                        //Complex Za = Z[a][f] / Zc[f];
+                        //Za /= Za.Magnitude();
+                        Complex Za = Z[a][f] / Z[a][f].Magnitude;
+                        //Za = 1 / Za;
+                        double denom_rt2 = (Za * Math.Cos(theta) + 1).Magnitude;
+                        alpha[a][f] = (4 * Za.Real) * Math.Cos(theta) / (denom_rt2 * denom_rt2);
+                    }
+                }
+                return alpha;
+            }
+
             public static Complex[] Reflection_Coef(Complex[] Specific_Impedance, double rho_c)
             {
                 Complex[] R = new Complex[Specific_Impedance.Length];
@@ -1424,7 +1449,7 @@ namespace Pachyderm_Acoustic
                                 //K0 = Ks;
                                 break;
                             //case ABS_Layer.LayerType.Perforated_Modal:
-
+                            
                             //case ABS_Layer.LayerType.Slotted_Modal:
 
                             //case ABS_Layer.LayerType.CircularPerforations:
@@ -1709,6 +1734,1381 @@ namespace Pachyderm_Acoustic
                 }
 
                 R = Reflection_Coef;
+                Trans = Trans_Loss;
+                return Z;
+            }
+
+            public static Complex[][] Transfer_Matrix_Divisible(bool Transmission, bool freq_log, int sample_Freq, double c_sound, List<ABS_Layer> LayerList, ref double[] frequency, ref Complex[] anglesdeg, out Complex[][] Trans, out Complex[][] R)
+            {
+                if (freq_log)
+                {
+                    //3rd octave band frequencies...
+                    List<double> freq = new List<double>();
+                    double f = 15.625;
+
+                    int ct_ = 1;
+                    while (f < sample_Freq / 2)
+                    {
+                        ct_++;
+                        f = 15.625 * Math.Pow(2, (double)ct_ / 3f);
+                        freq.Add(f);
+                    }
+                    frequency = freq.ToArray();
+                }
+                else
+                {
+                    //Linear frequency scale
+                    frequency = new double[4096];
+                    double step = ((double)sample_Freq) / 4096d;
+                    for (int i = 0; i < frequency.Length; i++) frequency[i] = ((double)i + .5) * step;
+                }
+
+                int incr = 5;
+                anglesdeg = new Complex[(int)(180 / incr)];
+                double[] Angles = new double[anglesdeg.Length];
+                Complex[][] kxi = new Complex[Angles.Length][];
+                Complex[][] sintheta_inc = new Complex[Angles.Length][];
+                Complex[] K_Air = AbsorptionModels.Operations.Air_Wavenumber(c_sound, frequency);
+
+                for (double a = 2.5, i = 0; a <= 180; a += 5, i++)
+                {
+                    sintheta_inc[(int)i] = new Complex[frequency.Length];
+                    anglesdeg[(int)i] = 90 - a;
+                    if (a <= 90) Angles[(int)i] = (90 - a) * Utilities.Numerics.Pi_180;
+                    if (a > 90) Angles[(int)i] = (a - 90) * Utilities.Numerics.Pi_180;
+                    sintheta_inc[(int)i][0] = Complex.Sin(Angles[(int)i]);//a <= 90 ? Angle[(int)i] : Angle[36 - (int)i]);
+                    kxi[(int)i] = new Complex[frequency.Length];
+                    for (int j = 1; j < sintheta_inc[(int)i].Length; j++)
+                    {
+                        sintheta_inc[(int)i][j] = sintheta_inc[(int)i][0];
+                        kxi[(int)i][j] = sintheta_inc[(int)i][j] * K_Air[j];
+                    }
+                }
+                
+                //Check for misuse of perforated layers.
+                bool lastwasperf = false;
+                for (int i = 0; i < LayerList.Count; i++)
+                {
+                    if (LayerList[i].T == ABS_Layer.LayerType.CircularPerforations ||
+                        LayerList[i].T == ABS_Layer.LayerType.MicroPerforated ||
+                        LayerList[i].T == ABS_Layer.LayerType.Microslit ||
+                        LayerList[i].T == ABS_Layer.LayerType.Perforated_Modal ||
+                        LayerList[i].T == ABS_Layer.LayerType.Slots ||
+                        LayerList[i].T == ABS_Layer.LayerType.Slotted_Modal ||
+                        LayerList[i].T == ABS_Layer.LayerType.SquarePerforations)
+                    {
+                        if (i == 0 && !Transmission)
+                        {
+                            ///Perforated layer applied against rigid substrate.
+                            ///Effect is negligible. IF you're reading this, don't bother designing something like this...
+                            LayerList.RemoveAt(0);
+                            continue;
+                        }
+                        if (lastwasperf) throw new Exception("Two perforated layers in a row. Don't do this...");
+                        lastwasperf = true;
+                        continue;
+                    }
+                    lastwasperf = false;
+                }
+
+                if (LayerList.Count == 0)
+                {
+                    Complex[][] Z_early = new Complex[anglesdeg.Length][];
+                    R = new Complex[anglesdeg.Length][];
+                    Trans = new Complex[anglesdeg.Length][];
+
+                    for (int i = 0; i < anglesdeg.Length; i++)
+                    {
+                        Z_early[i] = new Complex[frequency.Length];
+                        R[i] = new Complex[frequency.Length];
+                        Trans[i] = new Complex[frequency.Length];
+                        for (int j = 0; j < frequency.Length; j++)
+                        {
+                            Z_early[i][j] = 1E8;
+                            R[i][j] = 1;
+                            Trans[0][j] = 0;
+                        }
+                    }
+                    return Z_early;
+                }
+
+                List<List<ABS_Layer>> LayerClusters = new List<List<ABS_Layer>>();
+                List<ABS_Layer> cluster = new List<ABS_Layer>();
+
+                ///Sort layers into GTM compatible clusters with perforated faces (if applicable)...                    
+                for (int i = 0; i < LayerList.Count; i++)
+                {
+                    if (LayerList[i].T == ABS_Layer.LayerType.CircularPerforations ||
+                        LayerList[i].T == ABS_Layer.LayerType.MicroPerforated ||
+                        LayerList[i].T == ABS_Layer.LayerType.Microslit ||
+                        LayerList[i].T == ABS_Layer.LayerType.Perforated_Modal ||
+                        LayerList[i].T == ABS_Layer.LayerType.Slots ||
+                        LayerList[i].T == ABS_Layer.LayerType.Slotted_Modal ||
+                        LayerList[i].T == ABS_Layer.LayerType.SquarePerforations)
+                    {
+                        if (cluster.Count > 0) LayerClusters.Add(cluster);
+                        cluster = new List<ABS_Layer>();
+                        cluster.Add(LayerList[i]);
+                        LayerClusters.Add(cluster);
+                        cluster = new List<ABS_Layer>();
+                    }
+                    else cluster.Add(LayerList[i]);
+                }
+                if (cluster.Count > 0)LayerClusters.Add(cluster);
+                LayerClusters.Reverse();
+
+                Complex[][] Z;
+                Complex[][] T;
+
+                if (LayerClusters[0][0].T == ABS_Layer.LayerType.CircularPerforations ||
+                        LayerClusters[0][0].T == ABS_Layer.LayerType.MicroPerforated ||
+                        LayerClusters[0][0].T == ABS_Layer.LayerType.Microslit ||
+                        LayerClusters[0][0].T == ABS_Layer.LayerType.Perforated_Modal ||
+                        LayerClusters[0][0].T == ABS_Layer.LayerType.Slots ||
+                        LayerClusters[0][0].T == ABS_Layer.LayerType.Slotted_Modal ||
+                        LayerClusters[0][0].T == ABS_Layer.LayerType.SquarePerforations)
+                {
+                    Z = Transfer_Matrix_Perf(0, LayerClusters, kxi, sintheta_inc, K_Air, AbsorptionModels.Operations.Air_CharImpedance(1.2, c_sound, frequency), frequency, c_sound, Transmission, out T);
+                }
+                else
+                {
+                    Z = Transfer_Matrix_PorousSolid(0, LayerClusters, kxi, sintheta_inc, K_Air, AbsorptionModels.Operations.Air_CharImpedance(1.2, c_sound, frequency), frequency, c_sound, Transmission, out T);
+                }
+
+                Complex[][] Reflection_Coef = new Complex[sintheta_inc.Length][];
+                Complex[] Zc_Air = AbsorptionModels.Operations.Air_CharImpedance(1.2, 343, frequency);
+
+                for (int a = 0; a < sintheta_inc.Length; a++)
+                {
+                    Reflection_Coef[a] = new Complex[frequency.Length];
+                    for (int f = 0; f < sintheta_inc[a].Length; f++)
+                    {
+                        Complex costheta = Complex.Sqrt(1 - sintheta_inc[a][f] * sintheta_inc[a][f]);
+                        Reflection_Coef[a][f] = (Z[a][f] * costheta - Zc_Air[f]) / (Z[a][f] * costheta + Zc_Air[f]);
+                    }
+                }
+
+                R = Reflection_Coef;
+                Trans = T;
+                return Z;
+            }
+
+
+            public static Complex[][] Transfer_Matrix_Perf(int clusterid, List<List<ABS_Layer>> LayerList, Complex[][] kxi, Complex[][] sintheta_inc, Complex[] K_Air, Complex[] Zc_Air, double[] frequency, double c_sound, bool Transmission, out Complex[][] T)
+            {
+                ABS_Layer Layer_i = LayerList[clusterid].Last();
+                double width = Layer_i.width;
+                double pitch = Layer_i.pitch;
+                double depth = Layer_i.depth;
+                double porosity = Layer_i.porosity;
+
+                switch (LayerList[clusterid].Last().T)
+                {
+                    case ABS_Layer.LayerType.Perforated_Modal:
+                        double R, S, s;
+                        R = width / 2;
+                        double A1 = pitch * pitch;
+                        int nx = 0;
+                        for (;;)
+                        {
+                            nx++;
+                            if (171.5 * Math.Sqrt(nx * nx / (pitch * pitch)) > 16000) break;
+                        }
+                        int m_min, m_max, n_min, n_max;
+
+                            m_min = 0; m_max = nx; n_min = -nx; n_max = nx;
+                            S = Math.PI * R * R;
+                            s = S / (pitch * pitch);
+
+                        double vpm;
+                        double Eta = 0.48 * Math.Sqrt(S) * (1 - 1.14 * Math.Sqrt(s));
+
+                        Complex[][] Z = new Complex[sintheta_inc.Length][];
+                        Complex[][] Trans = new Complex[sintheta_inc.Length][];
+
+                        double[] Rs = new double[frequency.Length];
+                        Complex[] x = new Complex[frequency.Length];
+                        Complex[] thetai = new Complex[frequency.Length];
+
+                        Complex end_corr;
+                        if (clusterid == 0)
+                        {
+                            //double sai = 1 / (1 - 1.40925 * Math.Sqrt(s) + 0.33818 * Math.Pow(s, 1.5) + 0.06793 * Math.Pow(s, 2.5) - 0.02287 * Math.Pow(s, 3) + 0.03015 * Math.Pow(s, 3.5) - 0.01641 * Math.Pow(s, 4));
+                            //end_corr = 8 / (3 * Math.PI * sai);
+                            end_corr = Eta;
+                        }
+                        else end_corr = 0;
+
+                        Complex[][] T_Perf = new Complex[sintheta_inc.Length][];
+                        Complex Z0 = 1.2 * 343 / A1;
+
+                        for (int a = 0; a < sintheta_inc.Length; a++)
+                        {
+                            T_Perf[a] = new Complex[frequency.Length];
+                            for (int i = 0; i < frequency.Length; i++)
+                            {
+                                T_Perf[a][i] = 1 / (1 + (((depth + end_corr) * Utilities.Numerics.PiX2 * frequency[i]) * Complex.Sqrt(1 - sintheta_inc[a][i] * sintheta_inc[a][i]))/(2 * s * 343));
+                            }
+                        }
+                        for (int j = 0; j < sintheta_inc.Length; j++) { Z[j] = new Complex[frequency.Length]; Trans[j] = new Complex[frequency.Length]; }
+                        ///////////////////////////////////////////////////
+
+
+                        if (clusterid < LayerList.Count - 1)
+                        {
+                            Parallel.For(m_min, m_max + 1, m => 
+                            //for (int m = m_min; m <= m_max; m++)
+                            {
+                                for (int n = n_min; n <= n_max; n++)
+                                {
+                                    Complex[][] Zmn;
+                                    Complex[][] Tmn;
+                                    if (m == 0 || n == 0) vpm = .5; else vpm = 1;
+                                    double M_TERM = Utilities.Numerics.PiX2 * m / pitch;
+                                    double N_TERM = Utilities.Numerics.PiX2 * n / pitch;
+                                    Zmn = Transfer_Matrix_PorousSolid_PostPerf(clusterid + 1, LayerList, M_TERM, N_TERM, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Tmn);
+
+                                    if (m == 0 && n == 0)
+                                    {
+                                        for (int j = 0; j < Zmn.Length; j++)
+                                        {
+                                            for (int i = 0; i < frequency.Length; i++)
+                                            {
+                                                Z[j][i] += s / porosity * Zmn[j][i];
+                                            }
+                                            if (Transmission)
+                                            {
+                                                for (int i = 0; i < frequency.Length; i++) Trans[j][i] += Tmn[j][i];
+                                            }
+                                        }
+                                        continue;
+                                    }
+
+                                    for (int j = 0; j < Zmn.Length; j++)
+                                    {
+                                        for (int i = 0; i < frequency.Length; i++)
+                                        {
+                                            Z[j][i] += vpm * Zmn[j][i] * Complex.Pow(Utilities.Numerics.jBessel(1, 2 * Math.PI * R * Complex.Sqrt((m * m / (pitch * pitch)) + Complex.Pow(n / pitch - K_Air[i] * sintheta_inc[j][i] / Utilities.Numerics.PiX2, 2))) / (m * m + Complex.Pow(n - pitch * K_Air[i] * sintheta_inc[j][i] / Utilities.Numerics.PiX2, 2)), 2);
+                                        }
+                                        if (Transmission)
+                                        {
+                                            for (int i = 0; i < frequency.Length; i++) Trans[j][i] += Tmn[j][i];
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                        else
+                        {
+                            if (Transmission)
+                            {
+                                for (int j = 0; j < Trans.Length; j++)
+                                {
+                                    Trans[j] = new Complex[frequency.Length];
+                                    for (int i = 0; i < frequency.Length; i++)
+                                    {
+                                        Z[j][i] = Zc_Air[i] / Complex.Sqrt(1 - sintheta_inc[j][i] * sintheta_inc[j][i]);
+                                        Trans[j][i] = 1;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                for (int j = 0; j < Trans.Length; j++)
+                                {
+                                    Trans[j] = new Complex[frequency.Length];
+                                    for (int i = 0; i < frequency.Length; i++)
+                                    {
+                                        Z[j][i] = double.PositiveInfinity;
+                                        Trans[j][i] = 0;
+                                    }
+                                }
+                            }
+                        }
+
+                        for (int j = 0; j < Z.Length; j++)
+                        {
+                            for (int i = 0; i < frequency.Length; i++)
+                            {
+                                Z[j][i] *= 2 / (Math.PI * porosity);
+                                Z[j][i] += new Complex(0, (Eta + depth) * 1.2 * frequency[i] * Utilities.Numerics.PiX2);
+                                Z[j][i] /= (Math.PI * R * R / (pitch * pitch));
+                                Trans[j][i] *= T_Perf[j][i];
+                            }
+                        }
+                        T = Trans;
+                        return Z;
+
+                        
+                    //case ABS_Layer.LayerType.Slotted_Modal:
+                    //case ABS_Layer.LayerType.CircularPerforations:
+                    //case ABS_Layer.LayerType.SquarePerforations:
+                    //    if (Layer_i.T == ABS_Layer.LayerType.CircularPerforations)
+                    //    {
+                    //        porosity = Math.PI * width * width * .25 / (pitch * pitch);
+                    //    }
+                    //    else
+                    //    {
+                    //        porosity = width * width / (pitch * pitch);
+                    //    }
+
+                    //    if (clusterid < 1)
+                    //    {
+                    //        Complex[][] Z = new Complex[sintheta_inc.Length][];
+                    //        for (int i = 0; i < sintheta_inc.Length; i++)
+                    //        {
+                    //            Z[i] = new Complex[frequency.Length];
+                    //            for (int j = 0; j < frequency.Length; j++) Z[i][j] = 0;
+                    //        }
+                    //        return Z;
+                    //    }
+                    //    else
+                    //    {
+                    //        Complex[][] Z = LayerEF(layer_no - 1, LayerList, K_Air, sintheta_inc, K_Air, c_sound, freq);//, ref D, ref T);
+                    //        Complex[] Zmpa = AbsorptionModels.Perforated_Membranes.PerforatedPlate_Impedance(1.2, porosity, w, p, d, freq);
+
+                    //        for (int j = 0; j < sintheta_inc[0].Length; j++)
+                    //        {
+                    //            for (int i = 0; i < sintheta_inc.Length; i++)
+                    //            {
+                    //                Z[i][j] += Zmpa[j] * (1 - sintheta_inc[i][j] * sintheta_inc[i][j]);
+                    //            }
+                    //        }
+                    //        return Z;
+                    //    }
+                    //case ABS_Layer.LayerType.Slots:
+                    //    if (layer_no < 1)
+                    //    {
+                    //        Complex[][] Z = new Complex[sintheta_inc.Length][];
+                    //        for (int i = 0; i < sintheta_inc.Length; i++)
+                    //        {
+                    //            Z[i] = new Complex[freq.Length];
+                    //            for (int j = 0; j < freq.Length; j++) Z[i][j] = 0;
+                    //        }
+                    //        return Z;
+                    //    }
+                    //    else
+                    //    {
+                    //        Complex[][] Z = LayerEF(layer_no - 1, LayerList, K_Air, sintheta_inc, K_Air, c_sound, freq);//, ref D, ref T);
+                    //        Complex[] Zmpa = AbsorptionModels.Perforated_Membranes.SlottedPlate_Impedance(1.2, c_sound, width, pitch, depth, freq);
+
+                    //        for (int j = 0; j < sintheta_inc[0].Length; j++)
+                    //        {
+                    //            for (int i = 0; i < sintheta_inc.Length; i++)
+                    //            {
+                    //                Z[i][j] += Zmpa[j] * (1 - sintheta_inc[i][j] * sintheta_inc[i][j]);
+                    //            }
+                    //        }
+                    //        return Z;
+                    //    }
+                    //case ABS_Layer.LayerType.Microslit:
+                    //    if (layer_no < 1)
+                    //    {
+                    //        Complex[][] Z = new Complex[sintheta_inc.Length][];
+                    //        for (int i = 0; i < sintheta_inc.Length; i++)
+                    //        {
+                    //            Z[i] = new Complex[freq.Length];
+                    //            for (int j = 0; j < freq.Length; j++) Z[i][j] = 0;
+                    //        }
+                    //        return Z;
+                    //    }
+                    //    else
+                    //    {
+                    //        Complex[][] Z = LayerEF(layer_no - 1, LayerList, K_Air, sintheta_inc, K_Air, c_sound, freq);//, ref D, ref T);
+                    //        Complex[] Zmpa = AbsorptionModels.Perforated_Membranes.MicroSlots_Impedance(1.2, c_sound, width, pitch, depth, freq);
+
+                    //        for (int j = 0; j < sintheta_inc[0].Length; j++)
+                    //        {
+                    //            for (int i = 0; i < sintheta_inc.Length; i++)
+                    //            {
+                    //                Z[i][j] += Zmpa[j] * (1 - sintheta_inc[i][j] * sintheta_inc[i][j]);
+                    //            }
+                    //        }
+                    //        return Z;
+                    //    }
+                    //case ABS_Layer.LayerType.MicroPerforated:
+                    //    if (Layer_i.T == ABS_Layer.LayerType.CircularPerforations)
+                    //    {
+                    //        porosity = Math.PI * width * width * .25 / (pitch * pitch);
+                    //    }
+                    //    else
+                    //    {
+                    //        porosity = width * width / (pitch * pitch);
+                    //    }
+
+                    //    if (layer_no < 1)
+                    //    {
+                    //        Complex[][] Z = new Complex[sintheta_inc.Length][];
+                    //        for (int i = 0; i < sintheta_inc.Length; i++)
+                    //        {
+                    //            Z[i] = new Complex[freq.Length];
+                    //            for (int j = 0; j < freq.Length; j++) Z[i][j] = 0;
+                    //        }
+                    //        return Z;
+                    //    }
+                    //    else
+                    //    {
+                    //        Complex[][] Z = LayerEF(layer_no - 1, LayerList, K_Air, sintheta_inc, K_Air, c_sound, freq);//, ref D, ref T);
+                    //        Complex[] Zmpa = AbsorptionModels.Perforated_Membranes.MicroPerforatedPlate_Impedance(1.2, c_sound, width, pitch, depth, freq);
+
+                    //        for (int j = 0; j < sintheta_inc[0].Length; j++)
+                    //        {
+                    //            for (int i = 0; i < sintheta_inc.Length; i++)
+                    //            {
+                    //                Z[i][j] += Zmpa[j] * (1 - sintheta_inc[i][j] * sintheta_inc[i][j]);
+                    //            }
+                    //        }
+                    //        return Z;
+                    //    }
+                    //    break;
+                    default:
+                        throw new Exception("Un-supported Perforated Membrane type...");
+                }
+            }
+
+            public static Complex[][] Transfer_Matrix_PorousSolid_PostPerf(int clusterid, List<List<ABS_Layer>> LayerList, double M_TERM, double N_TERM, Complex[][] sintheta_inc, Complex[] K_Air, Complex[] Zc_Air, double[] frequency, double c_sound, bool Transmission, out Complex[][] Trans)
+            {
+                int N = 1;
+
+                int tc = 0;
+                Complex[][] kzi = new Complex[sintheta_inc.Length][];
+                List<SparseMatrix[][]> T = new List<SparseMatrix[][]>();
+
+                List<int> breaks = new List<int>();
+
+                Complex[][] Kmn_last = new Complex[sintheta_inc.Length][];
+                for (int i = 0; i < Kmn_last.Length; i++) Kmn_last[i] = new Complex[frequency.Length];
+
+                for (int i = LayerList[clusterid].Count - 1; i >= 0; i--)
+                {
+                    ABS_Layer Layer_i = (LayerList[clusterid][i] as ABS_Layer);
+                    SparseMatrix[][] tn = new SparseMatrix[sintheta_inc.Length][];
+                    double[] fr = frequency.Clone() as double[];
+                    Parallel.For(0, sintheta_inc.Length, a =>
+                    {
+                        kzi[a] = new Complex[4096];
+                        tn[a] = new SparseMatrix[4096];
+
+                        switch (Layer_i.T)
+                        {
+                            case ABS_Layer.LayerType.AirSpace:
+                                Complex[] Zc0 = Operations.Air_CharImpedance(1.2, c_sound, fr);
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    Kmn_last[a][f] = Complex.Sqrt(K_Air[f] * K_Air[f] - M_TERM * M_TERM - Complex.Pow(N_TERM - K_Air[f] * sintheta_inc[a][f], 2));
+                                    tn[a][f] = Explicit_TMM.FluidMatrix(Layer_i.depth, Kmn_last[a][f], K_Air[f], Zc0[f]);
+                                }
+                                //K0 = K_Air;
+                                break;
+                            case ABS_Layer.LayerType.BiotPorousAbsorber_Limp:
+                                //Complex[] kbl = K_Air;
+                                Complex[] kbl = Biot_Porous_Absorbers.WaveNumber_Fluid(Layer_i.density, Layer_i.porosity, AbsorptionModels.Biot_Porous_Absorbers.Thermal_Characteristic_Length(Layer_i.Viscous_Characteristic_Length), Layer_i.Thermal_Permeability, fr);
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    Kmn_last[a][f] = Complex.Sqrt(M_TERM * M_TERM + Complex.Pow(N_TERM - K_Air[f] * sintheta_inc[a][f],2)); //Trace component
+                                    //Determine if Kmn will suffice for Kxi, or if it should be transformed, or other...
+                                    tn[a][f] = Explicit_TMM.PorousMatrix(false, Layer_i.depth, Kmn_last[a][f], fr[f], Layer_i.porosity, Layer_i.tortuosity, Layer_i.YoungsModulus, Layer_i.PoissonsRatio, Layer_i.Flow_Resist, Layer_i.density, 101325); //Layer_i.Viscous_Characteristic_Length,
+                                }
+                                //K0 = kbl;
+                                break;
+                            case ABS_Layer.LayerType.BiotPorousAbsorber_Rigid:
+                                //Complex[] kbr = K_Air;
+                                Complex[] kbr = Biot_Porous_Absorbers.WaveNumber_Fluid(Layer_i.density, Layer_i.porosity, AbsorptionModels.Biot_Porous_Absorbers.Thermal_Characteristic_Length(Layer_i.Viscous_Characteristic_Length), Layer_i.Thermal_Permeability, fr);
+
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    Kmn_last[a][f] = Complex.Sqrt(M_TERM * M_TERM + Complex.Pow(N_TERM - K_Air[f] * sintheta_inc[a][f], 2)); //Trace component
+                                    tn[a][f] = Explicit_TMM.PorousMatrix(true, Layer_i.depth, Kmn_last[a][f], fr[f], Layer_i.porosity, Layer_i.tortuosity, Layer_i.YoungsModulus, Layer_i.PoissonsRatio, Layer_i.Flow_Resist, Layer_i.density, 101325); //Layer_i.Viscous_Characteristic_Length,
+                                }
+                                //K0 = kbr;
+                                break;
+                            case ABS_Layer.LayerType.PorousDB:
+                                Complex[] Kdb = Equivalent_Fluids.DBAllardChampoux_WNumber(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                                Complex[] Zcdb = Equivalent_Fluids.DBAllardChampoux_Impedance(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    Kmn_last[a][f] = Complex.Sqrt(Kdb[f] * Kdb[f] - M_TERM * M_TERM - Complex.Pow(N_TERM - K_Air[f] * sintheta_inc[a][f], 2)); //Trace component
+                                    tn[a][f] = Explicit_TMM.FluidMatrix(Layer_i.depth, Kmn_last[a][f], Kdb[f], Zcdb[f]);
+                                }
+                                //K0 = Kdb;
+                                break;
+                            case ABS_Layer.LayerType.PorousCA:
+                                Complex[] Kca = Equivalent_Fluids.DBAllardChampoux_WNumber(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                                Complex[] Zcca = Equivalent_Fluids.DBAllardChampoux_Impedance(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    Kmn_last[a][f] = Complex.Sqrt(Kca[f] * Kca[f] - M_TERM * M_TERM - Complex.Pow(N_TERM - K_Air[f] * sintheta_inc[a][f], 2)); //Trace component
+                                    tn[a][f] = Explicit_TMM.FluidMatrix(Layer_i.depth, Kmn_last[a][f], Kca[f], Zcca[f]);
+                                }
+                                //K0 = Kca;
+                                break;
+                            case ABS_Layer.LayerType.PorousM:
+                                Complex[] Km = Equivalent_Fluids.DB_Miki_WNumber(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                                Complex[] Zcm = Equivalent_Fluids.DB_Miki_Impedance(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    Kmn_last[a][f] = Complex.Sqrt(Km[f] * Km[f] - M_TERM * M_TERM - Complex.Pow(N_TERM - K_Air[f] * sintheta_inc[a][f], 2)); //Trace component
+                                    tn[a][f] = Explicit_TMM.FluidMatrix(Layer_i.depth, Kmn_last[a][f], Km[f], Zcm[f]);
+                                }
+                                //K0 = Km;
+                                break;
+                            case ABS_Layer.LayerType.SolidPlate:
+                                double LameL = Solids.Lame_Lambda(Layer_i.YoungsModulus, Layer_i.PoissonsRatio);
+                                double LameMu = Solids.Lame_Mu(Layer_i.YoungsModulus, Layer_i.PoissonsRatio);
+                                Complex[] Ks = Solids.WaveNumber(fr, Layer_i.density, LameL, LameMu);
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    Kmn_last[a][f] = Complex.Sqrt(Ks[f] * Ks[f] - M_TERM * M_TERM - Complex.Pow(N_TERM - K_Air[f] * sintheta_inc[a][f], 2)); //Trace component
+                                    tn[a][f] = Explicit_TMM.Solid_Matrix(Kmn_last[a][f], Layer_i.depth, fr[f], Layer_i.density, Layer_i.YoungsModulus, Layer_i.PoissonsRatio); //Ks[f] * kxi[a][f] / K_Air[f]
+                                }
+                                //K0 = Ks;
+                                break;
+                            default:
+                                throw new Exception("Unknown Layer Type");
+                        }
+                    });
+
+                    ///Get the trace for the transfer to perf layer beneath this cluster...
+                    Complex[] K_last;
+
+                    switch (Layer_i.T)
+                    {
+                        case ABS_Layer.LayerType.AirSpace:
+                            K_last = K_Air;
+                            break;
+                        case ABS_Layer.LayerType.BiotPorousAbsorber_Limp:
+                            K_last = Biot_Porous_Absorbers.WaveNumber_Fluid(Layer_i.density, Layer_i.porosity, AbsorptionModels.Biot_Porous_Absorbers.Thermal_Characteristic_Length(Layer_i.Viscous_Characteristic_Length), Layer_i.Thermal_Permeability, fr);
+                            break;
+                        case ABS_Layer.LayerType.BiotPorousAbsorber_Rigid:
+                            K_last = Biot_Porous_Absorbers.WaveNumber_Fluid(Layer_i.density, Layer_i.porosity, AbsorptionModels.Biot_Porous_Absorbers.Thermal_Characteristic_Length(Layer_i.Viscous_Characteristic_Length), Layer_i.Thermal_Permeability, fr);
+                            break;
+                        case ABS_Layer.LayerType.PorousDB:
+                            K_last = Equivalent_Fluids.DBAllardChampoux_WNumber(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                            break;
+                        case ABS_Layer.LayerType.PorousCA:
+                            K_last = Equivalent_Fluids.DBAllardChampoux_WNumber(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                            break;
+                        case ABS_Layer.LayerType.PorousM:
+                            K_last = Equivalent_Fluids.DB_Miki_WNumber(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                            break;
+                        case ABS_Layer.LayerType.SolidPlate:
+                            double LameL = Solids.Lame_Lambda(Layer_i.YoungsModulus, Layer_i.PoissonsRatio);
+                            double LameMu = Solids.Lame_Mu(Layer_i.YoungsModulus, Layer_i.PoissonsRatio);
+                            K_last = Solids.WaveNumber(fr, Layer_i.density, LameL, LameMu);
+                            break;
+                        default:
+                            throw new Exception("Unknown Layer Type");
+                    }
+
+                    for(int j = 0; j < Kmn_last.Length; j++)
+                    {
+                        for(int k = 0; k < Kmn_last[j].Length; k++)
+                        {
+                            Kmn_last[i][j] = Complex.Sqrt(K_last[j] * K_last[j] - Kmn_last[i][j] * Kmn_last[i][j]);
+                        }
+                    }
+
+                    if (T.Count == 0)
+                    {
+                        T.Add(tn);
+                    }
+                    else if (T[tc][0][0].RowCount == tn[0][0].RowCount)
+                    {
+                        if (tn[0][0].RowCount == 6)
+                        {
+                            for (int a = 0; a < sintheta_inc.Length; a++)
+                                for (int f = 0; f < 4096; f++)
+                                    T[tc][a][f] *= Explicit_TMM.InterfacePP(LayerList[clusterid][i].porosity, LayerList[clusterid][i + 1].porosity) * tn[a][f];
+                        }
+                        else
+                        {
+                            for (int a = 0; a < sintheta_inc.Length; a++)
+                                for (int f = 0; f < 4096; f++)
+                                    T[tc][a][f] *= tn[a][f];
+                        }
+                    }
+                    else
+                    {
+                        tc++;
+                        T.Add(tn);
+                    }
+                }
+
+                SparseMatrix[] I = new SparseMatrix[LayerList.Count];
+                SparseMatrix[] J = new SparseMatrix[LayerList.Count];
+                //T.Reverse();
+
+                for (int i = 0; i < T.Count; i++)
+                {
+                    if (i == 0)
+                    {
+                        if (T[i][0][0].RowCount == 2)
+                        {
+                            //Fluid Layer
+                            I[i] = MathNet.Numerics.LinearAlgebra.Complex.SparseMatrix.CreateIdentity(2);
+                            J[i] = MathNet.Numerics.LinearAlgebra.Complex.SparseMatrix.CreateIdentity(2);
+                        }
+                        else if (T[i][0][0].RowCount == 6)
+                        {
+                            //Biot Porous absorbers
+                            I[i] = Explicit_TMM.Interfacepf_Fluid(LayerList[clusterid][i].porosity);
+                            J[i] = Explicit_TMM.Interfacepf_Porous(LayerList[clusterid][i].porosity);
+                        }
+                        else
+                        {
+                            //Solid Layer
+                            I[i] = Explicit_TMM.InterfaceSF_Fluid();
+                            J[i] = Explicit_TMM.InterfaceSF_Solid();
+                        }
+                    }
+                    else if (T[i][0][0].RowCount == 2)
+                    {
+                        //Fluid Layer
+                        if (T[i - 1][0][0].RowCount == 2)
+                        {
+                            //Fluid Layer
+                            throw new Exception("Fluid-fluid - should multiply them together instead.");
+                        }
+                        else if (T[i - 1][0][0].RowCount == 6)
+                        {
+                            //Biot Porous absorbers
+                            I[i] = Explicit_TMM.Interfacepf_Porous(LayerList[clusterid][LayerList.Count - i].porosity) as SparseMatrix;
+                            J[i] = Explicit_TMM.Interfacepf_Fluid(LayerList[clusterid][LayerList.Count - i].porosity);
+                        }
+                        else
+                        {
+                            //Solid Layer55
+                            I[i] = Explicit_TMM.InterfaceSF_Solid();
+                            J[i] = Explicit_TMM.InterfaceSF_Fluid();
+                        }
+                    }
+                    else if (T[i][0][0].RowCount == 6)
+                    {
+                        //Biot Porous absorbers
+                        if (T[i - 1][0][0].RowCount == 2)
+                        {
+                            //Fluid Layer
+                            I[i] = Explicit_TMM.Interfacepf_Fluid(LayerList[clusterid][i].porosity);
+                            J[i] = Explicit_TMM.Interfacepf_Porous(LayerList[clusterid][i].porosity);
+                        }
+                        else if (T[i - 1][0][0].RowCount == 6)
+                        {
+                            //Biot Porous absorbers
+                            throw new Exception("Biot - Biot - should multiply them together instead with interface PP");
+                        }
+                        else
+                        {
+                            //Solid Layer
+                            I[i] = Explicit_TMM.Interfacesp_Solid();
+                            J[i] = Explicit_TMM.Interfacesp_Porous();
+                        }
+                    }
+                    else
+                    {
+                        //Solid Layer
+                        if (T[i - 1][0][0].RowCount == 2)
+                        {
+                            //Fluid Layer
+                            I[i] = Explicit_TMM.InterfaceSF_Fluid();
+                            J[i] = Explicit_TMM.InterfaceSF_Solid();
+                        }
+                        else if (T[i - 1][0][0].RowCount == 6)
+                        {
+                            //Biot Porous absorbers
+                            I[i] = Explicit_TMM.Interfacesp_Porous();
+                            J[i] = Explicit_TMM.Interfacesp_Solid();
+                        }
+                        else
+                        {
+                            //Solid Layer
+                            throw new Exception("Solid-Solid - should multiply them together instead.");
+                        }
+                    }
+                    N += J[i].RowCount;
+                }
+
+                Complex[][] Z = new Complex[sintheta_inc.Length][];
+                Complex[][] Reflection_Coef = new Complex[sintheta_inc.Length][];
+                Complex[][] Trans_Loss = new Complex[sintheta_inc.Length][];
+
+                bool asTransmission = clusterid != LayerList.Count - 1;
+
+                if (!Transmission && !asTransmission)
+                {
+                    SparseMatrix Y;
+                    switch (T.Last()[0][0].RowCount)
+                    {
+                        case 2:
+                            N += 1;
+                            Y = Explicit_TMM.RigidTerminationF();
+                            break;
+                        case 4:
+                            N += 2;
+                            Y = Explicit_TMM.RigidTerminationS();
+                            break;
+                        case 6:
+                            N += 3;
+                            Y = Explicit_TMM.RigidTerminationP();
+                            break;
+                        default:
+                            throw new Exception("How can you have a matrix that is not 2, 4, or 6 rows?");
+                    }
+
+                    Parallel.For(0, sintheta_inc.Length, a =>
+                    //for (int a = 0; a < sintheta_inc.Length; a++)
+                    {
+                        Z[a] = new Complex[sintheta_inc[a].Length];
+
+                        for (int f = 0; f < sintheta_inc[a].Length; f++)
+                        {
+                            SparseMatrix GT = new SparseMatrix(N - 1, N);
+                            int r = 0, c = 0;
+
+                            for (int i = 0; i < T.Count; i++)
+                            {
+                                GT.SetSubMatrix(r, c, I[i]);
+                                c += I[i].ColumnCount;
+                                SparseMatrix subJT = J[i] * T[i][a][f];
+                                GT.SetSubMatrix(r, c, subJT);
+                                r += subJT.RowCount;
+                            }
+                            GT.SetSubMatrix(r, c, Y);
+
+                            Complex D1 = (GT.RemoveColumn(0) as SparseMatrix).Determinant();
+                            Complex D2 = (GT.RemoveColumn(1) as SparseMatrix).Determinant();
+
+                            Z[a][f] = -D1 / D2;
+
+                            ///Checking Values...///
+                            //if (a == 18 && f == 2000)
+                            //{
+                            //    for (int i = 0; i < GT.RowCount; i++)
+                            //    {
+                            //        string line = "| ";
+                            //        for (int j = 0; j < GT.ColumnCount; j++) line += GT[i, j].ToString() + " ";
+                            //        line += " |";
+                            //        //Rhino.RhinoApp.WriteLine(line);
+                            //    }
+                            //}
+                            //////////////////////////
+                        }
+                    });
+                }
+                else
+                {
+                    if (Transmission)
+                    {
+                        for (int i = 0; i < Trans_Loss.Length; i++)
+                        {
+                            Z[i] = new Complex[frequency.Length];
+                            Trans_Loss[i] = new Complex[frequency.Length];
+                            for (int j = 0; j < frequency.Length; j++)
+                            {
+                                Z[i][j] = Zc_Air[j] / Complex.Sqrt(1 - sintheta_inc[i][j] * sintheta_inc[i][j]);
+                                Trans_Loss[i][j] = 1;
+                            }
+                        }
+                    }
+                    else if (asTransmission) Z = Transfer_Matrix_Perf(clusterid + 1, LayerList, Kmn_last, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Trans_Loss);
+
+                    SparseMatrix ILast, JLast;
+
+                    if (T.Last()[0][0].RowCount == 2)
+                    {
+                        ILast = null;
+                        JLast = null;
+                    }
+                    else if (T.Last()[0][0].RowCount == 4)
+                    {
+                        ILast = Explicit_TMM.InterfaceSF_Solid();
+                        JLast = Explicit_TMM.InterfaceSF_Fluid();
+                    }
+                    else
+                    {
+                        ILast = Explicit_TMM.Interfacepf_Porous(LayerList[clusterid].Last().porosity);
+                        JLast = Explicit_TMM.Interfacepf_Fluid(LayerList[clusterid].Last().porosity);
+                    }
+
+                    if (ILast != null) N += JLast.RowCount;
+
+                    Parallel.For(0, sintheta_inc.Length, a =>
+                    //for (int a = 0; a < sintheta_inc.Length; a++)
+                    {
+                        //Z[a] = new Complex[sintheta_inc[a].Length];
+                        Reflection_Coef[a] = new Complex[sintheta_inc[a].Length];
+                        //Construct [D]...
+                        for (int f = 0; f < sintheta_inc[a].Length; f++)
+                        {
+                            SparseMatrix GT = new SparseMatrix(N, N + 1);
+                            int r = 0, c = 0;
+
+                            for (int i = 0; i < T.Count; i++)
+                            {
+                                GT.SetSubMatrix(r, c, I[i]);
+                                c += I[i].ColumnCount;
+                                SparseMatrix subJT = J[i] * T[i][a][f];
+                                GT.SetSubMatrix(r, c, subJT);
+                                r += subJT.RowCount;
+                            }
+
+                            if (ILast != null)
+                            {
+                                GT.SetSubMatrix(r, c, ILast);
+                                GT.SetSubMatrix(r, c + ILast.ColumnCount, JLast);
+                            }
+                            Complex costheta = Complex.Sqrt(1 - sintheta_inc[a][f] * sintheta_inc[a][f]);
+
+                            GT[N - 1, N - 1] = -1;
+                            GT[N - 1, N] = Z[a][f];
+
+                            Complex D1 = (GT.RemoveColumn(0) as SparseMatrix).Determinant();
+                            Complex D2 = (GT.RemoveColumn(1) as SparseMatrix).Determinant();
+
+                            Z[a][f] = -D1 / D2;
+                            Reflection_Coef[a][f] = (Z[a][f] * costheta - Zc_Air[f]) / (Z[a][f] * costheta + Zc_Air[f]);
+
+                            ///Checking Values...///
+                            //if (a == 18 && f == 2000)
+                            //{
+                            //    for (int i = 0; i < GT.RowCount; i++)
+                            //    {
+                            //        string line = "| ";
+                            //        for (int j = 0; j < GT.ColumnCount; j++) line += GT[i, j].ToString() + " ";
+                            //        line += " |";
+                            //        //Rhino.RhinoApp.WriteLine(line);
+                            //    }
+                            //}
+                            ////////////////////////
+
+                            Complex Dnt1 = (GT.RemoveColumn(GT.ColumnCount - 2) as SparseMatrix).Determinant();
+                            Trans_Loss[a][f] *= ((1 + Reflection_Coef[a][f]) * Dnt1 / D1);// * Zc_Air[f];
+                        }
+                    });
+                }
+
+                //R = Reflection_Coef;
+                Trans = Trans_Loss;
+                return Z;
+            }
+
+            public static Complex[][] Transfer_Matrix_PorousSolid(int clusterid, List<List<ABS_Layer>> LayerList, Complex[][] kxi, Complex[][] sintheta_inc, Complex[] K_Air, Complex[] Zc_Air, double[] frequency, double c_sound, bool Transmission, out Complex[][] Trans)
+            {
+                int N = 1;
+
+                int tc = 0;
+                Complex[][] kzi = new Complex[sintheta_inc.Length][];
+                List<SparseMatrix[][]> T = new List<SparseMatrix[][]>();
+
+                List<int> breaks = new List<int>();
+
+                for (int i = LayerList[clusterid].Count - 1; i >= 0; i--)
+                {
+                    ABS_Layer Layer_i = (LayerList[clusterid][i] as ABS_Layer);
+                    SparseMatrix[][] tn = new SparseMatrix[sintheta_inc.Length][];
+                    double[] fr = frequency.Clone() as double[];
+                    Parallel.For(0, sintheta_inc.Length, a =>
+                    {
+                        kzi[a] = new Complex[4096];
+                        tn[a] = new SparseMatrix[4096];
+
+                        switch (Layer_i.T)
+                        {
+                            case ABS_Layer.LayerType.AirSpace:
+                                Complex[] Zc0 = Operations.Air_CharImpedance(1.2, c_sound, fr);
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    Complex Ksintheta = kxi[a][f] / K_Air[f];
+                                    kzi[a][f] = Complex.Sqrt(K_Air[f] * K_Air[f] * (1 - Ksintheta * Ksintheta));
+                                    tn[a][f] = Explicit_TMM.FluidMatrix(Layer_i.depth, kzi[a][f], K_Air[f], Zc0[f]);
+                                }
+                                //K0 = K_Air;
+                                break;
+                            case ABS_Layer.LayerType.BiotPorousAbsorber_Limp:
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    tn[a][f] = Explicit_TMM.PorousMatrix(false, Layer_i.depth, kxi[a][f], fr[f], Layer_i.porosity, Layer_i.tortuosity, Layer_i.YoungsModulus, Layer_i.PoissonsRatio, Layer_i.Flow_Resist, Layer_i.density, 101325); //Layer_i.Viscous_Characteristic_Length,
+                                }
+                                //K0 = kbl;
+                                break;
+                            case ABS_Layer.LayerType.BiotPorousAbsorber_Rigid:
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    tn[a][f] = Explicit_TMM.PorousMatrix(true, Layer_i.depth, kxi[a][f], fr[f], Layer_i.porosity, Layer_i.tortuosity, Layer_i.YoungsModulus, Layer_i.PoissonsRatio, Layer_i.Flow_Resist, Layer_i.density, 101325); //Layer_i.Viscous_Characteristic_Length,
+                                }
+                                //K0 = kbr;
+                                break;
+                            case ABS_Layer.LayerType.PorousDB:
+                                Complex[] Kdb = Equivalent_Fluids.DBAllardChampoux_WNumber(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                                Complex[] Zcdb = Equivalent_Fluids.DBAllardChampoux_Impedance(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    Complex Ksintheta = kxi[a][f] / Kdb[f];
+                                    kzi[a][f] = Complex.Sqrt(Kdb[f] * Kdb[f] * (1 - Ksintheta * Ksintheta));
+                                    tn[a][f] = Explicit_TMM.FluidMatrix(Layer_i.depth, kzi[a][f], Kdb[f], Zcdb[f]);
+                                }
+                                //K0 = Kdb;
+                                break;
+                            case ABS_Layer.LayerType.PorousCA:
+                                Complex[] Kca = Equivalent_Fluids.DBAllardChampoux_WNumber(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                                Complex[] Zcca = Equivalent_Fluids.DBAllardChampoux_Impedance(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    Complex Ksintheta = kxi[a][f] / Kca[f];
+                                    kzi[a][f] = Complex.Sqrt(Kca[f] * Kca[f] * (1 - Ksintheta * Ksintheta));
+                                    tn[a][f] = Explicit_TMM.FluidMatrix(Layer_i.depth, kzi[a][f], Kca[f], Zcca[f]);
+                                }
+                                //K0 = Kca;
+                                break;
+                            case ABS_Layer.LayerType.PorousM:
+                                Complex[] Km = Equivalent_Fluids.DB_Miki_WNumber(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                                Complex[] Zcm = Equivalent_Fluids.DB_Miki_Impedance(1.2, c_sound, Layer_i.Flow_Resist, fr);
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    Complex Ksintheta = kxi[a][f] / Km[f];
+                                    kzi[a][f] = Complex.Sqrt(Km[f] * Km[f] * (1 - Ksintheta * Ksintheta));
+                                    tn[a][f] = Explicit_TMM.FluidMatrix(Layer_i.depth, kzi[a][f], Km[f], Zcm[f]);
+                                }
+                                //K0 = Km;
+                                break;
+                            case ABS_Layer.LayerType.SolidPlate:
+                                double LameL = Solids.Lame_Lambda(Layer_i.YoungsModulus, Layer_i.PoissonsRatio);
+                                double LameMu = Solids.Lame_Mu(Layer_i.YoungsModulus, Layer_i.PoissonsRatio);
+                                Complex[] Ks = Solids.WaveNumber(fr, Layer_i.density, LameL, LameMu);
+                                for (int f = 0; f < 4096; f++)
+                                {
+                                    //Complex Ksintheta = kxi[a][f] / Ks[
+                                    //kzi[a][f] = Complex.Sqrt(Ks[f] * Ks[f] * (1 - Ksintheta * Ksintheta));
+                                    //tn[a][f] =  Explicit_TMM.Solid_Matrix(K_Air[f], kxi[a][f], Layer_i.depth, fr[f], Layer_i.density, LameMu, LameL);
+                                    tn[a][f] = Explicit_TMM.Solid_Matrix(kxi[a][f], Layer_i.depth, fr[f], Layer_i.density, Layer_i.YoungsModulus, Layer_i.PoissonsRatio); //Ks[f] * kxi[a][f] / K_Air[f]
+                                }
+                                //K0 = Ks;
+                                break;
+                            default:
+                                throw new Exception("Unknown Layer Type");
+                        }
+                    });
+
+                    if (T.Count == 0)
+                    {
+                        T.Add(tn);
+                    }
+                    else if (T[tc][0][0].RowCount == tn[0][0].RowCount)
+                    {
+                        if (tn[0][0].RowCount == 6)
+                        {
+                            for (int a = 0; a < sintheta_inc.Length; a++)
+                                for (int f = 0; f < 4096; f++)
+                                    T[tc][a][f] *= Explicit_TMM.InterfacePP(LayerList[clusterid][i].porosity, LayerList[clusterid][i + 1].porosity) * tn[a][f];
+                        }
+                        else
+                        {
+                            for (int a = 0; a < sintheta_inc.Length; a++)
+                                for (int f = 0; f < 4096; f++)
+                                    T[tc][a][f] *= tn[a][f];
+                        }
+                    }
+                    else
+                    {
+                        tc++;
+                        T.Add(tn);
+                    }
+                }
+
+                SparseMatrix[] I = new SparseMatrix[LayerList[clusterid].Count];
+                SparseMatrix[] J = new SparseMatrix[LayerList[clusterid].Count];
+                //T.Reverse();
+
+                for (int i = 0; i < T.Count; i++)
+                {
+                    if (i == 0)
+                    {
+                        if (T[i][0][0].RowCount == 2)
+                        {
+                            //Fluid Layer
+                            I[i] = MathNet.Numerics.LinearAlgebra.Complex.SparseMatrix.CreateIdentity(2);
+                            J[i] = MathNet.Numerics.LinearAlgebra.Complex.SparseMatrix.CreateIdentity(2);
+                        }
+                        else if (T[i][0][0].RowCount == 6)
+                        {
+                            //Biot Porous absorbers
+                            I[i] = Explicit_TMM.Interfacepf_Fluid(LayerList[clusterid][i].porosity);
+                            J[i] = Explicit_TMM.Interfacepf_Porous(LayerList[clusterid][i].porosity);
+                        }
+                        else
+                        {
+                            //Solid Layer
+                            I[i] = Explicit_TMM.InterfaceSF_Fluid();
+                            J[i] = Explicit_TMM.InterfaceSF_Solid();
+                        }
+                    }
+                    else if (T[i][0][0].RowCount == 2)
+                    {
+                        //Fluid Layer
+                        if (T[i - 1][0][0].RowCount == 2)
+                        {
+                            //Fluid Layer
+                            throw new Exception("Fluid-fluid - should multiply them together instead.");
+                            //I[i] = MathNet.Numerics.LinearAlgebra.Complex.SparseMatrix.CreateIdentity(2);
+                            //J[i] = MathNet.Numerics.LinearAlgebra.Complex.SparseMatrix.CreateIdentity(2);
+                        }
+                        else if (T[i - 1][0][0].RowCount == 6)
+                        {
+                            //Biot Porous absorbers
+                            I[i] = Explicit_TMM.Interfacepf_Porous(LayerList[clusterid][LayerList.Count - i].porosity) as SparseMatrix;
+                            J[i] = Explicit_TMM.Interfacepf_Fluid(LayerList[clusterid][LayerList.Count - i].porosity);
+                        }
+                        else
+                        {
+                            //Solid Layer55
+                            I[i] = Explicit_TMM.InterfaceSF_Solid();
+                            J[i] = Explicit_TMM.InterfaceSF_Fluid();
+                        }
+                    }
+                    else if (T[i][0][0].RowCount == 6)
+                    {
+                        //Biot Porous absorbers
+                        if (T[i - 1][0][0].RowCount == 2)
+                        {
+                            //Fluid Layer
+                            I[i] = Explicit_TMM.Interfacepf_Fluid(LayerList[clusterid][i].porosity);
+                            J[i] = Explicit_TMM.Interfacepf_Porous(LayerList[clusterid][i].porosity);
+                        }
+                        else if (T[i - 1][0][0].RowCount == 6)
+                        {
+                            //Biot Porous absorbers
+                            throw new Exception("Biot - Biot - should multiply them together instead with interface PP");
+                        }
+                        else
+                        {
+                            //Solid Layer
+                            I[i] = Explicit_TMM.Interfacesp_Solid();
+                            J[i] = Explicit_TMM.Interfacesp_Porous();
+                        }
+                    }
+                    else
+                    {
+                        //Solid Layer
+                        if (T[i - 1][0][0].RowCount == 2)
+                        {
+                            //Fluid Layer
+                            I[i] = Explicit_TMM.InterfaceSF_Fluid();
+                            J[i] = Explicit_TMM.InterfaceSF_Solid();
+                        }
+                        else if (T[i - 1][0][0].RowCount == 6)
+                        {
+                            //Biot Porous absorbers
+                            I[i] = Explicit_TMM.Interfacesp_Porous();
+                            J[i] = Explicit_TMM.Interfacesp_Solid();
+                        }
+                        else
+                        {
+                            //Solid Layer
+                            throw new Exception("Solid-Solid - should multiply them together instead.");
+                        }
+                    }
+                    N += J[i].RowCount;
+                }
+
+                Complex[][] Z = new Complex[sintheta_inc.Length][];
+                Complex[][] Reflection_Coef = new Complex[sintheta_inc.Length][];
+                Complex[][] Trans_Loss = new Complex[sintheta_inc.Length][];
+
+                bool asTransmission = clusterid != LayerList.Count - 1;
+
+                if (!Transmission && !asTransmission)
+                {
+                    SparseMatrix Y;
+                    switch (T.Last()[0][0].RowCount)
+                    {
+                        case 2:
+                            N += 1;
+                            Y = Explicit_TMM.RigidTerminationF();
+                            break;
+                        case 4:
+                            N += 2;
+                            Y = Explicit_TMM.RigidTerminationS();
+                            break;
+                        case 6:
+                            N += 3;
+                            Y = Explicit_TMM.RigidTerminationP();
+                            break;
+                        default:
+                            throw new Exception("How can you have a matrix that is not 2, 4, or 6 rows?");
+                    }
+
+                    Parallel.For(0, sintheta_inc.Length, a =>
+                    //for (int a = 0; a < sintheta_inc.Length; a++)
+                    {
+                        Z[a] = new Complex[sintheta_inc[a].Length];
+
+                        for (int f = 0; f < sintheta_inc[a].Length; f++)
+                        {
+                            SparseMatrix GT = new SparseMatrix(N - 1, N);
+                            int r = 0, c = 0;
+
+                            for (int i = 0; i < T.Count; i++)
+                            {
+                                GT.SetSubMatrix(r, c, I[i]);
+                                c += I[i].ColumnCount;
+                                SparseMatrix subJT = J[i] * T[i][a][f];
+                                GT.SetSubMatrix(r, c, subJT);
+                                r += subJT.RowCount;
+                            }
+                            GT.SetSubMatrix(r, c, Y);
+
+                            Complex D1 = (GT.RemoveColumn(0) as SparseMatrix).Determinant();
+                            Complex D2 = (GT.RemoveColumn(1) as SparseMatrix).Determinant();
+
+                            Z[a][f] = -D1 / D2;
+
+                            ///Checking Values...///
+                            //if (a == 18 && f == 2000)
+                            //{
+                            //    for (int i = 0; i < GT.RowCount; i++)
+                            //    {
+                            //        string line = "| ";
+                            //        for (int j = 0; j < GT.ColumnCount; j++) line += GT[i, j].ToString() + " ";
+                            //        line += " |";
+                            //        //Rhino.RhinoApp.WriteLine(line);
+                            //    }
+                            //}
+                            //////////////////////////
+                        }
+                    });
+                }
+                else
+                {
+                    if (Transmission)
+                    {
+                        for (int i = 0; i < Trans_Loss.Length; i++)
+                        {
+                            Z[i] = new Complex[frequency.Length];
+                            Trans_Loss[i] = new Complex[frequency.Length];
+                            for (int j = 0; j < frequency.Length; j++)
+                            {
+                                Z[i][j] = Zc_Air[j] / Math.Sqrt(1 - sintheta_inc[i][j].Magnitude * sintheta_inc[i][j].Magnitude);
+                                Trans_Loss[i][j] = 1;
+                            }
+                        }
+                    }
+                    else if (asTransmission) Z = Transfer_Matrix_Perf(clusterid + 1, LayerList, kxi, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Trans_Loss);
+
+                    SparseMatrix ILast, JLast;
+
+                    if (T.Last()[0][0].RowCount == 2)
+                    {
+                        ILast = null;
+                        JLast = null;
+                    }
+                    else if (T.Last()[0][0].RowCount == 4)
+                    {
+                        ILast = Explicit_TMM.InterfaceSF_Solid();
+                        JLast = Explicit_TMM.InterfaceSF_Fluid();
+                    }
+                    else
+                    {
+                        ILast = Explicit_TMM.Interfacepf_Porous(LayerList[clusterid].Last().porosity);
+                        JLast = Explicit_TMM.Interfacepf_Fluid(LayerList[clusterid].Last().porosity);
+                    }
+
+                    if (ILast != null) N += JLast.RowCount;
+
+                    Parallel.For(0, sintheta_inc.Length, a =>
+                    //for (int a = 0; a < sintheta_inc.Length; a++)
+                    {
+                        //Z[a] = new Complex[sintheta_inc[a].Length];
+                        Reflection_Coef[a] = new Complex[sintheta_inc[a].Length];
+                        //Construct [D]...
+                        for (int f = 0; f < sintheta_inc[a].Length; f++)
+                        {
+                            SparseMatrix GT = new SparseMatrix(N, N + 1);
+                            int r = 0, c = 0;
+
+                            for (int i = 0; i < T.Count; i++)
+                            {
+                                GT.SetSubMatrix(r, c, I[i]);
+                                c += I[i].ColumnCount;
+                                SparseMatrix subJT = J[i] * T[i][a][f];
+                                GT.SetSubMatrix(r, c, subJT);
+                                r += subJT.RowCount;
+                            }
+
+                            if (ILast != null)
+                            {
+                                GT.SetSubMatrix(r, c, ILast);
+                                GT.SetSubMatrix(r, c + ILast.ColumnCount, JLast);
+                            }
+                            double costheta = Math.Sqrt(1 - sintheta_inc[a][f].Magnitude * sintheta_inc[a][f].Magnitude);
+
+                            GT[N - 1, N - 1] = -1;
+                            GT[N - 1, N] = Z[a][f];
+
+                            Complex D1 = (GT.RemoveColumn(0) as SparseMatrix).Determinant();
+                            Complex D2 = (GT.RemoveColumn(1) as SparseMatrix).Determinant();
+
+                            Z[a][f] = -D1 / D2;
+                            Reflection_Coef[a][f] = (Z[a][f] * costheta - Zc_Air[f]) / (Z[a][f] * costheta + Zc_Air[f]);
+
+                            ///Checking Values...///
+                            //if (a == 18 && f == 2000)
+                            //{
+                            //    for (int i = 0; i < GT.RowCount; i++)
+                            //    {
+                            //        string line = "| ";
+                            //        for (int j = 0; j < GT.ColumnCount; j++) line += GT[i, j].ToString() + " ";
+                            //        line += " |";
+                            //        //Rhino.RhinoApp.WriteLine(line);
+                            //    }
+                            //}
+                            ////////////////////////
+
+                            Complex Dnt1 = (GT.RemoveColumn(GT.ColumnCount - 2) as SparseMatrix).Determinant();
+                            Trans_Loss[a][f] *= (-(1 + Reflection_Coef[a][f]) * Dnt1 / D1);// * Zc_Air[f];
+                        }
+                    });
+                }
+
+
+                //if (!Transmission)
+                //{
+                //    SparseMatrix Y;
+                //    switch (T.Last()[0][0].RowCount)
+                //    {
+                //        case 2:
+                //            N += 1;
+                //            Y = Explicit_TMM.RigidTerminationF();
+                //            break;
+                //        case 4:
+                //            N += 2;
+                //            Y = Explicit_TMM.RigidTerminationS();
+                //            break;
+                //        case 6:
+                //            N += 3;
+                //            Y = Explicit_TMM.RigidTerminationP();
+                //            break;
+                //        default:
+                //            throw new Exception("How can you have a matrix that is not 2, 4, or 6 rows?");
+                //    }
+
+                //    Parallel.For(0, sintheta_inc.Length, a =>
+                //    //for (int a = 0; a < sintheta_inc.Length; a++)
+                //    {
+                //        Z[a] = new Complex[sintheta_inc[a].Length];
+
+                //        for (int f = 0; f < sintheta_inc[a].Length; f++)
+                //        {
+                //            SparseMatrix GT = new SparseMatrix(N - 1, N);
+                //            int r = 0, c = 0;
+
+                //            for (int i = 0; i < T.Count; i++)
+                //            {
+                //                GT.SetSubMatrix(r, c, I[i]);
+                //                c += I[i].ColumnCount;
+                //                SparseMatrix subJT = J[i] * T[i][a][f];
+                //                GT.SetSubMatrix(r, c, subJT);
+                //                r += subJT.RowCount;
+                //            }
+                //            GT.SetSubMatrix(r, c, Y);
+
+                //            Complex D1 = (GT.RemoveColumn(0) as SparseMatrix).Determinant();
+                //            Complex D2 = (GT.RemoveColumn(1) as SparseMatrix).Determinant();
+
+                //            Z[a][f] = -D1 / D2;
+
+                //            ///Checking Values...///
+                //            if (a == 18 && f == 2000)
+                //            {
+                //                for (int i = 0; i < GT.RowCount; i++)
+                //                {
+                //                    string line = "| ";
+                //                    for (int j = 0; j < GT.ColumnCount; j++) line += GT[i, j].ToString() + " ";
+                //                    line += " |";
+                //                    //Rhino.RhinoApp.WriteLine(line);
+                //                }
+                //            }
+                //            ////////////////////////
+                //        }
+                //    });
+                //}
+                //else
+                //{
+                //    SparseMatrix ILast, JLast;
+
+                //    if (T.Last()[0][0].RowCount == 2)
+                //    {
+                //        ILast = null;
+                //        JLast = null;
+                //        //ILast = SparseMatrix.CreateIdentity(2);
+                //        //JLast = SparseMatrix.CreateIdentity(2);
+                //    }
+                //    else if (T.Last()[0][0].RowCount == 4)
+                //    {
+                //        ILast = Explicit_TMM.InterfaceSF_Solid();
+                //        JLast = Explicit_TMM.InterfaceSF_Fluid();
+                //    }
+                //    else
+                //    {
+                //        ILast = Explicit_TMM.Interfacepf_Porous(LayerList[clusterid].Last().porosity);
+                //        JLast = Explicit_TMM.Interfacepf_Fluid(LayerList[clusterid].Last().porosity);
+                //    }
+
+                //    if (ILast != null) N += JLast.RowCount;
+
+                //    Parallel.For(0, sintheta_inc.Length, a =>
+                //    //for (int a = 0; a < sintheta_inc.Length; a++)
+                //    {
+                //        Z[a] = new Complex[sintheta_inc[a].Length];
+                //        Reflection_Coef[a] = new Complex[sintheta_inc[a].Length];
+                //        Trans_Loss[a] = new Complex[sintheta_inc[a].Length];
+                //        //Construct [D]...
+                //        for (int f = 0; f < sintheta_inc[a].Length; f++)
+                //        {
+                //            SparseMatrix GT = new SparseMatrix(N, N + 1);
+                //            int r = 0, c = 0;
+
+                //            for (int i = 0; i < T.Count; i++)
+                //            {
+                //                GT.SetSubMatrix(r, c, I[i]);
+                //                c += I[i].ColumnCount;
+                //                SparseMatrix subJT = J[i] * T[i][a][f];
+                //                GT.SetSubMatrix(r, c, subJT);
+                //                r += subJT.RowCount;
+                //            }
+
+                //            if (ILast != null)
+                //            {
+                //                GT.SetSubMatrix(r, c, ILast);
+                //                GT.SetSubMatrix(r, c + ILast.ColumnCount, JLast);
+                //            }
+                //            Complex costheta = Complex.Sqrt(1 - sintheta_inc[a][f] * sintheta_inc[a][f]);
+
+                //            GT[N - 1, N - 1] = -1;
+                //            GT[N - 1, N] = Zc_Air[f] / costheta;
+
+                //            Complex D1 = (GT.RemoveColumn(0) as SparseMatrix).Determinant();
+                //            Complex D2 = (GT.RemoveColumn(1) as SparseMatrix).Determinant();
+
+                //            Z[a][f] = -D1 / D2;
+                //            Reflection_Coef[a][f] = (Z[a][f] * costheta - Zc_Air[f]) / (Z[a][f] * costheta + Zc_Air[f]);
+
+                //            ///Checking Values...///
+                //            //if (a == 18 && f == 2000)
+                //            //{
+                //            //    for (int i = 0; i < GT.RowCount; i++)
+                //            //    {
+                //            //        string line = "| ";
+                //            //        for (int j = 0; j < GT.ColumnCount; j++) line += GT[i, j].ToString() + " ";
+                //            //        line += " |";
+                //            //    }
+                //            //}
+                //            ////////////////////////
+
+                //            Complex Dnt1 = (GT.RemoveColumn(GT.ColumnCount - 2) as SparseMatrix).Determinant();
+                //            Trans_Loss[a][f] = ((1 + Reflection_Coef[a][f]) * Dnt1 / D1);
+                //        }
+                //    });
+                //}
+
                 Trans = Trans_Loss;
                 return Z;
             }
@@ -3280,7 +4680,7 @@ namespace Pachyderm_Acoustic
             //}
 
             //Set up transfer function after perforated materials as a recursive function...
-            private static Complex[][] Layer_postperf(int layer_no, List<ABS_Layer> LayerList, SparseMatrix[] J, SparseMatrix[] I_inv, Complex[] K0, double N_Term, double M_Term, Complex[][] sintheta_inc, Complex[] K_Air, double c_sound, double[] freq)//, ref double[] D_Lat, ref double[] T)
+            private static Complex[][] Layer_postperf(int layer_no, List<ABS_Layer> LayerList, SparseMatrix[] J, SparseMatrix[] I_inv, Complex[] K0, double N_Term, double M_Term, Complex[][] sintheta_inc, Complex[] K_Air, double c_sound, double[] freq)
             {
                 ABS_Layer Layer_i = LayerList[layer_no] as ABS_Layer;
                 double depth = Layer_i.depth;
@@ -4086,7 +5486,6 @@ namespace Pachyderm_Acoustic
                         Zmp[i] = new Complex(Math.Sqrt(2 * nu * air_density * thickness / radius), air_density * w * thickness * (1 + Math.Sqrt(2 * nu / (air_density * w)) / radius));
                     }
                 }
-
                 return Zmp;
             }
             //shown to be incorrect for inner aperture...
