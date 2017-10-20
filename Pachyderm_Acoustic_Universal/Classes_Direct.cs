@@ -822,7 +822,7 @@ namespace Pachyderm_Acoustic
                 for (int j = 0; j < 6; j++) Pdir[i][j] = new double[ETC[0].Length + 4096];
                 for (int t = 0; t < ETC[0].Length; t++)
                 {
-                    Audio.Pach_SP.Initialize_filter_functions();
+                    //Audio.Pach_SP.Initialize_filter_functions();
                     //Rhino.RhinoApp.CommandPrompt = string.Format("Creating direct sound pressure for receiver {0}. {1}% complete, ", i, Math.Round((double)t / ETC[0].Length * 100));
                     double[] Pmin = Audio.Pach_SP.Filter.Signal(new double[8] { ETC[0][0], ETC[1][0], ETC[2][0], ETC[3][0], ETC[4][0], ETC[5][0], ETC[6][0], ETC[7][0] }, 44100, 4096, 0);
                     //Audio.Pach_SP.Raised_Cosine_Window(ref Pmin);

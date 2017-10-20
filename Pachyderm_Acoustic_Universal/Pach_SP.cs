@@ -497,7 +497,7 @@ namespace Pachyderm_Acoustic
                 {
                     double v = 0;
                     v = (-Math.Cos(Math.PI * (double)i/t_length) + 1);
-                    magspec[i] = v * v;
+                    magspec[i] = v;
                     mod += magspec[i];
                 }
 
@@ -506,7 +506,7 @@ namespace Pachyderm_Acoustic
                 {
                     double v = 0;
                     v = (-Math.Cos(Math.PI + Math.PI * (double)i / t_length) + 1);
-                    magspec[i+ctr_id] = v * v * v * v;
+                    magspec[i+ctr_id] = v * v;
                     mod += magspec[i];
                 }
 
@@ -765,7 +765,6 @@ namespace Pachyderm_Acoustic
 
                 return ymspec;
             }
-
             public static double[] Minimum_Phase_Signal(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
                 double[] M_spec = Magnitude_Spectrum(Octave_pressure, sample_frequency, length_starttofinish, threadid);
@@ -780,7 +779,7 @@ namespace Pachyderm_Acoustic
                     else logspec[i] = Math.Log(M_spec[i]);
                 }
 
-                double[] real_cepstrum = IFFT_Real_General(Mirror_Spectrum(logspec), threadid);
+                double[] real_cepstrum = IFFT_Real4096(Mirror_Spectrum(logspec), threadid);
                 Scale(ref real_cepstrum);
 
                 double[] ym = new double[length_starttofinish];
@@ -791,24 +790,72 @@ namespace Pachyderm_Acoustic
                     ym[i] = 2 * real_cepstrum[i];
                 }
                 ym[length_starttofinish / 2] = real_cepstrum[length_starttofinish / 2];
-                System.Numerics.Complex[] ymspec = FFT_General(ym, threadid);
+                System.Numerics.Complex[] ymspec = FFT4096(ym, threadid);
 
                 for (int i = 0; i < ymspec.Length; i++)
                 {
                     ymspec[i] = Complex.Exp(ymspec[i]);
                 }
 
-                double[] Signal = IFFT_Real_General(ymspec, threadid); //This is real valued hopefully... (if not there is a problem...)
-                for (int i = 0; i < Signal.Length; i++) Signal[i] /= Math.Sqrt(Signal.Length);
+                double[] Signal = IFFT_Real4096(ymspec, threadid); //This is real valued hopefully... (if not there is a problem...)
+                double[] S2 = new double[Signal.Length];
+                //for (int i = Signal.Length / 2; i < Signal.Length; i++) S2[i] = Signal[Signal.Length - 1 - ( i - Signal.Length / 2)] / Math.Sqrt(Signal.Length/2);
+                for (int i = Signal.Length / 2; i < Signal.Length; i++) S2[i] = (Signal[Signal.Length / 2 - 1 - (i - Signal.Length / 2)] + Signal[Signal.Length - 1 - (i - Signal.Length / 2)]) / Math.Sqrt(Signal.Length);
+                //for (int i = 0; i < Signal.Length / 2; i++) Signal[i] = 0;
 
-                double sum_end1 = 0;
-                for (int i = 0; i < ymspec.Length; i++)
-                {
-                    sum_end1 += Signal[i] * Signal[i];
-                }
+                //double sum_end1 = 0;
+                //for (int i = 0; i < ymspec.Length; i++)
+                //{
+                //    sum_end1 += Signal[i] * Signal[i];
+                //}
 
-                return Signal;
+
+                return S2;
             }
+
+            //public static double[] Minimum_Phase_Signal(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
+            //{
+            //    double[] M_spec = Magnitude_Spectrum(Octave_pressure, sample_frequency, length_starttofinish, threadid);
+
+            //    double sum_start = 0;
+            //    for (int i = 0; i < M_spec.Length; i++) sum_start += M_spec[i] * M_spec[i];
+
+            //    System.Numerics.Complex[] logspec = new System.Numerics.Complex[M_spec.Length];
+            //    for (int i = 0; i < M_spec.Length; i++)
+            //    {
+            //        if (M_spec[i] == 0) logspec[i] = -100;
+            //        else logspec[i] = Math.Log(M_spec[i]);
+            //    }
+
+            //    double[] real_cepstrum = IFFT_Real4096(Mirror_Spectrum(logspec), threadid);
+            //    Scale(ref real_cepstrum);
+
+            //    double[] ym = new double[length_starttofinish];
+            //    ym[0] = real_cepstrum[0];
+
+            //    for (int i = 1; i < length_starttofinish / 2; i++)
+            //    {
+            //        ym[i] = 2 * real_cepstrum[i];
+            //    }
+            //    ym[length_starttofinish / 2] = real_cepstrum[length_starttofinish / 2];
+            //    System.Numerics.Complex[] ymspec = FFT4096(ym, threadid);
+
+            //    for (int i = 0; i < ymspec.Length; i++)
+            //    {
+            //        ymspec[i] = Complex.Exp(ymspec[i]);
+            //    }
+
+            //    double[] Signal = IFFT_Real4096(ymspec, threadid); //This is real valued hopefully... (if not there is a problem...)
+            //    for (int i = 0; i < Signal.Length; i++) Signal[i] /= Math.Sqrt(Signal.Length);
+
+            //    double sum_end1 = 0;
+            //    for (int i = 0; i < ymspec.Length; i++)
+            //    {
+            //        sum_end1 += Signal[i] * Signal[i];
+            //    }
+
+            //    return Signal;
+            //}
 
             public static System.Numerics.Complex[] Minimum_Phase_TF_Octaves(double[] Octave_filter, int sample_frequency, int length_starttofinish, int threadid)
             {
@@ -973,6 +1020,8 @@ namespace Pachyderm_Acoustic
 
                 System.Threading.CountdownEvent CDE = new System.Threading.CountdownEvent(Octave_ETC[0].Length);
 
+                //System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.Batch;
+
                 for (int p = 0; p < proc; p++)
                 {
                     output[p] = new double[length];
@@ -1017,10 +1066,8 @@ namespace Pachyderm_Acoustic
                     VB.Populate((int)(100 * (1f - ((float)CDE.CurrentCount / (float)IR.Length))));
 
                     System.Threading.Thread.Sleep(500);
-
                 } while (true);
 
-                //CDE.Wait();
                 VB.Close();
                 return IR;
             }

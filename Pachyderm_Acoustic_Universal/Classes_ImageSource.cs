@@ -1399,21 +1399,22 @@ namespace Pachyderm_Acoustic
 
         public void Create_pressure(int samplefrequency, int length, int threadid)
         {
-            System.Numerics.Complex[] Pspec = Audio.Pach_SP.Filter.Spectrum(prms, samplefrequency, length, threadid);
+            //System.Numerics.Complex[] Pspec = Audio.Pach_SP.Filter.Spectrum(prms, samplefrequency, length, threadid);
 
-            //System.Numerics.Complex[] Pspec = Audio.Pach_SP.Mirror_Spectrum(Audio.Pach_SP.Magnitude_Spectrum(prms, 44100, 4096, 0));
-            //System.Numerics.Complex[] Pspec = Audio.Pach_SP.Mirror_Spectrum(Audio.Pach_SP.Magnitude_Spectrum(prms, 88200, 4096, 0));
+            ////System.Numerics.Complex[] Pspec = Audio.Pach_SP.Mirror_Spectrum(Audio.Pach_SP.Magnitude_Spectrum(prms, 44100, 4096, 0));
+            ////System.Numerics.Complex[] Pspec = Audio.Pach_SP.Mirror_Spectrum(Audio.Pach_SP.Magnitude_Spectrum(prms, 88200, 4096, 0));
 
-            if (Special_Filter != null)
-            {
-                for (int j = 0; j < Pspec.Length; j++) Pspec[j] *= Special_Filter[j];
-            }
+            //if (Special_Filter != null)
+            //{
+            //    for (int j = 0; j < Pspec.Length; j++) Pspec[j] *= Special_Filter[j];
+            //}
 
-            double[] pre = Audio.Pach_SP.IFFT_Real4096(Audio.Pach_SP.Mirror_Spectrum(Pspec), 0);
-            P = new double[pre.Length];
-            double scale = P.Length;
-            int hw = P.Length / 2;
-            for (int i = 0; i < pre.Length; i++) P[i] = pre[(i + hw) % pre.Length] / scale;
+            //double[] pre = Audio.Pach_SP.IFFT_Real4096(Audio.Pach_SP.Mirror_Spectrum(Pspec), 0);
+            //P = new double[pre.Length];
+            //double scale = P.Length;
+            //int hw = P.Length / 2;
+            //for (int i = 0; i < pre.Length; i++) P[i] = pre[(i + hw) % pre.Length] / scale;
+            P = Audio.Pach_SP.Filter.Signal(prms, samplefrequency, length, threadid);
         }
 
         private void Identify(int SrcID, double Direct_Time)

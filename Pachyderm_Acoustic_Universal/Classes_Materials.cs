@@ -364,12 +364,12 @@ namespace Pachyderm_Acoustic
                 if (Trans)
                 {
                     //Z = AbsorptionModels.Operations.Transfer_Matrix_Explicit_Tau(false, 44100, 343, Layers, ref frequency, ref Angles, ref Trans_Loss, ref Reflection_Coefficient);
-                    Z = AbsorptionModels.Operations.Transfer_Matrix_Divisible(false, false, 44100, 343, Layers, ref frequency, ref Angles, out Trans_Loss, out Reflection_Coefficient);
+                    Z = AbsorptionModels.Operations.Transfer_Matrix_Divisible(true, false, 44100, 343, Layers, ref frequency, ref Angles, out Trans_Loss, out Reflection_Coefficient);
                     Trans_Coefficient = new System.Numerics.Complex[Trans_Loss.Length][];
-                    for(int i = 0; i < Trans_Loss.Length; i++)
+                    for (int i = 0; i < Trans_Loss.Length; i++)
                     {
                         Trans_Coefficient[i] = new System.Numerics.Complex[Trans_Loss[i].Length];
-                        for(int j = 0; j < Trans_Coefficient[i].Length; j++)
+                        for (int j = 0; j < Trans_Coefficient[i].Length; j++)
                         {
                             Trans_Coefficient[i][j] = Trans_Loss[i][j] * Trans_Loss[i][j];
                         }
@@ -379,6 +379,12 @@ namespace Pachyderm_Acoustic
                 {
                     //Z = AbsorptionModels.Operations.Transfer_Matrix_Explicit_Z(false, 44100, 343, Layers, ref frequency, ref Angles);
                     Z = AbsorptionModels.Operations.Transfer_Matrix_Divisible(true, false, 44100, 343, Layers, ref frequency, ref Angles, out Trans_Loss, out Reflection_Coefficient);
+                    Trans_Coefficient = new System.Numerics.Complex[36][];
+                    for (int i = 0; i < Trans_Coefficient.Length; i++)
+                    {
+                        Trans_Coefficient[i] = new System.Numerics.Complex[frequency.Length];
+                        for (int j = 0; j < Trans_Coefficient[i].Length; j++) Trans_Coefficient[i][j] = 0;
+                    }
                 }
                 //////////////////Radiation Impedance///////////////////////
                 double[] a_real = new double[Angles.Length]; //prop;
@@ -392,6 +398,7 @@ namespace Pachyderm_Acoustic
                 {
                     Reflection_Coefficient = Pachyderm_Acoustic.AbsorptionModels.Operations.Reflection_Coef(Z, Air_Density, SoundSpeed); //No defined way to build a complex finite reflection coefficient.
                     Angular_Absorption = Pachyderm_Acoustic.AbsorptionModels.Operations.Finite_Unit_Absorption_Coefficient(Zr_interp, Z, a_real, rho, 343);
+
                 }
                 else if (Zf_incorp_Choice == 1)
                 {
@@ -402,7 +409,7 @@ namespace Pachyderm_Acoustic
 
                 Transfer_FunctionR = new MathNet.Numerics.Interpolation.CubicSpline[Angles.Length / 2];
                 Transfer_FunctionI = new MathNet.Numerics.Interpolation.CubicSpline[Angles.Length / 2];
-                for(    int i = 0; i < Reflection_Coefficient.Length / 2; i++)
+                for(int i = 0; i < Reflection_Coefficient.Length / 2; i++)
                 {
                     List<double> real = new List<double>(), imag = new List<double>();
                     for(int j = 0; j < Reflection_Coefficient[i].Length; j++)
