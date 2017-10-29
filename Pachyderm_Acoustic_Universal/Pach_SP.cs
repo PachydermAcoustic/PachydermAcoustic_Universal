@@ -76,10 +76,10 @@ namespace Pachyderm_Acoustic
                 {
                     FFT_ArrayIn4096[i] = new fftw_complexarray(4096);
                     FFT_ArrayOut4096[i] = new fftw_complexarray(4096);
-                    FFT_Plan4096[i] = fftw_plan.dft_1d(4096, FFT_ArrayIn4096[i], FFT_ArrayOut4096[i], fftw_direction.Forward, fftw_flags.Exhaustive);
+                    FFT_Plan4096[i] = fftw_plan.dft_1d(4096, FFT_ArrayIn4096[i], FFT_ArrayOut4096[i], fftw_direction.Forward, fftw_flags.Estimate);
                     IFFT_ArrayIn4096[i] = new fftw_complexarray(4096);
                     IFFT_ArrayOut4096[i] = new fftw_complexarray(4096);
-                    IFFT_Plan4096[i] = fftw_plan.dft_1d(4096, IFFT_ArrayIn4096[i], IFFT_ArrayOut4096[i], fftw_direction.Forward, fftw_flags.Exhaustive);
+                    IFFT_Plan4096[i] = fftw_plan.dft_1d(4096, IFFT_ArrayIn4096[i], IFFT_ArrayOut4096[i], fftw_direction.Forward, fftw_flags.Estimate);
                 }
 
                 Initialize_filter_functions();
@@ -273,11 +273,11 @@ namespace Pachyderm_Acoustic
 
             public static System.Numerics.Complex[] FFT4096(double[] Signal, int threadid)
             {
-                double[] Sig_complex = new double[Signal.Length * 2];
-                for (int i = 0; i < Signal.Length; i++) Sig_complex[i * 2] = Signal[i];
+                //double[] Sig_complex = new double[Signal.Length * 2];
+                //for (int i = 0; i < Signal.Length; i++) Sig_complex[i * 2] = Signal[i];
 
                 //FFTW.Net Setup//
-                FFT_ArrayIn4096[threadid].SetData(Sig_complex);
+                FFT_ArrayIn4096[threadid].SetData(Signal);
                 //FFT_ArrayOut4096[threadid].SetZeroData();
                 FFT_Plan4096[threadid].Execute();
 
@@ -287,15 +287,15 @@ namespace Pachyderm_Acoustic
 
             public static double[] IFFT_Real4096(System.Numerics.Complex[] spectrum, int threadid)
             {
-                double[] samplep = new double[spectrum.Length * 2];
-                for (int i = 0; i < spectrum.Length; i++)
-                {
-                    samplep[2 * i] = spectrum[i].Real;
-                    samplep[2 * i + 1] = spectrum[i].Imaginary;
-                }
+                //double[] samplep = new double[spectrum.Length * 2];
+                //for (int i = 0; i < spectrum.Length; i++)
+                //{
+                //    samplep[2 * i] = spectrum[i].Real;
+                //    samplep[2 * i + 1] = spectrum[i].Imaginary;
+                //}
 
                 //FFTW.Net Setup//
-                IFFT_ArrayIn4096[threadid].SetData(samplep);
+                IFFT_ArrayIn4096[threadid].SetData(spectrum);
                 IFFT_Plan4096[threadid].Execute();
 
                 double[] Out = IFFT_ArrayOut4096[threadid].GetData_Real();
@@ -305,15 +305,15 @@ namespace Pachyderm_Acoustic
 
             public static Complex[] IFFT4096(System.Numerics.Complex[] spectrum, int threadid)
             {
-                double[] samplep = new double[spectrum.Length * 2];
-                for (int i = 0; i < spectrum.Length; i++)
-                {
-                    samplep[2 * i] = spectrum[i].Real;
-                    samplep[2 * i + 1] = spectrum[i].Imaginary;
-                }
+                //double[] samplep = new double[spectrum.Length * 2];
+                //for (int i = 0; i < spectrum.Length; i++)
+                //{
+                //    samplep[2 * i] = spectrum[i].Real;
+                //    samplep[2 * i + 1] = spectrum[i].Imaginary;
+                //}
 
                 //FFTW.Net Setup//
-                IFFT_ArrayIn4096[threadid].SetData(samplep);
+                IFFT_ArrayIn4096[threadid].SetData(spectrum);
                 IFFT_Plan4096[threadid].Execute();
 
                 System.Numerics.Complex[] Out = IFFT_ArrayOut4096[threadid].GetData_Complex();
@@ -336,11 +336,11 @@ namespace Pachyderm_Acoustic
 
             public static System.Numerics.Complex[] FFT_General(double[] Signal, int threadid)
             {
-                double[] Sig_complex = new double[Signal.Length * 2];
-                for (int i = 0; i < Signal.Length; i++) Sig_complex[i * 2] = Signal[i];
+                //double[] Sig_complex = new double[Signal.Length * 2];
+                //for (int i = 0; i < Signal.Length; i++) Sig_complex[i * 2] = Signal[i];
 
                 //FFTW.Net Setup//
-                FFT_ArrayIn[threadid] = new fftw_complexarray(Sig_complex);
+                FFT_ArrayIn[threadid] = new fftw_complexarray(Signal);
                 FFT_ArrayOut[threadid] = new fftw_complexarray(Signal.Length);
                 FFT_Plan[threadid] = fftw_plan.dft_1d(Signal.Length, FFT_ArrayIn[threadid], FFT_ArrayOut[threadid], fftw_direction.Forward, fftw_flags.Estimate);
 
@@ -353,15 +353,15 @@ namespace Pachyderm_Acoustic
 
             public static double[] IFFT_Real_General(System.Numerics.Complex[] spectrum, int threadid)
             {
-                double[] samplep = new double[spectrum.Length * 2];
-                for (int i = 0; i < spectrum.Length; i++)
-                {
-                    samplep[2 * i] = spectrum[i].Real;
-                    samplep[2 * i + 1] = spectrum[i].Imaginary;
-                }
+                //double[] samplep = new double[spectrum.Length * 2];
+                //for (int i = 0; i < spectrum.Length; i++)
+                //{
+                //    samplep[2 * i] = spectrum[i].Real;
+                //    samplep[2 * i + 1] = spectrum[i].Imaginary;
+                //}
 
                 //FFTW.Net Setup//
-                IFFT_ArrayIn[threadid] = new fftw_complexarray(samplep);
+                IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum);
                 IFFT_ArrayOut[threadid] = new fftw_complexarray(spectrum.Length);
                 IFFT_Plan[threadid] = fftw_plan.dft_1d(spectrum.Length, IFFT_ArrayIn[threadid], IFFT_ArrayOut[threadid], fftw_direction.Backward, fftw_flags.Estimate);
 
@@ -374,15 +374,15 @@ namespace Pachyderm_Acoustic
 
             public static Complex[] IFFT_General(System.Numerics.Complex[] spectrum, int threadid)
             {
-                double[] samplep = new double[spectrum.Length * 2];
-                for (int i = 0; i < spectrum.Length; i++)
-                {
-                    samplep[2 * i] = spectrum[i].Real;
-                    samplep[2 * i + 1] = spectrum[i].Imaginary;
-                }
+                //double[] samplep = new double[spectrum.Length * 2];
+                //for (int i = 0; i < spectrum.Length; i++)
+                //{
+                //    samplep[2 * i] = spectrum[i].Real;
+                //    samplep[2 * i + 1] = spectrum[i].Imaginary;
+                //}
 
                 //FFTW.Net Setup//
-                IFFT_ArrayIn[threadid] = new fftw_complexarray(samplep);
+                IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum);
                 IFFT_ArrayOut[threadid] = new fftw_complexarray(spectrum.Length);
                 IFFT_Plan[threadid] = fftw_plan.dft_1d(spectrum.Length, IFFT_ArrayIn[threadid], IFFT_ArrayOut[threadid], fftw_direction.Backward, fftw_flags.Estimate);
 
@@ -765,6 +765,7 @@ namespace Pachyderm_Acoustic
 
                 return ymspec;
             }
+
             public static double[] Minimum_Phase_Signal(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
                 double[] M_spec = Magnitude_Spectrum(Octave_pressure, sample_frequency, length_starttofinish, threadid);
@@ -773,12 +774,20 @@ namespace Pachyderm_Acoustic
                 for (int i = 0; i < M_spec.Length; i++) sum_start += M_spec[i] * M_spec[i];
 
                 System.Numerics.Complex[] logspec = new System.Numerics.Complex[M_spec.Length];
+
+                double min = double.MaxValue;
+
                 for (int i = 0; i < M_spec.Length; i++)
                 {
-                    if (M_spec[i] == 0) logspec[i] = -100;
-                    else logspec[i] = Math.Log(M_spec[i]);
+                    if (M_spec[i] != 0) min = Math.Min(M_spec[i], min);
                 }
 
+                for (int i = 0; i < M_spec.Length; i++)
+                {
+                    if (M_spec[i] == 0) logspec[i] = Math.Log(min * 0.01);
+                    else logspec[i] = Math.Log(M_spec[i]);
+                }
+                
                 double[] real_cepstrum = IFFT_Real4096(Mirror_Spectrum(logspec), threadid);
                 Scale(ref real_cepstrum);
 
@@ -808,7 +817,6 @@ namespace Pachyderm_Acoustic
                 //{
                 //    sum_end1 += Signal[i] * Signal[i];
                 //}
-
 
                 return S2;
             }
@@ -845,8 +853,9 @@ namespace Pachyderm_Acoustic
             //        ymspec[i] = Complex.Exp(ymspec[i]);
             //    }
 
-            //    double[] Signal = IFFT_Real4096(ymspec, threadid); //This is real valued hopefully... (if not there is a problem...)
-            //    for (int i = 0; i < Signal.Length; i++) Signal[i] /= Math.Sqrt(Signal.Length);
+            //    Complex[] s = IFFT_General(ymspec, threadid); //This is real valued hopefully... (if not there is a problem...)
+            //    double[] Signal = new double[s.Length];
+            //    for (int i = 0; i < Signal.Length; i++) Signal[i] =  s[i].Real / Math.Sqrt(Signal.Length);
 
             //    double sum_end1 = 0;
             //    for (int i = 0; i < ymspec.Length; i++)

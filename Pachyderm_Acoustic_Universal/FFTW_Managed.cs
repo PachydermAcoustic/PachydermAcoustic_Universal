@@ -409,11 +409,23 @@ namespace FFTWSharp
         /// </summary>
         public void SetData(double[] data)
         {
-            if (data.Length / 2 != this.length)
-                throw new ArgumentException("Array length mismatch!");
-
-            Marshal.Copy(data, 0, handle, this.length * 2);
-            GC.AddMemoryPressure(this.length * 16);
+            if (data.Length / 2 == this.length)
+            {
+                Marshal.Copy(data, 0, handle, this.length * 2);
+                GC.AddMemoryPressure(this.length * 16);
+            }
+            else if (data.Length == this.length)
+            {
+                double[] data_in = new double[data.Length * 2];
+                for (int i = 0; i < data.Length; i++)
+                {
+                    data_in[2 * i] = data[i];
+                    data_in[2 * i + 1] = 0;
+                }
+                Marshal.Copy(data_in, 0, handle, this.length * 2);
+                GC.AddMemoryPressure(this.length * 16);
+            }
+            else throw new ArgumentException("Array length mismatch!");
         }
 
         /// <summary>

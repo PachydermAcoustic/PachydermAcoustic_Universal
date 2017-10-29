@@ -501,7 +501,7 @@ namespace Pachyderm_Acoustic
 
                 public void RuntoCompletion()
                 {
-                    for(time_ms = 0; time_ms < tmax/1000; time_ms+= dt)
+                    for(time_ms = 0; time_ms < tmax; time_ms+= dt)
                     {
                         Increment();
                     }
@@ -947,7 +947,7 @@ namespace Pachyderm_Acoustic
 
                     Center += new Point((Rnd.NextDouble() - .5) * 1E-6, (Rnd.NextDouble() - .5) * 1E-6, (Rnd.NextDouble() - .5) * 1E-6);
 
-                    double u, v;
+                    //double u, v;
 
                     X_Event XPt = new X_Event();
                     //new Vector(-1,0,0),
@@ -1837,7 +1837,7 @@ namespace Pachyderm_Acoustic
 
                 public void Connect_Grid_Freefield(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double _tmax, double dt, int no_of_Layers)
                 {
-                    no_of_samples = (int)Math.Ceiling(_tmax/1000 / dt);
+                    no_of_samples = (int)Math.Ceiling(_tmax / dt);
                     tmax = _tmax;
                     recording = new double[Loc.Length][];
                     for (int i = 0; i < Loc.Length; i++)
@@ -1856,7 +1856,7 @@ namespace Pachyderm_Acoustic
 
                 public void Connect_Grid_Laboratory(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double _tmax, double dt, int no_of_Layers)
                 {
-                    no_of_samples = (int)Math.Ceiling(_tmax / 1000 / dt);
+                    no_of_samples = (int)Math.Ceiling(_tmax / dt);
                     tmax = _tmax;
                     recording = new double[Loc.Length][];
 
@@ -1876,7 +1876,7 @@ namespace Pachyderm_Acoustic
 
                 public void Connect_Grid_UniqueOnly_Freefield(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double _tmax, double dt, int no_of_Layers)
                 {
-                    no_of_samples = (int)Math.Ceiling(_tmax / 1000 / dt);
+                    no_of_samples = (int)Math.Ceiling(_tmax / dt);
                     tmax = _tmax;
 
                     bool[,,] Check_Frame = new bool[Frame.Length, Frame[0].Length, Frame[0][0].Length];
@@ -1905,7 +1905,7 @@ namespace Pachyderm_Acoustic
 
                 public void Connect_Grid_UniqueOnly_Laboratory(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double _tmax, double dt, int no_of_Layers)
                 {
-                    no_of_samples = (int)Math.Ceiling(_tmax / 1000 / dt);
+                    no_of_samples = (int)Math.Ceiling(_tmax / dt);
                     tmax = _tmax;
 
                     bool[,,] Check_Frame = new bool[Frame.Length, Frame[0].Length, Frame[0][0].Length];
