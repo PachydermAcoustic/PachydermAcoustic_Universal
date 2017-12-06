@@ -99,12 +99,19 @@ namespace Pachyderm_Acoustic
 
             public override System.Numerics.Complex[] Reflection_Spectrum(int sample_frequency, int length, Hare.Geometry.Vector Normal, Hare.Geometry.Vector Dir, int threadid)
             {
-                System.Numerics.Complex[] Ref_trns = new System.Numerics.Complex[length];
+                double[] pr = new double[8] { Math.Sqrt(Ref[0]), Math.Sqrt(Ref[1]), Math.Sqrt(Ref[2]), Math.Sqrt(Ref[3]), Math.Sqrt(Ref[4]), Math.Sqrt(Ref[5]), Math.Sqrt(Ref[6]), Math.Sqrt(Ref[7])};
 
-                for (int j = 0; j < length; j++)
-                {
-                    Ref_trns[j] = new System.Numerics.Complex(Transfer_Function.Interpolate(j * (sample_frequency / 2) / length), 0);
-                }
+                double[] filter = Audio.Pach_SP.Magnitude_Filter(pr, sample_frequency, length, threadid);
+
+                System.Numerics.Complex[] Ref_trns = new System.Numerics.Complex[filter.Length];
+                for (int i = 0; i < filter.Length; i++) Ref_trns[i] = filter[i];
+
+                //System.Numerics.Complex[] Ref_trns = new System.Numerics.Complex[length];
+
+                //for (int j = 0; j < length; j++)
+                //{
+                //    Ref_trns[j] = new System.Numerics.Complex(Transfer_Function.Interpolate(j * (sample_frequency / 2) / length), 0);
+                //}
 
                 return Ref_trns;
             }

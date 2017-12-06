@@ -652,56 +652,42 @@ namespace Pachyderm_Acoustic
                             ///Apply TransMod to TF...
                             ///Each sample will have it's own unique air attenuation and occlusion conditions, which means that it needs to be treated individually for input signal (for air attenuation and absorption).
                             //double[] TF = Audio.Pach_SP.Magnitude_Filter(new double[8] { Math.Sqrt(Trans_Mod[p_id][0] * SW[0]), Math.Sqrt(Trans_Mod[p_id][1] * SW[1]), Math.Sqrt(Trans_Mod[p_id][2] * SW[2]), Math.Sqrt(Trans_Mod[p_id][3] * SW[3]), Math.Sqrt(Trans_Mod[p_id][4] * SW[4]), Math.Sqrt(Trans_Mod[p_id][5] * SW[5]), Math.Sqrt(Trans_Mod[p_id][6] * SW[6]), Math.Sqrt(Trans_Mod[p_id][7] * SW[7]) }, 44100, 4096, Threadid);
-                            double[] SW = Src.DirPower(Threadid, this.Rnd[Threadid].Next(), dir);
-                            foreach (Environment.Material m in M)
-                            {
-                                if (m is Environment.Basic_Material) for (int oct = 0; oct < 8; oct++)
-                                    {
-                                        SW[oct] *= 1 - m.Coefficient_A_Broad(oct);
-                                        //SW[oct] *= Trans_Mod[j][oct];
-                                    }
-                            }
+                            double[] SW = Src.Dir_Filter(Threadid, this.Rnd[Threadid].Next(), dir, 88100, 4096);
+                            //foreach (Environment.Material m in M)
+                            //{
+                            //    if (m is Environment.Basic_Material) for (int oct = 0; oct < 8; oct++)
+                            //        {
+                            //            SW[oct] *= 1 - m.Coefficient_A_Broad(oct);
+                            //            //SW[oct] *= Trans_Mod[j][oct];
+                            //        }
+                            //}
 
-                            System.Numerics.Complex[] TF = Audio.Pach_SP.Filter.Spectrum(new double[8] { Math.Sqrt(SW[0]), Math.Sqrt(SW[1]), Math.Sqrt(SW[2]), Math.Sqrt(SW[3]), Math.Sqrt(SW[4]), Math.Sqrt(SW[5]), Math.Sqrt(SW[6]), Math.Sqrt(SW[7]) }, 44100, 4096, Threadid);
-                        //double[] ms = Audio.Pach_SP.Magnitude_Spectrum(new double[8] { Math.Sqrt(SW[0]), Math.Sqrt(SW[1]), Math.Sqrt(SW[2]), Math.Sqrt(SW[3]), Math.Sqrt(SW[4]), Math.Sqrt(SW[5]), Math.Sqrt(SW[6]), Math.Sqrt(SW[7]) }, 44100, 4096, Threadid);
-                        //double[] ms = Audio.Pach_SP.Magnitude_Spectrum(new double[8] { Math.Sqrt(SW[0]), Math.Sqrt(SW[1]), Math.Sqrt(SW[2]), Math.Sqrt(SW[3]), Math.Sqrt(SW[4]), Math.Sqrt(SW[5]), Math.Sqrt(SW[6]), Math.Sqrt(SW[7]) }, 88200, 8096, Threadid);
-
-                        //System.Numerics.Complex[] TF = new System.Numerics.Complex[ms.Length];
-                        //    for (int j = 0; j < TF.Length; j++) TF[j] = ms[j];
-                                //Array.Resize(ref TF, TF.Length / 2);
-
+                            System.Numerics.Complex[] TF = new System.Numerics.Complex[4096];
                             ///Apply Air attenuation to TF...
                             double[] atten = new double[0];
                             double[] freq = new double[0];
-                            Room.AttenuationFilter(4096, 44100, t * c_sound, ref freq, ref atten, Rec[rec_id]);//sig is the magnitude response of the air attenuation filter...
+                            Room.AttenuationFilter(4096, 88200, t * c_sound, ref freq, ref atten, Rec[rec_id]);//sig is the magnitude response of the air attenuation filter...
                             //Room.AttenuationFilter(4096, 88200, t * c_sound, ref freq, ref atten, Rec[rec_id]);//sig is the magnitude response of the air attenuation filter...
-                            for (int j = 0; j < TF.Length; j++) TF[j] *= atten[j];
+                            for (int j = 0; j < TF.Length; j++) TF[j] = SW[j] * atten[j];
                             
                             for (int j = 0; j < M.Length; j++)
                             {
-                                if (!(M[j] is Environment.Basic_Material))
-                                {
+                                //if (!(M[j] is Environment.Basic_Material))
+                                //{
                                     if (Sequence[j] < Room.PlaneCount)
                                     {
-                                        System.Numerics.Complex[] spec = M[j].Reflection_Spectrum(44100, 4096 / 2, Room.Normal(Sequence[j]), PathVertices[i][j] - PathVertices[i][j - 1], Threadid);
+                                        System.Numerics.Complex[] spec = M[j].Reflection_Spectrum(44100, 4096, Room.Normal(Sequence[j]), PathVertices[i][j] - PathVertices[i][j - 1], Threadid);
                                         for (int k = 0; k < TF.Length; k++) TF[k] *= spec[k];
                                     }
-                                }
+                                //}
                             }
 
-                            //Audio.Pach_SP.Filter.Response(TF, SampleRate, Threadid);
-
-                            double[] pulse = Audio.Pach_SP.IFFT_Real4096(Audio.Pach_SP.Mirror_Spectrum(TF), Threadid);
-                            //double[] pulse = new double[prepulse.Length];
+                            double[] pulse = Audio.Pach_SP.IFFT_Real_General(Audio.Pach_SP.Mirror_Spectrum(TF), Threadid);
                             Audio.Pach_SP.Scale(ref pulse);
-                            //for (int j = 0; j < prepulse.Length; j++)
-                            //{
-                            //    pulse[j] = prepulse[(j + prepulse.Length/2) % prepulse.Length];
-                            //}
+
                             ////////////////////////////////////////////////////////
                             //Pachyderm_Acoustic.Audio.Pach_SP.resample(ref pulse);
                             ////////////////////////////////////////////////////////
-                            //Audio.Pach_SP.Raised_Cosine_Window(ref pulse);
                             //Manual convolution of each distinct contribution of edge...
                             int index = (int)Math.Floor(t * SampleRate);
                             double omni_pr = Pr_Spline[i].Interpolate(t) * 88100/SampleRate; //88100 is the edge analysis sample frequency...
@@ -758,7 +744,7 @@ namespace Pachyderm_Acoustic
                         }
                     ///Enter the reflection
                     PathVertices.RemoveAll(item => item == null);
-                    ThreadPaths[rec_id, Threadid].Add(new Compound_Path(PathVertices.ToArray(), Sequence, Src.Source_ID(), H, Hdir, T0, Speed_of_Sound, ref Direct_Time[rec_id], Threadid));
+                    ThreadPaths[rec_id, Threadid].Add(new Compound_Path(PathVertices.ToArray(), Sequence, Src.Source_ID(), Src.SoundPower, H, Hdir, T0, Speed_of_Sound, ref Direct_Time[rec_id], Threadid));
             }
         }
 
@@ -1209,6 +1195,17 @@ namespace Pachyderm_Acoustic
             }
         }
 
+        public void Create_Filter(double[] SWL, int samplingfrequency, int length)
+        {
+            for (int i = 0; i < Paths.Length; i++)
+            {
+                foreach (Deterministic_Reflection P in Paths[i])
+                {
+                    P.Create_Filter(SWL, samplingfrequency, length, 0);
+                }
+            }
+        }
+
         public Vector[] Dir_Energy(int rec_id, int index, int Octave, double alt, double azi, bool degrees)
         {
             return ValidPaths[rec_id][index].Dir_Energy(Octave, alt, azi, degrees);
@@ -1265,6 +1262,11 @@ namespace Pachyderm_Acoustic
         public abstract double[] Pressure { get; }
         public abstract double[] Dir_Pressure(int Rec_ID, double alt, double azi, bool degrees, bool Figure8, int sampleFreq);
         public abstract double[][] Dir_Pressure(int Rec_ID, double alt, double azi, bool degrees, int sampleFreq);
+        public abstract double[] Filter { get; }
+        public abstract double[] Dir_Filter(int Rec_ID, double alt, double azi, bool degrees, bool Figure8, int sampleFreq);
+        public abstract double[][] Dir_Filter(int Rec_ID, double alt, double azi, bool degrees, int sampleFreq);
+
+        public abstract void Create_Filter(double[] SWL, int SampleFrequecny, int length, int threadid);
     }
 
     /// <summary>
@@ -1278,6 +1280,7 @@ namespace Pachyderm_Acoustic
         private double Length;
         private int[] Sequence;
         public double[] P;
+        public double[] F;
         public double[] prms;//Octave band rms pressure.
         public System.Numerics.Complex[] Special_Filter;//Special circumstances filter (usually for detailed materials...)
 
@@ -1292,23 +1295,6 @@ namespace Pachyderm_Acoustic
             Identify(SrcID, Direct_Time);
 
             Create_pressure(44100, 4096, 0);
-
-            //System.Numerics.Complex[] Pspec = Audio.Pach_SP.Mirror_Spectrum(Audio.Pach_SP.Magnitude_Spectrum(prms, 44100, 4096, 0));
-            ////System.Numerics.Complex[] Pspec = Audio.Pach_SP.Mirror_Spectrum(Audio.Pach_SP.Magnitude_Spectrum(prms, 88200, 4096, 0));
-
-            //if (Special_Filter != null)
-            //{
-            //    for (int j = 0; j < Pspec.Length; j++) Pspec[j] *= Special_Filter[j];
-            //}
-
-            //double[] pre = Audio.Pach_SP.IFFT_Real4096(Pspec, 0);
-            //P = new double[pre.Length];
-            //double scale = Math.Sqrt(P.Length);
-            //int hw = P.Length / 2;
-            //for (int i = 0; i < pre.Length; i++) P[i] = pre[(i + hw) % pre.Length] / scale;
-
-            //Audio.Pach_SP.resample(ref P);
-            //Audio.Pach_SP.Raised_Cosine_Window(ref P);
         }
 
         public Specular_Path(Hare.Geometry.Point[] Path, int[] Seq_planes, int[] Seq_Polys, Scene Room, Source Src, double C_Sound, double[] Trans_Mod, ref double Direct_Time, int thread, int Rnd)
@@ -1325,21 +1311,21 @@ namespace Pachyderm_Acoustic
                 Pt = ValidPath[q] - ValidPath[q - 1];
                 Length += Math.Sqrt(Pt.x * Pt.x + Pt.y * Pt.y + Pt.z * Pt.z);
             }
-            
+
             Time = Length / C_Sound + Src.Delay;
             Vector DIR = ValidPath[1] - ValidPath[0];
             DIR.Normalize();
 
             Random rnd = new Random(Rnd);
             float time = (float)(Length / C_Sound);
-            
+
             ///Energy based formulation
             double[] Power = Src.DirPower(thread, Rnd, DIR);
             Identify(Src.Source_ID(), Direct_Time);
-            
+
             for (int oct = 0; oct < 8; oct++)
             {
-                PathEnergy[oct] = (Power[oct] * Math.Pow(10,-.1 * Room.Attenuation(0)[oct] * Length) / (4 * Math.PI * Length * Length));
+                PathEnergy[oct] = (Power[oct] * Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * Length) / (4 * Math.PI * Length * Length));
                 PathEnergy[oct] *= Trans_Mod[oct];
             }
 
@@ -1358,15 +1344,12 @@ namespace Pachyderm_Acoustic
 
             for (int i = 0; i < 8; i++) prms[i] = Math.Sqrt(PathEnergy[i] * Room.Rho_C(Path[0]));
 
-            //System.Numerics.Complex[] Pspec = Audio.Pach_SP.Mirror_Spectrum(Audio.Pach_SP.Magnitude_Spectrum(prms, 44100, 4096, thread));
-            //System.Numerics.Complex[] Pspec = Audio.Pach_SP.Mirror_Spectrum(Audio.Pach_SP.Magnitude_Spectrum(prms, 88200, 4096, thread));
-
             Special_Filter = new System.Numerics.Complex[4096];
             for (int i = 0; i < Special_Filter.Length; i++) Special_Filter[i] = 1;
 
             foreach (int q in Seq_Polys)
             {
-                if (Room.AbsorptionValue[q] is Basic_Material) continue; 
+                if (Room.AbsorptionValue[q] is Basic_Material) continue;
                 //Pressure based formulation of materials
                 for (int i = 0; i < Seq_Polys.Length; i++)
                 {
@@ -1374,47 +1357,25 @@ namespace Pachyderm_Acoustic
                     if (!(Room.AbsorptionValue[Seq_Polys[i]] is Basic_Material))
                     {
                         System.Numerics.Complex[] Ref = Room.AbsorptionValue[Seq_Polys[i]].Reflection_Spectrum(44100, 4096, Room.Normal(Seq_Polys[i]), d, thread);
-                        //System.Numerics.Complex[] Ref = Room.AbsorptionValue[Seq_Polys[i]].Reflection_Spectrum(88200, 4096, Room.Normal(Seq_Polys[i]), d, thread);
-                        //for (int j = 0; j < Pspec.Length; j++) Pspec[j] *= Ref[j];
                         for (int j = 0; j < Special_Filter.Length; j++) Special_Filter[j] *= Ref[j];
                     }
                 }
             }
 
             Create_pressure(44100, 4096, thread);
-
-            //double[] tank = new double[Pspec.Length];
-            //for (int i = 0; i < tank.Length; i++) tank[i] = Pspec[i].Real;
-            //P = Audio.Pach_SP.Minimum_Phase_Response(tank, 44100, thread);
-            //double[] pre = Audio.Pach_SP.IFFT_Real4096(Pspec, thread);
-            //P = new double[pre.Length];
-            //double scale = Math.Sqrt(P.Length);
-            //int hw = P.Length / 2;
-            //for (int i = 0; i < pre.Length; i++) P[i] = pre[(i + hw) % pre.Length] / scale;
-            /////////////////////////////////
-            //Audio.Pach_SP.resample(ref P);
-            ///////////////////////////////
-            //Audio.Pach_SP.Raised_Cosine_Window(ref P);
         }
 
         public void Create_pressure(int samplefrequency, int length, int threadid)
         {
-            //System.Numerics.Complex[] Pspec = Audio.Pach_SP.Filter.Spectrum(prms, samplefrequency, length, threadid);
-
-            ////System.Numerics.Complex[] Pspec = Audio.Pach_SP.Mirror_Spectrum(Audio.Pach_SP.Magnitude_Spectrum(prms, 44100, 4096, 0));
-            ////System.Numerics.Complex[] Pspec = Audio.Pach_SP.Mirror_Spectrum(Audio.Pach_SP.Magnitude_Spectrum(prms, 88200, 4096, 0));
-
-            //if (Special_Filter != null)
-            //{
-            //    for (int j = 0; j < Pspec.Length; j++) Pspec[j] *= Special_Filter[j];
-            //}
-
-            //double[] pre = Audio.Pach_SP.IFFT_Real4096(Audio.Pach_SP.Mirror_Spectrum(Pspec), 0);
-            //P = new double[pre.Length];
-            //double scale = P.Length;
-            //int hw = P.Length / 2;
-            //for (int i = 0; i < pre.Length; i++) P[i] = pre[(i + hw) % pre.Length] / scale;
             P = Audio.Pach_SP.Filter.Signal(prms, samplefrequency, length, threadid);
+        }
+
+        public override void Create_Filter(double[] SWL, int samplefrequency, int length, int threadid)
+        {
+            double[] tf_spec = new double[8];
+            for (int i = 0; i < 8; i++) tf_spec[i] = prms[i] * Math.Pow(10, (SWL[5] - SWL[i]) / 20);
+
+            F = Audio.Pach_SP.Filter.Transfer_Function(tf_spec, samplefrequency, length, threadid);
         }
 
         private void Identify(int SrcID, double Direct_Time)
@@ -1540,6 +1501,43 @@ namespace Pachyderm_Acoustic
             return Pn;
         }
 
+        public override double[][] Dir_Filter(int Octave, double alt, double azi, bool degrees, int SampleFreq)
+        {
+            Vector V = Path[0][Path[0].Length - 1] - Path[0][Path[0].Length - 2];
+            V.Normalize();
+            Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V, azi, 0, degrees), 0, alt, degrees);
+            double[][] Fn = new double[F.Length][];
+
+            for (int i = 0; i < F.Length; i++)
+            {
+                Fn[i] = new double[3] { Vn.x * F[i], Vn.y * F[i], Vn.z * F[i] };
+            }
+            return Fn;
+        }
+
+        public override double[] Dir_Filter(int Octave, double alt, double azi, bool degrees, bool Figure8, int SampleFreq)
+        {
+            Vector V = Path[0][Path[0].Length - 1] - Path[0][Path[0].Length - 2];
+            V.Normalize();
+            Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V, azi, 0, degrees), 0, alt, degrees);
+            double[] Fn = new double[F.Length];
+            if (Figure8)
+            {
+                for (int i = 0; i < F.Length; i++)
+                {
+                    Fn[i] = Vn.x * F[i];
+                }
+            }
+            if (Vn.x > 0)
+            {
+                for (int i = 0; i < F.Length; i++)
+                {
+                    Fn[i] = Vn.x * F[i];
+                }
+            }
+            return Fn;
+        }
+
         public override Vector[] Dir_Energy(int Octave, Vector V)
         {
             double l = Math.Sqrt(V.z * V.z + V.x * V.x);
@@ -1603,6 +1601,26 @@ namespace Pachyderm_Acoustic
             return Dp;
         }
 
+        public override double[] Filter
+        {
+            get
+            {
+                return F;
+            }
+        }
+
+        //public Vector[] Dir_Filter()
+        //{
+        //    Vector[] Dp = new Vector[F.Length];
+        //    for (int i = 0; i < F.Length; i++)
+        //    {
+        //        Vector Dir = Path[i][Path[i].Length - 1] - Path[i][Path[i].Length - 2];
+        //        Dir.Normalize();
+        //        Dp[i] = Dir * F[i];
+        //    }
+        //    return Dp;
+        //}
+
         public override string ToString()
         {
             return Identifier;
@@ -1615,41 +1633,68 @@ namespace Pachyderm_Acoustic
         private double[][] PathEnergy;
         private double Time;
         private int[] Sequence;
+        public double[] F;
+        public double[][] Fdir;
+        public double[] H;
+        public double[][] Hdir;
+        public double[] Octave_Power;
         public double[] P;
         public double[][] Pdir;
-        
         int fs = 44100;
 
-        public Compound_Path(Hare.Geometry.Point[][] PathVertices, int[] Seq_Planes, int Source_ID, double[] H, double[][] Hdir, double T0, double Speed_of_Sound, ref double Direct_Time, int Threadid)
+        public Compound_Path( Hare.Geometry.Point[][] PathVertices, int[] Seq_Planes, int Source_ID, double[] Octave_Power, double[] _H, double[][] _Hdir, double T0, double Speed_of_Sound, ref double Direct_Time, int Threadid)
         {
             Time = T0;
             ///Here, a compound reflection collector, and any interpolation that must be done.
             ValidPath = PathVertices;
             List<Hare.Geometry.Point[]> Paths = new List<Hare.Geometry.Point[]>();
             Sequence = Seq_Planes;
-            P = H;
-            Pdir = Hdir;
+            H = _H;
+            Hdir = _Hdir;
 
-            double[] pd = new double[P.Length];
-            double[] timeaxis = new double[P.Length];
-            for (int t = 0; t < timeaxis.Length; t++) { timeaxis[t] = (double)t / 44100f; pd[t] = (double)P[t]; }
+            double[] pd = new double[H.Length];
+            double[] timeaxis = new double[H.Length];
+            for (int t = 0; t < timeaxis.Length; t++) { timeaxis[t] = (double)t / 44100f; pd[t] = (double)H[t]; }
 
-            PathEnergy = new double[P.Length][];
+            PathEnergy = new double[H.Length][];
             for (int t = 0; t < PathEnergy.Length; t++) PathEnergy[t] = new double[8];
-            double[][] OctavePressure = new double[8][];
 
-            for (int oct = 0; oct < 8; oct++)
-            {
-                OctavePressure[oct] = Audio.Pach_SP.FIR_Bandpass(this.P, oct, fs, Threadid);
-                for (int t = 0; t < P.Length; t++)
-                {
-                    PathEnergy[t][oct] = OctavePressure[oct][t] * OctavePressure[oct][t] / (Speed_of_Sound * 1.2);
-                }
-            }
+            //Incoprporate source power here (Is octave band absorption included in H?)
+            Create_Pressure(Octave_Power, fs, 4096, Speed_of_Sound, Threadid);
 
             //Build an Identifier
             Identify(Source_ID, Direct_Time);
         }
+        
+        public void Create_Pressure(double[] SW, int SampleFrequency, int LengthofPulse, double Speed_of_Sound, int Threadid)
+        {
+            double[] pulse = Audio.Pach_SP.Filter.Signal(SW, SampleFrequency, LengthofPulse, Threadid);
+            P = Audio.Pach_SP.FFT_Convolution_double(H, pulse, Threadid);
+            for (int i = 0; i < 6; i++) Pdir[i] = Audio.Pach_SP.FFT_Convolution_double(Hdir[i], pulse, Threadid);
+
+            double Rho_C = Speed_of_Sound * 1.2;
+
+            double[] SP = new double[8];
+            for (int i = 0; i < 8; i++) SP[i] = Math.Sqrt(SW[i] * Rho_C);
+
+            for (int oct = 0; oct < 8; oct++)
+            {
+                double[] OctavePressure = Audio.Pach_SP.FIR_Bandpass(this.H, oct, fs, Threadid);
+                for (int t = 0; t < H.Length; t++)
+                {
+                    PathEnergy[t][oct] = OctavePressure[t] * OctavePressure[t] / (Rho_C);
+                }
+            }
+        }
+
+        public override void Create_Filter(double[] SWL, int SampleFrequency, int LengthofPulse, int Threadid)
+        {
+            double[] p = new double[8] {1,1,1,1,1,1,1,1};
+            //Is this consistent with the rest of the filter construction strategy?
+            double[] pulse = Audio.Pach_SP.Filter.Transfer_Function(p, SampleFrequency, LengthofPulse, Threadid);
+            F = Audio.Pach_SP.FFT_Convolution_double(H, pulse, Threadid);
+            for (int i = 0; i < 6; i++) Fdir[i] = Audio.Pach_SP.FFT_Convolution_double(Hdir[i], pulse, Threadid);
+        }        
 
         private void Identify(int SrcID, double Direct_Time)
         {
@@ -1786,10 +1831,10 @@ namespace Pachyderm_Acoustic
 
         public override double[] Dir_Pressure(int Rec_ID, double alt, double azi, bool degrees, bool Figure8, int sampleFreq)
         {
-            double[] Pn = new double[P.Length];
+            double[] Pn = new double[H.Length];
             if (Figure8)
             {
-                for (int i = 0; i < Pdir[Rec_ID].Length; i++)
+                for (int i = 0; i < Hdir[Rec_ID].Length; i++)
                 {
                     Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Vector(Pdir[i][0] - Pdir[i][1], Pdir[i][2] - Pdir[i][3], Pdir[i][4] - Pdir[i][5]), azi, 0, degrees), 0, alt, degrees);
                     Pn[i] = Vn.x;
@@ -1801,7 +1846,7 @@ namespace Pachyderm_Acoustic
                 ids[0] = (azi > 90 && azi < 270) ? 1 : 0;
                 ids[0] = (azi <= 180) ? 3 : 4;
                 ids[0] = (alt > 0) ? 4 : 5;
-                for (int i = 0; i < Pdir[0].Length; i++)
+                for (int i = 0; i < Hdir[0].Length; i++)
                 {
                     Hare.Geometry.Vector V = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Hare.Geometry.Vector(Pdir[ids[0]][i], Pdir[ids[1]][i], Pdir[ids[2]][i]), azi, 0, true), 0, alt, true);
                     Pn[i] = V.x;
@@ -1812,9 +1857,9 @@ namespace Pachyderm_Acoustic
 
         public override double[][] Dir_Pressure(int Rec_ID, double alt, double azi, bool degrees, int sampleFreq)
         {
-            double[][] Pn = new double[P.Length][];
+            double[][] Pn = new double[H.Length][];
 
-            for (int i = 0; i < Pdir[Rec_ID].Length; i++)
+            for (int i = 0; i < Hdir[Rec_ID].Length; i++)
             {
                 Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Vector(Pdir[i][0] - Pdir[i][1], Pdir[i][2] - Pdir[i][3], Pdir[i][4] - Pdir[i][5]), azi, 0, degrees), 0, alt, degrees);
                 Pn[i] = new double[3] {Vn.x, Vn.y, Vn.z};
@@ -1826,7 +1871,53 @@ namespace Pachyderm_Acoustic
         {
             get
             {
-                return P;
+                return H;
+            }
+        }
+
+        public override double[] Dir_Filter(int Rec_ID, double alt, double azi, bool degrees, bool Figure8, int sampleFreq)
+        {
+            double[] Fn = new double[H.Length];
+            if (Figure8)
+            {
+                for (int i = 0; i < Hdir[Rec_ID].Length; i++)
+                {
+                    Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Vector(Hdir[i][0] - Hdir[i][1], Hdir[i][2] - Hdir[i][3], Hdir[i][4] - Hdir[i][5]), azi, 0, degrees), 0, alt, degrees);
+                    Fn[i] = Vn.x;
+                }
+            }
+            else
+            {
+                int[] ids = new int[3];
+                ids[0] = (azi > 90 && azi < 270) ? 1 : 0;
+                ids[0] = (azi <= 180) ? 3 : 4;
+                ids[0] = (alt > 0) ? 4 : 5;
+                for (int i = 0; i < Hdir[0].Length; i++)
+                {
+                    Hare.Geometry.Vector V = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Hare.Geometry.Vector(Hdir[ids[0]][i], Hdir[ids[1]][i], Hdir[ids[2]][i]), azi, 0, true), 0, alt, true);
+                    Fn[i] = V.x;
+                }
+            }
+            return Fn;
+        }
+
+        public override double[][] Dir_Filter(int Rec_ID, double alt, double azi, bool degrees, int sampleFreq)
+        {
+            double[][] Fn = new double[H.Length][];
+
+            for (int i = 0; i < Hdir[Rec_ID].Length; i++)
+            {
+                Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Vector(Hdir[i][0] - Hdir[i][1], Hdir[i][2] - Hdir[i][3], Hdir[i][4] - Hdir[i][5]), azi, 0, degrees), 0, alt, degrees);
+                Fn[i] = new double[3] { Vn.x, Vn.y, Vn.z };
+            }
+            return Fn;
+        }
+
+        public override double[] Filter
+        {
+            get
+            {
+                return F;
             }
         }
     }

@@ -121,6 +121,15 @@ namespace Pachyderm_Acoustic
                 }
             }
 
+            public virtual double[] Dir_Filter(int threadid, int random, Vector Direction, int sample_frequency, int length_starttofinish)
+            {
+                double[] power = DirPower(threadid, random, Direction);
+                double[] OUT = new double[8];
+                for (int oct = 0; oct < 8; oct++) OUT[oct] = power[oct] / SoundPower[oct];
+
+                return Audio.Pach_SP.Magnitude_Filter(OUT, sample_frequency, length_starttofinish, threadid);
+            }
+
             /// <summary>
             /// Provides source power. (Deterministic Only)
             /// </summary>
