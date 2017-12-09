@@ -407,7 +407,7 @@ namespace Pachyderm_Acoustic
                             {
                                 //Write Vertex: (double) (double) (double)
                                 //Map_Mesh.Vertices.Add(new Rhino.Geometry.Point3d(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()));
-                                Vertices[i] = new Hare.Geometry.Point(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle());
+                                Vertices[i] = new Hare.Geometry.Point(sr.ReadDouble(), sr.ReadDouble(), sr.ReadDouble());
                             }
 
                             //7. Announce Mesh Faces (string)
