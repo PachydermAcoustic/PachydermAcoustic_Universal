@@ -39,6 +39,7 @@ namespace Pachyderm_Acoustic
         private double[] _u, _v;
         private double[] _lost;
         private double[] _eInit;
+        private double _lost_percent;
         private int IS_Order;
         private System.Threading.Thread[] _tlist;
         private int _processorCt;
@@ -190,11 +191,11 @@ namespace Pachyderm_Acoustic
                 R = Source.Directions(_currentRay[Params.ThreadID] + Params.StartIndex, Params.ThreadID, ref Rnd, _octaves);
                 for (int oct = 0; oct < 8; oct++) R.Energy[oct] /= Raycount;
                 for (int j = 0; j < 8; j++) _eInit[Params.ThreadID] += R.Energy[j];
-                Threshold_Power_1 = R.Energy[h_oct] * 1E-2;
+                Threshold_Power_1 = R.Energy[h_oct] * 1E-3;
                 foreach (int o in _octaves)
                 {
-                    Threshold_Power_2[o] = R.Energy[o] * 1E-4;//Cease splitting at 0.0001 sound intensity, or 40 dB down.
-                    Threshold_Power_3[o] = R.Energy[o] * 1E-10;//Finish 16 digits (double Precision) under 60 dB of decay.
+                    Threshold_Power_2[o] = R.Energy[o] * 1E-6;//Cease splitting at 0.0001 sound intensity, or 40 dB down.
+                    Threshold_Power_3[o] = R.Energy[o] * 1E-14;//Finish 8 digits (more than generous) under 60 dB of decay. Full double Precision would be 15 digits.
                 }
                 order = 0;
                 double u = 0, v = 0;
@@ -386,6 +387,15 @@ namespace Pachyderm_Acoustic
             foreach (double T in _eInit)
             {
                 RTotal += T;
+            }
+            _lost_percent = 100 * LTotal / RTotal;
+        }
+
+        public double PercentLost
+        {
+            get
+            {
+                return _lost_percent;
             }
         }
     }

@@ -51,9 +51,6 @@
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Hare">
-      <HintPath>..\..\..\PachydermAcoustic_Rhinoceros\Resources\Hare.dll</HintPath>
-    </Reference>
     <Reference Include="LibOptimization, Version=1.8.1.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\LibOptimization.1.8.1\lib\net40\LibOptimization.dll</HintPath>
       <Private>True</Private>
@@ -142,6 +139,12 @@
     <EmbeddedResource Include="VisualizeGraph.resx">
       <DependentUpon>VisualizeGraph.cs</DependentUpon>
     </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Hare\Hare.csproj">
+      <Project>{681e37f0-fdb7-4d4d-b5dc-b6f5065170ff}</Project>
+      <Name>Hare</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
