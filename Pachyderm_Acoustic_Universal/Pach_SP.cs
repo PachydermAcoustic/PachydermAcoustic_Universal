@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2015, Arthur van der Harten 
+//'Copyright (c) 2008-2018, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -196,7 +196,7 @@ namespace Pachyderm_Acoustic
                 for (int i = 0; i < h.Length; i++)
                 {
                     sum_before += h[i] * h[i];
-                    double weight = (Math.Cos((1 - Math.Pow(1 - ((double)i / h.Length), 8)) * Math.PI) + 1) * .5;
+                    double weight = (Math.Cos((1 - Math.Pow(1 - ((double)i / h.Length), 1)) * Math.PI) + 1) * .5;
                     h[i] *= weight;
                     sum_after += h[i] * h[i];
                 }
@@ -273,37 +273,31 @@ namespace Pachyderm_Acoustic
                 return h_oct;
             }
 
-            //public static double[] Whiten_Signal(double[] Signal_in)
-            //{
-            //    Complex[] spectrum = FFT_General(Signal_in, 0);
-            //    for(int i = 0; i < Signal_in.Length / 2 - 1; i++)
-            //    {
-            //        double mod = i / Signal_in.Length;
-            //        spectrum[i] *= mod;
-            //        spectrum[spectrum.Length - i - 1] *= mod;
-            //    }
-            //    return IFFT_Real_General(spectrum, 0);
-            //}
+            public static double[] Filter2Signal(double[] Filter_in, double[] OctaveSWL, int SampleFrequency, int threadid)
+            {
 
-            //public static System.Numerics.Complex[] FFT(Complex[] Signal, int threadid)
-            //{
-            //    //FFTW.Net Setup//
-            //    FFT_ArrayIn4096[threadid].SetData(Signal);
-            //    //FFT_ArrayOut4096[threadid].SetZeroData();
-            //    FFT_Plan4096[threadid].Execute();
+                double[] octave_Pressure = new double[8];
+                for (int i = 0; i < 8; i++) octave_Pressure[i] = Math.Pow(10, (OctaveSWL[i]) / 20); //Math.Pow(10,(SWL[5] - SWL[i])/20);
 
-            //    System.Numerics.Complex[] Out = FFT_ArrayOut4096[threadid].GetData_Complex();
-            //    return Out;
-            //}
+                int length = 8192;
+                double[] pulse = (Audio.Pach_SP.Filter is Audio.Pach_SP.Linear_Phase_System) ? Audio.Pach_SP.Minimum_Phase_Signal(octave_Pressure, SampleFrequency, length, threadid) : Audio.Pach_SP.Linear_Phase_Signal_Centered(octave_Pressure, SampleFrequency, length, threadid);//
+                for (int i = 0; i < pulse.Length; i++) pulse[i] /= Math.Sqrt(2);
+                //pulse = pulse.Reverse().ToArray();
+                //Raised_HCosine_Window(ref pulse);// new double[pulse.Length / 2];
+                //Array.Resize(ref pulse2, 4096);
+                //for (int i = 0; i < pulse.Length / 2; i++) pulse2[i] = pulse[pulse.Length / 2 - 1 + i];
+                //pulse2 = pulse2.Reverse().ToArray();
+                double[] Signal = FFT_Convolution_double(Filter_in, pulse, threadid);
+                int qw = pulse.Length / 4;
+                if (Audio.Pach_SP.Filter is Audio.Pach_SP.Minimum_Phase_System) for (int i = qw; i < Signal.Length; i++) Signal[i - qw] = Signal[i];
+                Array.Resize(ref Signal, Filter_in.Length);
+                return Signal;
+            }
 
             public static System.Numerics.Complex[] FFT4096(double[] Signal, int threadid)
             {
-                //double[] Sig_complex = new double[Signal.Length * 2];
-                //for (int i = 0; i < Signal.Length; i++) Sig_complex[i * 2] = Signal[i];
-
                 //FFTW.Net Setup//
                 FFT_ArrayIn4096[threadid].SetData(Signal);
-                //FFT_ArrayOut4096[threadid].SetZeroData();
                 FFT_Plan4096[threadid].Execute();
 
                 System.Numerics.Complex[] Out = FFT_ArrayOut4096[threadid].GetData_Complex();
@@ -312,13 +306,6 @@ namespace Pachyderm_Acoustic
 
             public static double[] IFFT_Real4096(System.Numerics.Complex[] spectrum, int threadid)
             {
-                //double[] samplep = new double[spectrum.Length * 2];
-                //for (int i = 0; i < spectrum.Length; i++)
-                //{
-                //    samplep[2 * i] = spectrum[i].Real;
-                //    samplep[2 * i + 1] = spectrum[i].Imaginary;
-                //}
-
                 //FFTW.Net Setup//
                 IFFT_ArrayIn4096[threadid].SetData(spectrum);
                 IFFT_Plan4096[threadid].Execute();
@@ -330,13 +317,6 @@ namespace Pachyderm_Acoustic
 
             public static Complex[] IFFT4096(System.Numerics.Complex[] spectrum, int threadid)
             {
-                //double[] samplep = new double[spectrum.Length * 2];
-                //for (int i = 0; i < spectrum.Length; i++)
-                //{
-                //    samplep[2 * i] = spectrum[i].Real;
-                //    samplep[2 * i + 1] = spectrum[i].Imaginary;
-                //}
-
                 //FFTW.Net Setup//
                 IFFT_ArrayIn4096[threadid].SetData(spectrum);
                 IFFT_Plan4096[threadid].Execute();
@@ -378,13 +358,6 @@ namespace Pachyderm_Acoustic
 
             public static double[] IFFT_Real_General(System.Numerics.Complex[] spectrum, int threadid)
             {
-                //double[] samplep = new double[spectrum.Length * 2];
-                //for (int i = 0; i < spectrum.Length; i++)
-                //{
-                //    samplep[2 * i] = spectrum[i].Real;
-                //    samplep[2 * i + 1] = spectrum[i].Imaginary;
-                //}
-
                 //FFTW.Net Setup//
                 IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum);
                 IFFT_ArrayOut[threadid] = new fftw_complexarray(spectrum.Length);
@@ -399,13 +372,6 @@ namespace Pachyderm_Acoustic
 
             public static Complex[] IFFT_General(System.Numerics.Complex[] spectrum, int threadid)
             {
-                //double[] samplep = new double[spectrum.Length * 2];
-                //for (int i = 0; i < spectrum.Length; i++)
-                //{
-                //    samplep[2 * i] = spectrum[i].Real;
-                //    samplep[2 * i + 1] = spectrum[i].Imaginary;
-                //}
-
                 //FFTW.Net Setup//
                 IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum);
                 IFFT_ArrayOut[threadid] = new fftw_complexarray(spectrum.Length);
@@ -466,16 +432,6 @@ namespace Pachyderm_Acoustic
             public static void Scale(ref double[] IN)
             {
                 for (int i = 0; i < IN.Length; i++) IN[i] /= IN.Length;
-            }
-
-            public static void resample(ref double[] signal)
-            {
-                double[] newsignal = new double[signal.Length / 2];
-                for (int i = 0; i < newsignal.Length; i++)
-                {
-                    newsignal[i] = (signal[2 * i] + signal[2 * i + 1]) * .5;
-                }
-                signal = newsignal;
             }
 
             public static double[] Magnitude_Spectrum(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
@@ -680,7 +636,6 @@ namespace Pachyderm_Acoustic
                         p_i[idl + i] += Math.Sqrt(magspec[i] * mod);
                     }
                 }
-
                 return p_i;
             }
 
@@ -793,7 +748,13 @@ namespace Pachyderm_Acoustic
                 double[] Signal = IFFT_Real4096(ymspec, threadid);
                 Scale(ref Signal);
 
-                return Signal;
+                double[] S2 = new double[Signal.Length];
+                //for (int i = Signal.Length / 2; i < Signal.Length - 1; i++) S2[i] = (Signal[Signal.Length / 2 - 1 - (i - Signal.Length / 2)] + Signal[Signal.Length - 1 - (i - Signal.Length / 2)]) / Math.Sqrt(2 * Signal.Length);
+                //S2[0] += Signal[0] + Signal[Signal.Length/2 - 1];
+                for (int i = 0; i < Signal.Length; i++) S2[i] = Signal[(Signal.Length + i + 1) % Signal.Length];// / Math.Sqrt(2 * Signal.Length); ;
+                S2 = S2.Reverse().ToArray();
+
+                return S2;
             }
 
             public static double[] Minimum_Phase_Signal(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
@@ -818,7 +779,7 @@ namespace Pachyderm_Acoustic
                     else logspec[i] = Math.Log(M_spec[i]);
                 }
 
-                double[] real_cepstrum = IFFT_Real4096(Mirror_Spectrum(logspec), threadid);
+                double[] real_cepstrum = IFFT_Real_General(Mirror_Spectrum(logspec), threadid);
                 Scale(ref real_cepstrum);
 
                 double[] ym = new double[length_starttofinish];
@@ -829,16 +790,21 @@ namespace Pachyderm_Acoustic
                     ym[i] = 2 * real_cepstrum[i];
                 }
                 ym[length_starttofinish / 2] = real_cepstrum[length_starttofinish / 2];
-                System.Numerics.Complex[] ymspec = FFT4096(ym, threadid);
+                System.Numerics.Complex[] ymspec = FFT_General(ym, threadid);
 
                 for (int i = 0; i < ymspec.Length; i++)
                 {
                     ymspec[i] = Complex.Exp(ymspec[i]);
                 }
 
-                double[] Signal = IFFT_Real4096(ymspec, threadid); //This is real valued hopefully... (if not there is a problem...)
+                double[] Signal = IFFT_Real_General(ymspec, threadid); //This is real valued hopefully... (if not there is a problem...)
+                Scale(ref Signal);
                 double[] S2 = new double[Signal.Length];
-                for (int i = Signal.Length / 2; i < Signal.Length; i++) S2[i] = (Signal[Signal.Length / 2 - 1 - (i - Signal.Length / 2)] + Signal[Signal.Length - 1 - (i - Signal.Length / 2)]) / Math.Sqrt(Signal.Length);
+                //for (int i = Signal.Length / 2; i < Signal.Length - 1; i++) S2[i] = (Signal[Signal.Length / 2 - 1 - (i - Signal.Length / 2)] + Signal[Signal.Length - 1 - (i - Signal.Length / 2)]) / Math.Sqrt(2 * Signal.Length);
+                //S2[0] += Signal[0] + Signal[Signal.Length / 2 - 1];
+                //for (int i = 0; i < Signal.Length; i++) S2[i] = Signal[(Signal.Length + i + 1) % Signal.Length];
+                for (int i = 0; i < Signal.Length; i++) S2[i] = Signal[i];// / Math.Sqrt(2 * Signal.Length);
+                //S2 = S2.Reverse().ToArray();
 
                 return S2;
             }
@@ -854,9 +820,33 @@ namespace Pachyderm_Acoustic
                 }
 
                 ///////////////Create Zero Phase Time Domain Filter/////////////
-                double[] prefilter = IFFT_Real4096(Mirror_Spectrum(M_spec), threadid);
-                //double[] prefilter = IFFT_Real_General(Mirror_Spectrum(M_spec), threadid);
-                double scale = Math.Sqrt(prefilter.Length);
+                double[] prefilter = IFFT_Real_General(Mirror_Spectrum(M_spec), threadid);
+                double scale = Math.Pow(prefilter.Length, 2.0);
+                //Rotate filter in time domain to center.
+                int hw = prefilter.Length / 2;
+                double[] filter = new double[prefilter.Length];
+
+                for (int i = 0; i < prefilter.Length; i++)
+                {
+                    filter[i] = prefilter[i] / scale;// prefilter[(i + hw) % prefilter.Length] / scale;
+                }
+
+                return filter;
+            }
+
+            public static double[] Linear_Phase_Signal_Centered(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
+            {
+                double[] M_s = Magnitude_Spectrum(Octave_pressure, sample_frequency, length_starttofinish, threadid);
+                Complex[] M_spec = new Complex[M_s.Length];
+
+                for (int i = 0; i < M_s.Length; i++)
+                {
+                    M_spec[i] = M_s[i];
+                }
+
+                ///////////////Create Zero Phase Time Domain Filter/////////////
+                double[] prefilter = IFFT_Real_General(Mirror_Spectrum(M_spec), threadid);
+                double scale = Math.Pow(prefilter.Length, 2.0);
                 //Rotate filter in time domain to center.
                 int hw = prefilter.Length / 2;
                 double[] filter = new double[prefilter.Length];
@@ -868,6 +858,7 @@ namespace Pachyderm_Acoustic
 
                 return filter;
             }
+
 
             public static Complex[] Linear_Phase_Spectrum(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
@@ -881,8 +872,7 @@ namespace Pachyderm_Acoustic
 
                 ///////////////Create Zero Phase Time Domain Filter/////////////
                 double[] prefilter = IFFT_Real4096(Mirror_Spectrum(M_spec), threadid);
-                //double[] prefilter = IFFT_Real_General(Mirror_Spectrum(M_spec), threadid);
-                double scale = prefilter.Length;
+                double scale = 2 * Math.Pow(prefilter.Length, 3.0 / 2.0);
                 //Rotate filter in time domain to center.
                 int hw = prefilter.Length / 2;
                 double[] filter = new double[prefilter.Length];
@@ -901,8 +891,24 @@ namespace Pachyderm_Acoustic
             {
                 ///////////////Create Zero Phase Time Domain Filter/////////////
                 double[] prefilter = IFFT_Real4096(Mirror_Spectrum(M_spec), threadid);
-                //double[] prefilter = IFFT_Real_General(Mirror_Spectrum(M_spec), threadid);
-                double scale = prefilter.Length;
+                double scale = 2 * Math.Pow(prefilter.Length, 2.0);
+                //Rotate filter in time domain to center.
+                int hw = prefilter.Length / 2;
+                double[] filter = new double[prefilter.Length];
+
+                for (int i = 0; i < prefilter.Length; i++)
+                {
+                    filter[i] = prefilter[(i + hw) % prefilter.Length] / scale;
+                }
+
+                return filter;
+            }
+
+            public static double[] Arbitrary_Phase_Response(System.Numerics.Complex[] M_spec, int sample_frequency, int threadid)
+            {
+                ///////////////Create Zero Phase Time Domain Filter/////////////
+                double[] prefilter = (M_spec.Length == 2048) ? IFFT_Real4096(Mirror_Spectrum(M_spec), threadid) : IFFT_Real_General(Mirror_Spectrum(M_spec), threadid);
+                double scale = 2 * Math.Pow(prefilter.Length, 2.0);
                 //Rotate filter in time domain to center.
                 int hw = prefilter.Length / 2;
                 double[] filter = new double[prefilter.Length];
@@ -922,7 +928,7 @@ namespace Pachyderm_Acoustic
                 double BW = (double)sample_frequency_out / (double)sample_frequency_in;
 
                 double[] p_mod = new double[8];
-                for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10,(SWL[5] - SWL[i])/20);
+                for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20); //Math.Pow(10,(SWL[5] - SWL[i])/20);
 
                 //Convert to Pressure & Interpolate full resolution IR
                 int ct = 0;
@@ -998,128 +1004,6 @@ namespace Pachyderm_Acoustic
                 return IR;
             }
 
-            public static double[] ETCToPTC(double[][] Octave_ETC, double CutOffTime, int sample_frequency_in, int sample_frequency_out, double Rho_C, string title)
-            {
-                int length = 4096;
-                double[] IR = new double[(int)Math.Floor(sample_frequency_out * CutOffTime) + (int)length];
-                double BW = (double)sample_frequency_out / (double)sample_frequency_in;
-
-                //Convert to Pressure & Interpolate full resolution IR
-                int ct = 0;
-                System.Threading.Semaphore S = new System.Threading.Semaphore(0, 1);
-                S.Release(1);
-
-                double[] time = new double[(int)Math.Floor(sample_frequency_out * CutOffTime) + (int)length];
-                double dt = 1f/(float)sample_frequency_out;
-                for (int i = 0; i < time.Length; i++)
-                {
-                    time[i] = i * dt;
-                }
-
-                int proc = Pach_Properties.Instance.ProcessorCount();
-                double[][] output = new double[proc][];
-                double[][] samplep = new double[proc][];
-                System.Threading.Thread[] T = new System.Threading.Thread[proc];
-                int[] to = new int[proc];
-                int[] from = new int[proc];
-
-                System.Threading.CountdownEvent CDE = new System.Threading.CountdownEvent(Octave_ETC[0].Length);
-
-                for (int p = 0; p < proc; p++)
-                {
-                    output[p] = new double[length];
-                    samplep[p] = new double[length * 2];
-                    to[p] = p * Octave_ETC[0].Length / proc;
-                    from[p] = (p + 1) * Octave_ETC[0].Length / proc;
-
-                    T[p] = new System.Threading.Thread((thread) =>
-                    {
-                        int thr = (int)thread;
-                        for (int t = to[thr]; t < from[thr]; t++)
-                        {
-                            ct++;
-                            double[] pr = new double[8];
-                            for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Sqrt(Math.Abs(Octave_ETC[oct][t]) * Rho_C);
-
-                            double sum = 0;
-                            foreach (double d in pr) sum += d;
-                            if (sum > 0)
-                            {
-                                output[thr] = Filter.Signal(pr, sample_frequency_out, 4096, thr);
-                                for (int k = 0; k < length; k++)
-                                {
-                                    IR[(int)Math.Floor(t * BW) + k] += output[thr][k];
-                                }
-                            }
-                            CDE.Signal();
-                        }
-                    });
-                    T[p].Start(p);
-                }
-
-                ProgressBox VB = new ProgressBox(title);
-                VB.Show();
-                do
-                {
-                    if (CDE.IsSet)
-                    {
-                        break;
-                    }
-                    VB.Populate((int)(100 * (1f - ((float)CDE.CurrentCount / (float)IR.Length))));
-
-                    System.Threading.Thread.Sleep(500);
-                } while (true);
-
-                VB.Close();
-                return IR;
-            }
-
-            public static double[] Expand_Response(Direct_Sound[] DirectIn, ImageSourceData[] SpecularIn, Environment.Receiver_Bank[] DiffuseIn, double CutOffTime, int sample_frequency_out, int Rec_ID, List<int> SrcID)
-            {
-                int length = (int)Math.Pow(2, 11);
-                int sample_frequency_in = DiffuseIn[0].SampleRate;
-                double[] IR = new double[(int)Math.Floor(sample_frequency_out * CutOffTime) + 2 * (int)length];
-                double[][] Octave_ETC = new double[8][];
-                double BW = (double)sample_frequency_out / (double)sample_frequency_in;
-
-                //Convert to Pressure & Interpolate full resolution IR
-                for (int oct = 0; oct < 8; oct++)
-                {
-                    Octave_ETC[oct] = AcousticalMath.ETCurve(DirectIn, SpecularIn, DiffuseIn, CutOffTime, sample_frequency_in, oct, Rec_ID, SrcID, false);
-                }
-
-                return Pach_SP.ETCToPTC(Octave_ETC, CutOffTime, sample_frequency_in, sample_frequency_out, DirectIn[0].Rho_C[Rec_ID], "Expanding Response...");
-            }
-
-            /// <summary>
-            /// Takes ETC, and extrapolates a pressure domain impulse response.
-            /// </summary>
-            /// <param name="DirectIn"></param>
-            /// <param name="SpecularIn"></param>
-            /// <param name="DiffuseIn"></param>
-            /// <param name="CutOffTime"></param>
-            /// <param name="sample_frequency_out">The desired sample frequency.</param>
-            /// <param name="Rec_ID">The index of the receiver.</param>
-            /// <returns></returns>
-            public static double[] Expand_Dir_Response(Direct_Sound[] DirectIn, ImageSourceData[] SpecularIn, Environment.Receiver_Bank[] DiffuseIn, double CutOffTime, int sample_frequency_out, int Rec_ID, List<int> SrcID, double alt, double azi, bool degrees)
-            {
-                Random Rnd = new Random();
-                int length = (int)Math.Pow(2, 11);
-                int sample_frequency_in = DiffuseIn[0].SampleRate;
-                //fftwlib.fftw. FFT = new MathNet.Numerics.IntegralTransforms.Algorithms.DiscreteFourierTransform();
-                double[] IR = new double[(int)Math.Floor(sample_frequency_out * CutOffTime) + 2 * (int)length];
-                double[][] Octave_ETC = new double[8][];
-                double BW = (double)sample_frequency_out / (double)sample_frequency_in;
-
-                //Convert to Pressure & Interpolate full resolution IR
-                for (int oct = 0; oct < 8; oct++)
-                {
-                    Octave_ETC[oct] = AcousticalMath.ETCurve_Directional(DirectIn, SpecularIn, DiffuseIn, CutOffTime, sample_frequency_in, oct, Rec_ID, SrcID, false, alt, azi, degrees);
-                }
-
-                return ETCToPTC(Octave_ETC, CutOffTime, sample_frequency_in, sample_frequency_out, DirectIn[0].Rho_C[Rec_ID], "Expanding Directional Response...");
-            }
-
             /// <summary>
             /// Frequency domain convolution.
             /// </summary>
@@ -1185,7 +1069,7 @@ namespace Pachyderm_Acoustic
                 double[] conv = IFFT_Real_General(freq3, threadid);
 
                 double[] output = new double[conv.Length];
-                double mod = 1d / Math.Sqrt(conv.Length);
+                double mod = 1d / conv.Length;
                 for (int i = 0; i < conv.Length; i++) output[i] = conv[i] * mod;// * mod;
 
                 double maxfilt = Filter.Max();
@@ -1198,7 +1082,7 @@ namespace Pachyderm_Acoustic
                 return output;
             }
 
-            public static double[] Pressure_Interpolation(double[][] ETC, int SampleRate_IN, int SampleRate_Out, double Rho_C)
+            public static double[] Filter_Interpolation(double[] SWL, double[][] ETC, int SampleRate_IN, int SampleRate_Out, double Rho_C)
             {
                 double[][] SPLetc = new double[8][];
                 double[] Total_E = new double[8];
@@ -1206,12 +1090,12 @@ namespace Pachyderm_Acoustic
                 double[] time = new double[ETC[0].Length];
                 double dtIn = 1.0f / SampleRate_IN;
                 double dtOut = 1.0f / SampleRate_Out;
-                for(int i = 1; i < time.Length; i++) time[i] = (double)i / SampleRate_IN;
+                for (int i = 1; i < time.Length; i++) time[i] = (double)i / SampleRate_IN;
 
-                for(int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < 8; oct++)
                 {
                     SPLetc[oct] = new double[ETC[0].Length];
-                    for(int i = 0; i < time.Length; i++) 
+                    for (int i = 0; i < time.Length; i++)
                     {
                         Total_E[oct] += ETC[oct][i];
                         if (ETC[oct][i] > 0) SPLetc[oct][i] = Math.Log10(ETC[oct][i]);
@@ -1222,22 +1106,23 @@ namespace Pachyderm_Acoustic
                 int NewLength = (int)Math.Ceiling((double)(SampleRate_Out * ETC[0].Length) / SampleRate_IN);
                 double[][] NewETC = new double[8][];
                 double[] NewTE = new double[8];
-                for(int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < 8; oct++)
                 {
                     MathNet.Numerics.Interpolation.CubicSpline CS = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(time, SPLetc[oct]);
                     NewETC[oct] = new double[NewLength];
-                    for(int i = 0;i < NewLength; i++)
+                    for (int i = 0; i < NewLength; i++)
                     {
                         NewETC[oct][i] = Math.Pow(10, CS.Interpolate(i * dtOut));
                         NewTE[oct] += NewETC[oct][i];
                     }
 
-                    for(int i = 0; i < NewLength; i++)
+                    for (int i = 0; i < NewLength; i++)
                     {
                         NewETC[oct][i] *= Total_E[oct] / NewTE[oct];
                     }
                 }
-                return ETCToPTC(NewETC, (double)NewLength / SampleRate_Out, SampleRate_Out, SampleRate_Out, Rho_C, "Interpolating to Pressure...");
+                
+                return ETCToFilter(NewETC, SWL, (double)NewLength / SampleRate_Out, SampleRate_Out, SampleRate_Out, Rho_C, "Interpolating to Pressure...");
             }
         }
     }

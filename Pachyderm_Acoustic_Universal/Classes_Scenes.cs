@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2015, Arthur van der Harten 
+//'Copyright (c) 2008-2018, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -428,7 +428,7 @@ namespace Pachyderm_Acoustic
             /// </summary>
             //private List<List<int>> Plane_Members = new List<List<int>>();
             public double[] Plane_Area;
-            private List<int> Brep_ids;
+            //private List<int> Brep_ids;
             private double[][] PolyPlaneFract;
             ////////////////////////////////////////////////////////////////////
             
@@ -856,10 +856,10 @@ namespace Pachyderm_Acoustic
                    return Topo[0].Polys[i].Plane_ID;
             }
 
-            public int BrepID(int i)
-            {
-                return Brep_ids[i];
-            }
+            //public int BrepID(int i)
+            //{
+            //    return Brep_ids[i];
+            //}
 
             public bool Box_Intersect(AABB box, out double abs, out Vector V)//, out int[] PolyIds, out double[] Abs, out double[] Trans, out double[] Scat)
             {

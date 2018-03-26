@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2015, Arthur van der Harten 
+//'Copyright (c) 2008-2018, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -32,6 +32,7 @@ namespace Pachyderm_Acoustic
     public class PachMapReceiver : Receiver_Bank
     {
         public string SrcType = "";
+        public double[] SWL;
         public Hare.Geometry.Topology Map_Mesh;
         public AABB OBox;
         public int VoxelCtX, VoxelCtY, VoxelCtZ;
@@ -48,6 +49,7 @@ namespace Pachyderm_Acoustic
         public bool Mesh_Offset;
         public bool Time1Pt;
         public Hare.Geometry.Point Src;
+        public double delay_ms;
         Scene _Sc;
 
         /// <summary>
@@ -71,6 +73,7 @@ namespace Pachyderm_Acoustic
         private void Fill_in(Source Src_Pt, int SampleRate_in, double Increment_in, Scene Sc, int RCT, double Cutoff_time, bool Time_1Pt, bool Z_displacementIn, bool DirectionalIn, bool RecOnVertex, bool Offset_Mesh)
         {
             _Sc = Sc;
+            SWL = new double[8] { Src_Pt.SWL(0), Src_Pt.SWL(1), Src_Pt.SWL(2), Src_Pt.SWL(3), Src_Pt.SWL(4), Src_Pt.SWL(5), Src_Pt.SWL(6), Src_Pt.SWL(7) };
             Src = Src_Pt.Origin();
             SrcType = Src_Pt.Type();
             CutOffTime = Cutoff_time;
@@ -349,8 +352,8 @@ namespace Pachyderm_Acoustic
                     foreach (int S_ID in SrcID)
                     {
                         double[] P;
-
-                        Rec_List[S_ID].GetPressure(i, out P);
+                        Rec_List[S_ID].GetFilter(i, out P);
+                        P = Audio.Pach_SP.Filter2Signal(P, Rec_List[S_ID].SWL, Rec_List[S_ID].SampleRate, 0);
 
                         int arrival = (int)Math.Floor((Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate * 44.1) - zero;
 
@@ -410,7 +413,7 @@ namespace Pachyderm_Acoustic
 
                     foreach (int S_ID in SrcID)
                     {
-                        temp = Rec_List[S_ID].GetEnergyHistogram(Octave, i);
+                        temp = Rec_List[S_ID].GetEnergyHistogram(Octave, Rec_List[S_ID].delay_ms, i);
                         int arrival = (int)((Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate) - zero;
                         for (int j = 0; j < temp.Length; j++)
                         {
@@ -459,8 +462,8 @@ namespace Pachyderm_Acoustic
                     foreach (int S_ID in SrcID)
                     {
                         double[] P;
-
-                        Rec_List[S_ID].GetPressure(i, out P);
+                        Rec_List[S_ID].GetFilter(i, out P);
+                        P = Audio.Pach_SP.Filter2Signal(P, Rec_List[S_ID].SWL, Rec_List[S_ID].SampleRate, 0);
 
                         int arrival = (int)Math.Floor((Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate * 44.1);
 
@@ -491,7 +494,7 @@ namespace Pachyderm_Acoustic
                         for (int oct = 0; oct < 8; oct++)
                         {
                             double E_oct_Sum = 0;
-                            double[] hist = Rec_List[S_ID].GetEnergyHistogram(oct, i);
+                            double[] hist = Rec_List[S_ID].GetEnergyHistogram(oct, Rec_List[S_ID].delay_ms, i);
                             for (int t = T_Min; t < T_Max; t++)
                             {
                                 E_oct_Sum += hist[t];
@@ -531,7 +534,7 @@ namespace Pachyderm_Acoustic
                 Vector V = new Vector();
                 foreach (int S_ID in SrcID)
                 {
-                    double[] Hist = Rec_List[S_ID].GetEnergyHistogram(Octave, i);
+                    double[] Hist = Rec_List[S_ID].GetEnergyHistogram(Octave, Rec_List[S_ID].delay_ms, i);
                     for (int t = T_Min; t < T_Max; t++)
                     {
                         V += Rec_List[S_ID].Directions_Pos(Octave, t, i);
@@ -599,8 +602,8 @@ namespace Pachyderm_Acoustic
                 foreach (int S_ID in SrcID)
                 {
                     double[] P;
-
-                    Rec_List[S_ID].GetPressure(i, out P);
+                    Rec_List[S_ID].GetFilter(i, out P);
+                    P = Audio.Pach_SP.Filter2Signal(P, Rec_List[S_ID].SWL, Rec_List[S_ID].SampleRate, 0);
 
                     int arrival = (int)((Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate) - zero;
 
@@ -659,8 +662,8 @@ namespace Pachyderm_Acoustic
                     foreach (int S_ID in SrcID)
                     {
                         double[] P;
-
-                        Rec_List[S_ID].GetPressure(i, out P);
+                        Rec_List[S_ID].GetFilter(i, out P);
+                        P = Audio.Pach_SP.Filter2Signal(P, Rec_List[S_ID].SWL, Rec_List[S_ID].SampleRate, 0);
 
                         int arrival = (int)Math.Floor((Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate * 44.1) - zero;
 
@@ -684,7 +687,7 @@ namespace Pachyderm_Acoustic
             {
                 for (int i = 0; i < Rec_List[0].Rec_List.Length; i++)
                 {
-                    C_Values[i] = AcousticalMath.Clarity(AcousticalMath.ETCurve(null, null, Rec_List, Rec_List[0].CutOffTime, Rec_List[0].SampleRate, Octave, i, SrcID, true), Rec_List[0].SampleRate, (double)C_Cutoff / 1000d, 0, false);
+                    C_Values[i] = AcousticalMath.Clarity(IR_Construction.ETCurve(null, null, Rec_List, Rec_List[0].CutOffTime, Rec_List[0].SampleRate, Octave, i, SrcID, true), Rec_List[0].SampleRate, (double)C_Cutoff / 1000d, 0, false);
                 }
             }
 
@@ -727,8 +730,8 @@ namespace Pachyderm_Acoustic
                     foreach (int S_ID in SrcID)
                     {
                         double[] P;
-
-                        Rec_List[S_ID].GetPressure(i, out P);
+                        Rec_List[S_ID].GetFilter(i, out P);
+                        P = Audio.Pach_SP.Filter2Signal(P, Rec_List[S_ID].SWL, Rec_List[S_ID].SampleRate, 0);
 
                         int arrival = (int)Math.Floor((Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate * 44.1) - zero;
 
@@ -752,7 +755,7 @@ namespace Pachyderm_Acoustic
             {
                 for (int i = 0; i < Rec_List[0].Rec_List.Length; i++)
                 {
-                    D_Values[i] = AcousticalMath.Definition(AcousticalMath.ETCurve(null, null, Rec_List, Rec_List[0].CutOffTime, Rec_List[0].SampleRate, Octave, i, SrcID, true), Rec_List[0].SampleRate, 0.05, 0, false);
+                    D_Values[i] = AcousticalMath.Definition(IR_Construction.ETCurve(null, null, Rec_List, Rec_List[0].CutOffTime, Rec_List[0].SampleRate, Octave, i, SrcID, true), Rec_List[0].SampleRate, 0.05, 0, false);
                 }
             }
 
@@ -796,8 +799,8 @@ namespace Pachyderm_Acoustic
                     foreach (int S_ID in SrcID)
                     {
                         double[] P;
-
-                        Rec_List[S_ID].GetPressure(i, out P);
+                        Rec_List[S_ID].GetFilter(i, out P);
+                        P = Audio.Pach_SP.Filter2Signal(P, Rec_List[S_ID].SWL, Rec_List[S_ID].SampleRate, 0);
 
                         int arrival = (int)Math.Floor((Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate * 44.1) - zero;
 
@@ -822,7 +825,7 @@ namespace Pachyderm_Acoustic
             {
                 for (int i = 0; i < Rec_List[0].Rec_List.Length; i++)
                 {
-                    double[] SI = AcousticalMath.Schroeder_Integral(AcousticalMath.ETCurve(null, null, Rec_List, Rec_List[0].CutOffTime, Rec_List[0].SampleRate, Octave, i, SrcID, true));
+                    double[] SI = AcousticalMath.Schroeder_Integral(IR_Construction.ETCurve(null, null, Rec_List, Rec_List[0].CutOffTime, Rec_List[0].SampleRate, Octave, i, SrcID, true));
                     RT_Values[i] = AcousticalMath.T_X(SI, Decay_Depth, Rec_List[0].SampleRate);
                 }
             }
@@ -862,8 +865,8 @@ namespace Pachyderm_Acoustic
                     foreach (int S_ID in SrcID)
                     {
                         double[] P;
-
-                        Rec_List[S_ID].GetPressure(i, out P);
+                        Rec_List[S_ID].GetFilter(i, out P);
+                        P = Audio.Pach_SP.Filter2Signal(P, Rec_List[S_ID].SWL, Rec_List[S_ID].SampleRate, 0);
 
                         int arrival = (int)Math.Floor((Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate * 44.1) - zero;
 
@@ -890,7 +893,7 @@ namespace Pachyderm_Acoustic
                 System.Threading.Tasks.Parallel.For(0, Rec_List[0].Rec_List.Length, i =>
                 {
                     double[][] ETC = new double[8][];
-                    for (int oct = 0; oct < 8; oct++) ETC[oct] = AcousticalMath.ETCurve(null, null, Rec_List, Rec_List[0].CutOffTime, Rec_List[0].SampleRate, oct, i, SrcID, true);
+                    for (int oct = 0; oct < 8; oct++) ETC[oct] = IR_Construction.ETCurve(null, null, Rec_List, Rec_List[0].CutOffTime, Rec_List[0].SampleRate, oct, i, SrcID, true);
                     STI_Values[i] = AcousticalMath.Speech_Transmission_Index(ETC, 1.2 * 343, NoiseSPL, Rec_List[0].SampleRate)[type];
                 });
             }
@@ -934,8 +937,8 @@ namespace Pachyderm_Acoustic
                     foreach (int S_ID in SrcID)
                     {
                         double[] P;
-
-                        Rec_List[S_ID].GetPressure(i, out P);
+                        Rec_List[S_ID].GetFilter(i, out P);
+                        P = Audio.Pach_SP.Filter2Signal(P, Rec_List[S_ID].SWL, Rec_List[S_ID].SampleRate, 0);
 
                         int arrival = (int)Math.Floor((Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate * 44.1) - zero;
 
@@ -960,7 +963,7 @@ namespace Pachyderm_Acoustic
             {
                 for (int i = 0; i < Rec_List[0].Rec_List.Length; i++)
                 {
-                    double[] SI = AcousticalMath.Schroeder_Integral(AcousticalMath.ETCurve(null, null, Rec_List, Rec_List[0].CutOffTime, Rec_List[0].SampleRate, Octave, i, SrcID, true));
+                    double[] SI = AcousticalMath.Schroeder_Integral(IR_Construction.ETCurve(null, null, Rec_List, Rec_List[0].CutOffTime, Rec_List[0].SampleRate, Octave, i, SrcID, true));
                     EDT_Values[i] = AcousticalMath.EarlyDecayTime(SI, Rec_List[0].SampleRate);
                 }
             }
@@ -1006,8 +1009,8 @@ namespace Pachyderm_Acoustic
                     //foreach (int S_ID in SrcID)
                     //{
                     double[] P;
-
-                    Rec_List[SrcID].GetPressure(i, out P);
+                    Rec_List[SrcID].GetFilter(i, out P);
+                    P = Audio.Pach_SP.Filter2Signal(P, Rec_List[SrcID].SWL, Rec_List[SrcID].SampleRate, 0);
 
                     int arrival = (int)Math.Floor((Rec_List[SrcID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate * 44.1) - zero;
 
@@ -1420,7 +1423,7 @@ namespace Pachyderm_Acoustic
                 this.Rho_C = rho * Sound_Speed;
                 this.SizeMod = 1 / (Math.PI * Radius2);
                 Point L1 = Src.Origin() - Origin;
-                Direct_Time = Math.Sqrt(L1.x * L1.x + L1.y * L1.y + L1.z * L1.z) / C_Sound + Src.Delay;
+                Direct_Time = Math.Sqrt(L1.x * L1.x + L1.y * L1.y + L1.z * L1.z) / C_Sound;
 
                 if (!Time1Pt)
                 {
@@ -1498,10 +1501,11 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            public override void Create_Pressure()
-            {
-                Recs.P = Audio.Pach_SP.Pressure_Interpolation(Recs.Energy, 1000, 44100, this.Rho_C);
-            }
+            //public void Create_Pressure(double[] SWL, int ThreadID)
+            //{
+            //    Recs.P = Audio.Pach_SP.Filter_Interpolation(SWL, Recs.Energy, 1000, 44100, this.Rho_C);
+            //    Recs.P = Audio.Pach_SP.Filter2Signal(Recs.P, SWL, SampleRate, ThreadID);
+            //}
         }
     }
 }

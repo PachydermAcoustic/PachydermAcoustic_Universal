@@ -666,153 +666,6 @@ namespace Pachyderm_Acoustic
                     return time_ms;
                 }
 
-                //private void Build_Mesh_Sections()
-                //{
-                //    int ct = -1;
-                //    m_templateX = new Rhino.Geometry.Mesh[2];
-                //    m_templateX[0] = new Rhino.Geometry.Mesh();
-                //    m_templateX[1] = new Rhino.Geometry.Mesh();
-                //    m_templateY = new Rhino.Geometry.Mesh[2];
-                //    m_templateY[0] = new Rhino.Geometry.Mesh();
-                //    m_templateY[1] = new Rhino.Geometry.Mesh();
-                //    m_templateZ = new Rhino.Geometry.Mesh[2];
-                //    m_templateZ[0] = new Rhino.Geometry.Mesh();
-                //    m_templateZ[1] = new Rhino.Geometry.Mesh();
-
-                //    for (int i = 0; i < 2; i++)
-                //    {
-                //        ct = -1;
-                //        for (int y = 0; y < PFrame[i].Length; y++)
-                //        {
-                //            for (int z = 0; z < PFrame[i][y].Length; z++)
-                //            {
-                //                ct++;
-                //                Rhino.Geometry.Point3d pt = Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, i, y, z, dx, dy, dz)); //= new Rhino.Geometry.Point3d(PFrame[0][0][0].Pt.x, PFrame[i][y][z].Pt.y, PFrame[i][y][z].Pt.z);
-                //                pt.X = Bounds.Min_PT.x + dx;
-                //                m_templateX[i].Vertices.Add((Rhino.Geometry.Point3d)(pt + new Rhino.Geometry.Point3d(0, dy, dz)));
-                //                m_templateX[i].Vertices.Add((Rhino.Geometry.Point3d)(pt + new Rhino.Geometry.Point3d(0, dy, -dz)));
-                //                m_templateX[i].Vertices.Add((Rhino.Geometry.Point3d)(pt + new Rhino.Geometry.Point3d(0, -dy, -dz)));
-                //                m_templateX[i].Vertices.Add((Rhino.Geometry.Point3d)(pt + new Rhino.Geometry.Point3d(0, -dy, dz)));
-                //                int ct4 = ct * 4;
-                //                m_templateX[i].Faces.AddFace(ct4, ct4 + 1, ct4 + 2, ct4 + 3);
-                //            }
-                //        }
-
-                //        ct = -1;
-
-                //        for (int x = 0; x < PFrame.Length; x++)
-                //        {
-                //            for (int z = 0; z < PFrame[x][i].Length; z++)
-                //            {
-                //                ct++;
-                //                Rhino.Geometry.Point3d pt = Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, i, z, dx, dy, dz)); //= new Rhino.Geometry.Point3d(PFrame[0][0][0].Pt.x, PFrame[i][y][z].Pt.y, PFrame[i][y][z].Pt.z);
-                //                //pt.Y -= ((x+1) % 2) * dy;
-                //                pt.Y = Bounds.Min_PT.y + dy;
-                //                m_templateY[i].Vertices.Add((Rhino.Geometry.Point3d)(pt + new Rhino.Geometry.Point3d(dx, 0, 0)));
-                //                m_templateY[i].Vertices.Add((Rhino.Geometry.Point3d)(pt + new Rhino.Geometry.Point3d(0, 0, -dz)));
-                //                m_templateY[i].Vertices.Add((Rhino.Geometry.Point3d)(pt + new Rhino.Geometry.Point3d(-dx, 0, 0)));
-                //                m_templateY[i].Vertices.Add((Rhino.Geometry.Point3d)(pt + new Rhino.Geometry.Point3d(0, 0, dz)));
-                //                int ct4 = ct * 4;
-                //                m_templateY[i].Faces.AddFace(ct4, ct4 + 1, ct4 + 2, ct4 + 3);
-                //            }
-                //        }
-
-                //        ct = -1;
-
-                //        for (int x = 0; x < PFrame.Length; x++)
-                //        {
-                //            for (int y = 0; y < PFrame[x].Length; y++)
-                //            {
-                //                ct++;
-                //                Rhino.Geometry.Point3d pt = Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, i, dx, dy, dz)); //= new Rhino.Geometry.Point3d(PFrame[0][0][0].Pt.x, PFrame[i][y][z].Pt.y, PFrame[i][y][z].Pt.z);
-                //                //pt.Z -= ((x+1) % 2) * dz;
-                //                pt.Z = Bounds.Min_PT.z + dz;
-                //                m_templateZ[i].Vertices.Add((Rhino.Geometry.Point3d)(pt - new Rhino.Geometry.Point3d(dx, 0, 0)));
-                //                m_templateZ[i].Vertices.Add((Rhino.Geometry.Point3d)(pt - new Rhino.Geometry.Point3d(0, -dy, 0)));
-                //                m_templateZ[i].Vertices.Add((Rhino.Geometry.Point3d)(pt - new Rhino.Geometry.Point3d(-dx, 0, 0)));
-                //                m_templateZ[i].Vertices.Add((Rhino.Geometry.Point3d)(pt - new Rhino.Geometry.Point3d(0, dy, 0)));
-                //                int ct4 = ct * 4;
-                //                m_templateZ[i].Faces.AddFace(ct4, ct4 + 1, ct4 + 2, ct4 + 3);
-                //            }
-                //        }
-
-                //        m_templateX[i].Normals.ComputeNormals();
-                //        m_templateX[i].FaceNormals.ComputeFaceNormals();
-                //        m_templateY[i].Normals.ComputeNormals();
-                //        m_templateY[i].FaceNormals.ComputeFaceNormals();
-                //        m_templateZ[i].Normals.ComputeNormals();
-                //        m_templateZ[i].FaceNormals.ComputeFaceNormals();
-                //    }
-                //}
-
-                //private void Build_Mesh_Sections()
-                //{
-                //    int ct = -1;
-                //    m_templateX = new Rhino.Geometry.Mesh();
-
-                //    for (int y = 0; y < yDim; y++)
-                //    {
-                //        for (int z = 0; z < zDim; z++)
-                //        {
-                //            ct++;
-                //            m_templateX.Vertices.Add(Utilities.PachTools.HPttoRPt(PFrame[0][y][z].Pt));
-                //            m_templateX.Vertices.Add((Rhino.Geometry.Point3d)(Utilities.PachTools.HPttoRPt(PFrame[0][y][z].Pt) - new Rhino.Geometry.Point3d(0, 0, -dx)));
-                //            m_templateX.Vertices.Add((Rhino.Geometry.Point3d)(Utilities.PachTools.HPttoRPt(PFrame[0][y][z].Pt) - new Rhino.Geometry.Point3d(0, -dx, -dx)));
-                //            m_templateX.Vertices.Add((Rhino.Geometry.Point3d)(Utilities.PachTools.HPttoRPt(PFrame[0][y][z].Pt) - new Rhino.Geometry.Point3d(0, -dx, 0)));
-                //            int ct4 = ct * 4;
-                //            m_templateX.Faces.AddFace(ct4, ct4 + 1, ct4 + 2, ct4 + 3);
-                //        }
-                //    }
-
-                //    ct = -1;
-                //    m_templateY = new Rhino.Geometry.Mesh();
-
-                //    for (int x = 0; x < xDim; x++)
-                //    {
-                //        for (int z = 0; z < zDim; z++)
-                //        {
-                //            ct++;
-                //            m_templateY.Vertices.Add(Utilities.PachTools.HPttoRPt(PFrame[x][0][z].Pt));
-                //            m_templateY.Vertices.Add((Rhino.Geometry.Point3d)(Utilities.PachTools.HPttoRPt(PFrame[x][0][z].Pt) - new Rhino.Geometry.Point3d(0, 0, -dx)));
-                //            m_templateY.Vertices.Add((Rhino.Geometry.Point3d)(Utilities.PachTools.HPttoRPt(PFrame[x][0][z].Pt) - new Rhino.Geometry.Point3d(-dx, 0, -dx)));
-                //            m_templateY.Vertices.Add((Rhino.Geometry.Point3d)(Utilities.PachTools.HPttoRPt(PFrame[x][0][z].Pt) - new Rhino.Geometry.Point3d(-dx, 0, 0)));
-                //            //m_templateX.VertexColors.Add(System.Drawing.Color.Black);
-                //            int ct4 = ct * 4;
-                //            m_templateY.Faces.AddFace(ct4, ct4 + 1, ct4 + 2, ct4 + 3);
-                //        }
-                //    }
-
-                //    ct = -1;
-                //    m_templateZ = new Rhino.Geometry.Mesh();
-
-                //    for (int x = 0; x < xDim; x++)
-                //    {
-                //        for (int y = 0; y < yDim; y++)
-                //        {
-                //            ct++;
-                //            m_templateZ.Vertices.Add(Utilities.PachTools.HPttoRPt(PFrame[x][y][0].Pt));
-                //            m_templateZ.Vertices.Add((Rhino.Geometry.Point3d)(Utilities.PachTools.HPttoRPt(PFrame[x][y][0].Pt) - new Rhino.Geometry.Point3d(0, -dx, 0)));
-                //            m_templateZ.Vertices.Add((Rhino.Geometry.Point3d)(Utilities.PachTools.HPttoRPt(PFrame[x][y][0].Pt) - new Rhino.Geometry.Point3d(-dx, -dx, 0)));
-                //            m_templateZ.Vertices.Add((Rhino.Geometry.Point3d)(Utilities.PachTools.HPttoRPt(PFrame[x][y][0].Pt) - new Rhino.Geometry.Point3d(-dx, 0, 0)));
-                //            //m_templateX.VertexColors.Add(System.Drawing.Color.Black);
-                //            int ct4 = ct * 4;
-                //            m_templateZ.Faces.AddFace(ct4, ct4 + 1, ct4 + 2, ct4 + 3);
-                //        }
-                //    }
-
-                //    m_templateX.Normals.ComputeNormals();
-                //    m_templateX.FaceNormals.ComputeFaceNormals();
-                //    m_templateY.Normals.ComputeNormals();
-                //    m_templateY.FaceNormals.ComputeFaceNormals();
-                //    m_templateZ.Normals.ComputeNormals();
-                //    m_templateZ.FaceNormals.ComputeFaceNormals();
-
-                //    //Rhino.RhinoDoc.ActiveDoc.Objects.AddMesh(m_templateX);
-                //    //Rhino.RhinoDoc.ActiveDoc.Objects.AddMesh(m_templateY);
-                //    //Rhino.RhinoDoc.ActiveDoc.Objects.AddMesh(m_templateZ);
-                //}
-
-
                 /////////////////
                 //Display Methods : Get Points and Pressure for display output
                 /////////////////
@@ -1655,6 +1508,7 @@ namespace Pachyderm_Acoustic
             public class Signal_Driver_Compact
             {
                 Acoustic_Compact_FDTD.Node[] SrcNode;
+                public int[] X, Y, Z;
                 double[] signal;
                 double f;
                 Hare.Geometry.Point[] Loc;
@@ -1687,15 +1541,18 @@ namespace Pachyderm_Acoustic
                     dt = _dt;
 
                     SrcNode = new Acoustic_Compact_FDTD.Node[Loc.Length];
+                    X = new int[Loc.Length];
+                    Y = new int[Loc.Length];
+                    Z = new int[Loc.Length];
 
                     dx = dy / Math.Sqrt(2);
 
                     for (int i = 0; i < Loc.Length; i++)
                     {
-                        int X = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (2 * dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        int Y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dy));// + no_of_Layers / 2;
-                        int Z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dz));// + no_of_Layers / 2;
-                        SrcNode[i] = Frame[X][Y][Z];
+                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (2 * dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dy));// + no_of_Layers / 2;
+                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dz));// + no_of_Layers / 2;
+                        SrcNode[i] = Frame[X[i]][Y[i]][Z[i]];
                     }
 
                     Generate_Signal();
@@ -1707,13 +1564,16 @@ namespace Pachyderm_Acoustic
                     dt = _dt;
 
                     SrcNode = new Acoustic_Compact_FDTD.Node[Loc.Length];
+                    X = new int[Loc.Length];
+                    Y = new int[Loc.Length];
+                    Z = new int[Loc.Length];
 
                     for (int i = 0; i < Loc.Length; i++)
                     {
-                        int X = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        int Y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dy));// + no_of_Layers / 2;
-                        int Z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dz));// + no_of_Layers / 2;
-                        SrcNode[i] = Frame[X][Y][Z];
+                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dy));// + no_of_Layers / 2;
+                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dz));// + no_of_Layers / 2;
+                        SrcNode[i] = Frame[X[i]][Y[i]][Z[i]];
                     }
 
                     Generate_Signal();
@@ -1825,6 +1685,7 @@ namespace Pachyderm_Acoustic
                 List<double[][]> storage = new List<double[][]>();
                 Acoustic_Compact_FDTD.Node[] RecNode;
                 Hare.Geometry.Point[] Loc;
+                public int[] X, Y, Z;
                 double tmax;
                 int no_of_samples;
 
@@ -1840,18 +1701,31 @@ namespace Pachyderm_Acoustic
                     no_of_samples = (int)Math.Ceiling(_tmax / dt / 1000);
                     tmax = _tmax;
                     recording = new double[Loc.Length][];
+                    X = new int[Loc.Length];
+                    Y = new int[Loc.Length];
+                    Z = new int[Loc.Length];
+
                     for (int i = 0; i < Loc.Length; i++)
                     {
                         recording[i] = new double[no_of_samples];
-                        //int X = (int)Math.Floor((Loc[i].X - Bounds.Min_PT.x) * Utilities.Numerics.rt2 / (2 * dx) + no_of_Layers / Math.Sqrt(2));
-                        //int Y = (int)Math.Floor((Loc[i].Y - Bounds.Min_PT.y) / (2 * dx)) + no_of_Layers/2;
-                        //int Z = (int)Math.Floor((Loc[i].Z - Bounds.Min_PT.z) / (2 * dx)) + no_of_Layers/2;
-                        int X = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        int Y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        int Z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddPoint(Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, X, Y, Z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)));
-                        RecNode[i] = Frame[X][Y][Z];
+                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (2 * dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        RecNode[i] = Frame[X[i]][Y[i]][Z[i]];
                     }
+
+                    //for (int i = 0; i < Loc.Length; i++)
+                    //{
+                        
+                    //    //int X = (int)Math.Floor((Loc[i].X - Bounds.Min_PT.x) * Utilities.Numerics.rt2 / (2 * dx) + no_of_Layers / Math.Sqrt(2));
+                    //    //int Y = (int)Math.Floor((Loc[i].Y - Bounds.Min_PT.y) / (2 * dx)) + no_of_Layers/2;
+                    //    //int Z = (int)Math.Floor((Loc[i].Z - Bounds.Min_PT.z) / (2 * dx)) + no_of_Layers/2;
+                    //    int X = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                    //    int Y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                    //    int Z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                    //    //Rhino.RhinoDoc.ActiveDoc.Objects.AddPoint(Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, X, Y, Z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)));
+                    //    RecNode[i] = Frame[X][Y][Z];
+                    //}
                 }
 
                 public void Connect_Grid_Laboratory(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double _tmax, double dt, int no_of_Layers)
@@ -1859,19 +1733,31 @@ namespace Pachyderm_Acoustic
                     no_of_samples = (int)Math.Ceiling(_tmax / dt / 1000);
                     tmax = _tmax;
                     recording = new double[Loc.Length][];
+                    X = new int[Loc.Length];
+                    Y = new int[Loc.Length];
+                    Z = new int[Loc.Length];
 
                     for (int i = 0; i < Loc.Length; i++)
                     {
                         recording[i] = new double[no_of_samples];
-                        //int X = (int)Math.Floor((Loc[i].X - Bounds.Min_PT.x) * Utilities.Numerics.rt2 / (2 * dx) + no_of_Layers / Math.Sqrt(2));
-                        //int Y = (int)Math.Floor((Loc[i].Y - Bounds.Min_PT.y) / (2 * dx)) + no_of_Layers/2;
-                        //int Z = (int)Math.Floor((Loc[i].Z - Bounds.Min_PT.z) / (2 * dx));
-                        int X = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        int Y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        int Z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddPoint(Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, X, Y, Z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)));
-                        RecNode[i] = Frame[X][Y][Z];
+                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (2 * dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        RecNode[i] = Frame[X[i]][Y[i]][Z[i]];
                     }
+
+                    //for (int i = 0; i < Loc.Length; i++)
+                    //{
+                    //    recording[i] = new double[no_of_samples];
+                    //    //int X = (int)Math.Floor((Loc[i].X - Bounds.Min_PT.x) * Utilities.Numerics.rt2 / (2 * dx) + no_of_Layers / Math.Sqrt(2));
+                    //    //int Y = (int)Math.Floor((Loc[i].Y - Bounds.Min_PT.y) / (2 * dx)) + no_of_Layers/2;
+                    //    //int Z = (int)Math.Floor((Loc[i].Z - Bounds.Min_PT.z) / (2 * dx));
+                    //    int X = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                    //    int Y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                    //    int Z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                    //    //Rhino.RhinoDoc.ActiveDoc.Objects.AddPoint(Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, X, Y, Z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)));
+                    //    RecNode[i] = Frame[X][Y][Z];
+                    //}
                 }
 
                 public void Connect_Grid_UniqueOnly_Freefield(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double _tmax, double dt, int no_of_Layers)
@@ -1881,20 +1767,23 @@ namespace Pachyderm_Acoustic
 
                     bool[,,] Check_Frame = new bool[Frame.Length, Frame[0].Length, Frame[0][0].Length];
                     List<Acoustic_Compact_FDTD.Node> Rec_Unique = new List<Acoustic_Compact_FDTD.Node>();
+                    X = new int[Loc.Length];
+                    Y = new int[Loc.Length];
+                    Z = new int[Loc.Length];
 
                     for (int i = 0; i < Loc.Length; i++)
                     {
                         //int X = (int)Math.Floor((Loc[i].X - Bounds.Min_PT.x) * Utilities.Numerics.rt2 / (2 * dx) + no_of_Layers / Math.Sqrt(2)/2);
                         //int Y = (int)Math.Floor((Loc[i].Y - Bounds.Min_PT.y) / (2 * dx)) + no_of_Layers/4;
                         //int Z = (int)Math.Floor((Loc[i].Z - Bounds.Min_PT.z) / (2 * dx)) + no_of_Layers/4;
-                        int X = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        int Y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        int Z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddPoint(Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, X, Y, Z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)));
-                        if (!Check_Frame[X, Y, Z])
+                        if (!Check_Frame[X[i], Y[i], Z[i]])
                         {
-                            Check_Frame[X, Y, Z] = true;
-                            Rec_Unique.Add(Frame[X][Y][Z]);
+                            Check_Frame[X[i], Y[i], Z[i]] = true;
+                            Rec_Unique.Add(Frame[X[i]][Y[i]][Z[i]]);
                         }
                     }
                     recording = new double[Rec_Unique.Count][];
@@ -1910,20 +1799,23 @@ namespace Pachyderm_Acoustic
 
                     bool[,,] Check_Frame = new bool[Frame.Length, Frame[0].Length, Frame[0][0].Length];
                     List<Acoustic_Compact_FDTD.Node> Rec_Unique = new List<Acoustic_Compact_FDTD.Node>();
+                    X = new int[Loc.Length];
+                    Y = new int[Loc.Length];
+                    Z = new int[Loc.Length];
 
                     for (int i = 0; i < Loc.Length; i++)
                     {
                         //int X = (int)Math.Floor((Loc[i].X - Bounds.Min_PT.x) * Utilities.Numerics.rt2 / (2 * dx) + no_of_Layers);
                         //int Y = (int)Math.Floor((Loc[i].Y - Bounds.Min_PT.y) / (2 * dx)) + no_of_Layers / 2;
                         //int Z = (int)Math.Floor((Loc[i].Z - Bounds.Min_PT.z) / (2 * dx));
-                        int X = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        int Y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        int Z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddPoint(Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, X, Y, Z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)));
-                        if (!Check_Frame[X, Y, Z])
+                        if (!Check_Frame[X[i], Y[i], Z[i]])
                         {
-                            Check_Frame[X, Y, Z] = true;
-                            Rec_Unique.Add(Frame[X][Y][Z]);
+                            Check_Frame[X[i], Y[i], Z[i]] = true;
+                            Rec_Unique.Add(Frame[X[i]][Y[i]][Z[i]]);
                         }
                     }
 
@@ -1932,7 +1824,6 @@ namespace Pachyderm_Acoustic
 
                     RecNode = Rec_Unique.ToArray();
                 }
-
 
                 public void Record(int n)
                 {

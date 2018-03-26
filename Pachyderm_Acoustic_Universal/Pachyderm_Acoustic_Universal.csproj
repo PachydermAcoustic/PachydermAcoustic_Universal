@@ -80,6 +80,12 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="SourcePowerMod.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SourcePowerMod.Designer.cs">
+      <DependentUpon>SourcePowerMod.cs</DependentUpon>
+    </Compile>
     <Compile Include="Pach_Graphics.cs" />
     <Compile Include="Pach_Map_Receiver.cs" />
     <Compile Include="Pach_Properties.cs">
@@ -130,6 +136,9 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="SourcePowerMod.resx">
+      <DependentUpon>SourcePowerMod.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Pach_Properties.resx">
       <DependentUpon>Pach_Properties.cs</DependentUpon>
     </EmbeddedResource>

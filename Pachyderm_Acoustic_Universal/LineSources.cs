@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2015, Arthur van der Harten 
+//'Copyright (c) 2008-2018, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -64,13 +64,13 @@ namespace Pachyderm_Acoustic
             /// <param name="el_m"></param>
             /// <param name="SrcID"></param>
             /// <param name="ph"></param>
-            public LineSource(Hare.Geometry.Point[] samples, double length, string Code, int el_m, int SrcID, Phase_Regime ph)
-                : base(new double[8] { 60, 49, 41, 35, 31, 28, 26, 24 }, new Point(0, 0, 0), ph, SrcID)
+            public LineSource(Hare.Geometry.Point[] samples, double length, string Code, int el_m, int SrcID)
+                : base(new double[8] { 60, 49, 41, 35, 31, 28, 26, 24 }, new Point(0, 0, 0), SrcID)
             {
                 samplespermeter = el_m;
                 
                 //Divide curve up in ~equal length segments.
-                Samples = samples;//Curve.DivideEquidistant(1.0 / (double)samplespermeter);
+                Samples = samples;
                 D = new Simple();
 
                 Level = Utilities.PachTools.DecodeSourcePower(Code);
@@ -129,8 +129,8 @@ namespace Pachyderm_Acoustic
             /// <param name="el_m"></param>
             /// <param name="SrcID"></param>
             /// <param name="ph"></param>
-            public LineSource(Hare.Geometry.Point[] samples, double length, double _velocity, double _delta, string Code, int el_m, int SrcID, Phase_Regime ph)
-            : base(new double[8] { 60, 49, 41, 35, 31, 28, 26, 24 }, new Point(0, 0, 0), ph, SrcID)
+            public LineSource(Hare.Geometry.Point[] samples, double length, double _velocity, double _delta, string Code, int el_m, int SrcID)
+            : base(new double[8] { 60, 49, 41, 35, 31, 28, 26, 24 }, new Point(0, 0, 0), SrcID)
             {
                 samplespermeter = el_m;
 
@@ -168,7 +168,7 @@ namespace Pachyderm_Acoustic
 
             public override BroadRay Directions(int index, int thread, ref Random random)
             {
-                return D.Directions(index, thread, ref random, ref Samples, ref Power, ref delay, ref ph, ref S_ID);
+                return D.Directions(index, thread, ref random, ref Samples, ref Power, ref S_ID);
             }
 
             public double[] DirPower(Vector Direction, int sample_id)
@@ -181,13 +181,13 @@ namespace Pachyderm_Acoustic
             public abstract class Directionality
             {
                 protected int ct = -1;
-                public abstract BroadRay Directions(int index, int thread, ref Random random, ref Hare.Geometry.Point[] samples, ref double[] DomainPower, ref double delay, ref Phase_Regime ph, ref int S_ID);
+                public abstract BroadRay Directions(int index, int thread, ref Random random, ref Hare.Geometry.Point[] samples, ref double[] DomainPower, ref int S_ID);
                 public abstract double[] DirPower(Vector Direction, ref Hare.Geometry.Point[] samples, int i, ref double[] DomainPower);
             }
 
             public class Simple : Directionality
             {
-                public override BroadRay Directions(int index, int thread, ref Random random, ref Hare.Geometry.Point[] samples, ref double[] DomainPower, ref double Delay, ref Phase_Regime ph, ref int S_ID)
+                public override BroadRay Directions(int index, int thread, ref Random random, ref Hare.Geometry.Point[] samples, ref double[] DomainPower, ref int S_ID)
                 {
                     ct++;
                     double pos = random.NextDouble();
@@ -197,7 +197,7 @@ namespace Pachyderm_Acoustic
                     double Phi = random.NextDouble() * 2 * System.Math.PI;
                     Vector Direction = new Hare.Geometry.Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
 
-                    return new BroadRay(P, Direction, random.Next(), thread, DomainPower, Delay, S_ID);
+                    return new BroadRay(P, Direction, random.Next(), thread, DomainPower, 0, S_ID);
                 }
 
                 public override double[] DirPower(Vector Direction, ref Hare.Geometry.Point[] samples, int i, ref double[] DomainPower)
@@ -256,7 +256,7 @@ namespace Pachyderm_Acoustic
                     return raypower;
                 }
 
-                public override BroadRay Directions(int index, int thread, ref Random random, ref Hare.Geometry.Point[] samples, ref double[] DomainPower, ref double Delay, ref Phase_Regime ph, ref int S_ID)
+                public override BroadRay Directions(int index, int thread, ref Random random, ref Hare.Geometry.Point[] samples, ref double[] DomainPower, ref int S_ID)
                 {
                     ct++;
                     double pos = random.NextDouble();
@@ -288,7 +288,7 @@ namespace Pachyderm_Acoustic
                     double[] power = new double[8];
                     for (int oct = 0; oct < 8; oct++) power[oct] = DomainPower[oct] * reciprocal_velocity * dLinf * F_r;
 
-                    return new BroadRay(P, Direction, random.Next(), thread, DomainPower, Delay, S_ID);
+                    return new BroadRay(P, Direction, random.Next(), thread, DomainPower, 0, S_ID);
                 }
             }
         }

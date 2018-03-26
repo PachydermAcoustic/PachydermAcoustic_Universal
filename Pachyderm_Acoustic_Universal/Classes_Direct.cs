@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2015, Arthur van der Harten 
+//'Copyright (c) 2008-2018, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -40,8 +40,6 @@ namespace Pachyderm_Acoustic
         public string type;
         public bool[] Validity;//[Rec]
         public double[][][] Io;//[Rec][Oct][Time_ms]
-        public double[][] P;//[Rec][Time_ms]
-        public double[][][] Pdir;//[Rec][direction][Time_ms] (0 for x+, 1 for x-, 2 for y+, 3 for y-, 4 for z+, 5 for z-)
         public double[][] F;//[Rec][Time_ms]
         public double[][][] Fdir;//[Rec][direction][Time_ms] (0 for x+, 1 for x-, 2 for y+, 3 for y-, 4 for z+, 5 for z-)
         public float[][][][] Dir_Rec_Pos;//[receiver][oct, sample, axis]
@@ -54,7 +52,7 @@ namespace Pachyderm_Acoustic
         /// <summary>
         /// This method copies the direct sound information to an open, writeable binary stream.
         /// </summary>
-        /// <param name="BW">The Binary Writer to which the direct sound will be written.</param>
+        /// <param name="BW->The Binary Writer to which the direct sound will be written.</param>
         public void Write_Data(ref System.IO.BinaryWriter BW)
         {
             //1. Write an indicator to signify that there is direct sound data
@@ -155,7 +153,7 @@ namespace Pachyderm_Acoustic
                     D.Delay_ms = 0;
             }
 
-            D.Src = new GeodesicSource(D.SWL, SrcPt, 0, 0);
+            D.Src = new GeodesicSource(D.SWL, SrcPt, 0);
             D.Validity = new Boolean[RecPts.Count<Hare.Geometry.Point>()];
             D.Time_Pt = new double[RecPts.Count<Hare.Geometry.Point>()];
             D.Io = new double[RecPts.Count<Hare.Geometry.Point>()][][];
@@ -219,7 +217,8 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            D.Create_Pressure();
+            D.Create_Filter();
+            //D.Create_Pressure();
 
             return D;
         }
@@ -256,7 +255,6 @@ namespace Pachyderm_Acoustic
                 Receiver.Add(Rec_in.Origin(i));
             }
             SWL = new double[8] { Src_in.SWL(0), Src_in.SWL(1), Src_in.SWL(2), Src_in.SWL(3), Src_in.SWL(4), Src_in.SWL(5), Src_in.SWL(6), Src_in.SWL(7) };
-            Delay_ms = Src.Delay;
             Oct_choice = Octaves;
         }
 
@@ -406,7 +404,7 @@ namespace Pachyderm_Acoustic
                     Io[i][6][0] = Power[6] * Math.Pow(10, -.1 * Room.Attenuation(0)[6] * Length) * transmod[6] / (4 * Math.PI * Length * Length);
                     Io[i][7][0] = Power[7] * Math.Pow(10, -.1 * Room.Attenuation(0)[7] * Length) * transmod[7] / (4 * Math.PI * Length * Length);
 
-                    float time = (float)(Length / C_Sound) + (float)Src.Delay;
+                    float time = (float)(Length / C_Sound);
 
                     for (int oct = 0; oct < 8; oct++)
                     {
@@ -416,123 +414,28 @@ namespace Pachyderm_Acoustic
                         if (V.z > 0) Dir_Rec_Pos[i][oct][0][2] += (float)V.z; else Dir_Rec_Neg[i][oct][0][2] += (float)V.z;
                     }
 
-                    Time_Pt[i] = Length / C_Sound + Src.Delay;
+                    Time_Pt[i] = Length / C_Sound + Delay_ms;
                 }
             }
         }
 
-        public double[] Dir_Pressure(int Rec_ID, double alt, double azi, bool degrees)
+        public double[] Dir_Filter(int Rec_ID, double alt, double azi, bool degrees, int Sampling_Frequency, bool flat)
         {
-            double[] Pn = new double[P[Rec_ID].Length];
-                if (Dir_Rec_Pos[Rec_ID][0].Length > 1)
-                {
-                    for (int i = 0; i < Pdir[Rec_ID].Length; i++)
-                    {
-                        double[] Eo = new double[8];
-                        Vector D = new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
-                        Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
-                        Vn.Normalize();
-                        if (Vn.x > 0)
-                        {
-                            for (int octave = 0; octave < 8; octave++)
-                            {
-                                Eo[octave] = Math.Sqrt(Io[Rec_ID][octave][i] * Rho_C[Rec_ID]) ;
-                            }
-                        }
-                        double[] P_temp = Audio.Pach_SP.Filter.Signal(Eo, SampleFreq, 4096, 0);
-                        for(int j = 0; j < 4096; j++)
-                        {
-                            Pn[i+j] += P_temp[j] * Vn.x;
-                        }
-                    }
-                }
-                else 
-                {
-                    Vector D = new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
-                    Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
-                    Vn.Normalize();
-                    if (Vn.x > 0) for (int i = 0; i < P.Length; i++) Pn[i] = P[Rec_ID][i] * Vn.x;
-                }
-            return Pn;
-        }
+            double[] Fn = new double[F[Rec_ID].Length];
+            double[][] F_dir_temp = (Sampling_Frequency == 44100 && flat) ? Fdir[Rec_ID] : Create_Filter(SWL, Rec_ID, Sampling_Frequency);
 
-        public double[][] Dir_Pressure(int Rec_ID, double alt, double azi, bool degrees, bool Figure8)
-        {
-            double[][] Pn = new double[P[Rec_ID].Length][];
-            if (Figure8)
-            {
-                for (int i = 0; i < Pdir[Rec_ID][0].Length; i++)
-                {
-                    Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Vector(Pdir[Rec_ID][0][i] - Pdir[Rec_ID][1][i], Pdir[Rec_ID][2][i] - Pdir[Rec_ID][3][i], Pdir[Rec_ID][4][i] - Pdir[Rec_ID][5][i]), azi, 0, degrees), 0, alt, degrees);
-                    Pn[i] = new double[3]{ Vn.x, Vn.y, Vn.z };
-                }
-            }
-            else
-            {
-                if (Dir_Rec_Pos[Rec_ID][0].Length > 1)
-                {
-                    for (int i = 0; i < Pn.Length; i++) Pn[i] = new double[3];
-
-                    for (int i = 0; i < Pdir[Rec_ID].Length; i++)
-                    {
-                        double[] Eo = new double[8];
-                        Vector D = new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
-                        Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
-                        Vn.Normalize();
-                        if (Vn.x > 0)
-                        {
-                            for (int octave = 0; octave < 8; octave++)
-                            {
-                                Eo[octave] = Math.Sqrt(Io[Rec_ID][octave][i] * Rho_C[Rec_ID]);
-                            }
-                        }
-                        double[] P_temp = Audio.Pach_SP.Filter.Signal(Eo, SampleFreq, 4096, 0);
-                        for (int j = 0; j < 4096; j++)
-                        {
-                            Pn[i + j][0] += P_temp[j] * Vn.x;
-                            Pn[i + j][1] += P_temp[j] * Vn.y;
-                            Pn[i + j][2] += P_temp[j] * Vn.z;
-                        }
-                    }
-                }
-                else
-                {
-                    for (int i = 0; i < Pn.Length; i++) Pn[i] = new double[3];
-                    Vector D = new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
-                    Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
-                    Vn.Normalize();
-                    if (Vn.x > 0) for (int i = 0; i < P[0].Length; i++) Pn[i][0] = P[Rec_ID][i] * Vn.x;
-                    if (Vn.y > 0) for (int i = 0; i < P[0].Length; i++) Pn[i][1] = P[Rec_ID][i] * Vn.y;
-                    if (Vn.z > 0) for (int i = 0; i < P[0].Length; i++) Pn[i][2] = P[Rec_ID][i] * Vn.z;
-                }
-            }
-            return Pn;
-        }
-
-        public double[] Dir_Filter(int Rec_ID, double alt, double azi, bool degrees)
-        {
-            double[] Fn = new double[P[Rec_ID].Length];
             if (Dir_Rec_Pos[Rec_ID][0].Length > 1)
             {
-                for (int i = 0; i < Pdir[Rec_ID].Length; i++)
+                for (int i = 0; i < F_dir_temp[Rec_ID].Length; i++)
                 {
-                    //double[] Eo = new double[8];
                     Vector D = new Vector(1,0,0);// new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
                     Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
                     Vn.Normalize();
-                    //if (Vn.x > 0)
-                    //{
-                    //    for (int octave = 0; octave < 8; octave++)
-                    //    {
-                    //        Eo[octave] = Math.Sqrt(Io[Rec_ID][octave][i] * Rho_C[Rec_ID]) * Math.Pow(10, (SWL[5] - SWL[i]) / 20);
-                    //    }
-                    //}
-                    //double[] P_temp = Audio.Pach_SP.Filter.Transfer_Function(Eo, SampleFreq, 4096, 0);
                     for (int j = 0; j < 4096; j++)
                     {
-                        Fn[i] = Vn.x * ((Vn.x > 0) ? Fdir[Rec_ID][0][i] : Fdir[Rec_ID][1][i]) +
-                                Vn.y * ((Vn.y > 0) ? Fdir[Rec_ID][2][i] : Fdir[Rec_ID][3][i]) +
-                                Vn.z * ((Vn.z > 0) ? Fdir[Rec_ID][4][i] : Fdir[Rec_ID][5][i]);
+                        Fn[i] = Vn.x * ((Vn.x > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
+                                Vn.y * ((Vn.y > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
+                                Vn.z * ((Vn.z > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);
                     }
                 }
             }
@@ -541,21 +444,23 @@ namespace Pachyderm_Acoustic
                 Vector D = new Vector(1, 0, 0);//new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
                 Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
                 Vn.Normalize();
-                for (int i = 0; i < 4096; i++) Fn[i] = Vn.x * ((Vn.x > 0) ? Fdir[Rec_ID][0][i] : Fdir[Rec_ID][1][i]) +
-                                                           Vn.y * ((Vn.y > 0) ? Fdir[Rec_ID][2][i] : Fdir[Rec_ID][3][i]) +
-                                                           Vn.z * ((Vn.z > 0) ? Fdir[Rec_ID][4][i] : Fdir[Rec_ID][5][i]);//F[Rec_ID][i] * Vn.x;
+                for (int i = 0; i < 4096; i++) Fn[i] = Vn.x * ((Vn.x > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
+                                                           Vn.y * ((Vn.y > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
+                                                           Vn.z * ((Vn.z > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);//F[Rec_ID][i] * Vn.x;
             }
             return Fn;
         }
 
-        public double[][] Dir_Filter(int Rec_ID, double alt, double azi, bool degrees, bool Figure8)
+        public double[][] Dir_Filter(int Rec_ID, double alt, double azi, bool degrees, int Sampling_Frequency, bool Figure8, bool flat)
         {
-            double[][] Fn = new double[P[Rec_ID].Length][];
+            double[][] Fn = new double[F[Rec_ID].Length][];
+            double[][] F_dir_temp = (Sampling_Frequency == 44100 && flat) ? Fdir[Rec_ID] : Create_Filter(SWL, Rec_ID, Sampling_Frequency);
+
             if (Figure8)
             {
-                for (int i = 0; i < Pdir[Rec_ID][0].Length; i++)
+                for (int i = 0; i < F_dir_temp[0].Length; i++)
                 {
-                    Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Vector(Fdir[Rec_ID][0][i] - Fdir[Rec_ID][1][i], Fdir[Rec_ID][2][i] - Fdir[Rec_ID][3][i], Fdir[Rec_ID][4][i] - Fdir[Rec_ID][5][i]), azi, 0, degrees), 0, alt, degrees);
+                    Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Vector(F_dir_temp[0][i] - F_dir_temp[1][i], F_dir_temp[2][i] - F_dir_temp[3][i], F_dir_temp[4][i] - F_dir_temp[5][i]), azi, 0, degrees), 0, alt, degrees);
                     Fn[i] = new double[3] { Vn.x, Vn.y, Vn.z };
                 }
             }
@@ -565,32 +470,24 @@ namespace Pachyderm_Acoustic
                 {
                     for (int i = 0; i < Fn.Length; i++) Fn[i] = new double[3];
 
-                    for (int i = 0; i < Fdir[Rec_ID].Length; i++)
+                    for (int i = 0; i < F_dir_temp[Rec_ID].Length; i++)
                     {
                         double[] Eo = new double[8];
                         Vector D = new Vector(1,0,0);// new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
                         Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
                         Vn.Normalize();
-                        //if (Vn.x > 0)
-                        //{
-                        //    for (int octave = 0; octave < 8; octave++)
-                        //    {
-                        //        Eo[octave] = Math.Sqrt(Io[Rec_ID][octave][i] * Rho_C[Rec_ID]) * Math.Pow(10, (SWL[5] - SWL[i]) / 20);
-                        //    }
-                        //}
-                        //double[] F_temp = Audio.Pach_SP.Filter.Transfer_Function(Eo, SampleFreq, 4096, 0);
 
                         for (int j = 0; j < 4096; j++)
                         {
-                            Fn[i + j][0] += Vn.x * ((Vn.x > 0) ? Fdir[Rec_ID][0][i] : Fdir[Rec_ID][1][i]) +
-                                            Vn.y * ((Vn.y > 0) ? Fdir[Rec_ID][2][i] : Fdir[Rec_ID][3][i]) +
-                                            Vn.z * ((Vn.z > 0) ? Fdir[Rec_ID][4][i] : Fdir[Rec_ID][5][i]);
-                            Fn[i + j][1] += Vn.y * ((Vn.x > 0) ? Fdir[Rec_ID][0][i] : Fdir[Rec_ID][1][i]) +
-                                            Vn.x * ((Vn.y > 0) ? Fdir[Rec_ID][2][i] : Fdir[Rec_ID][3][i]) +
-                                            Vn.z * ((Vn.z > 0) ? Fdir[Rec_ID][4][i] : Fdir[Rec_ID][5][i]);
-                            Fn[i + j][2] += Vn.z * ((Vn.x > 0) ? Fdir[Rec_ID][0][i] : Fdir[Rec_ID][1][i]) +
-                                            Vn.y * ((Vn.y > 0) ? Fdir[Rec_ID][2][i] : Fdir[Rec_ID][3][i]) +
-                                            Vn.x * ((Vn.z > 0) ? Fdir[Rec_ID][4][i] : Fdir[Rec_ID][5][i]); ;
+                            Fn[i + j][0] += Vn.x * ((Vn.x > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
+                                            Vn.y * ((Vn.y > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
+                                            Vn.z * ((Vn.z > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);
+                            Fn[i + j][1] += Vn.y * ((Vn.x > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
+                                            Vn.x * ((Vn.y > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
+                                            Vn.z * ((Vn.z > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);
+                            Fn[i + j][2] += Vn.z * ((Vn.x > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
+                                            Vn.y * ((Vn.y > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
+                                            Vn.x * ((Vn.z > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]); ;
                         }
                     }
                 }
@@ -600,9 +497,9 @@ namespace Pachyderm_Acoustic
                     Vector D = new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
                     Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
                     Vn.Normalize();
-                    if (Vn.x > 0) for (int i = 0; i < Fn[0].Length; i++) Fn[i][0] = F[Rec_ID][i] * Vn.x;
-                    if (Vn.y > 0) for (int i = 0; i < Fn[0].Length; i++) Fn[i][1] = F[Rec_ID][i] * Vn.y;
-                    if (Vn.z > 0) for (int i = 0; i < Fn[0].Length; i++) Fn[i][2] = F[Rec_ID][i] * Vn.z;
+                    if (Vn.x > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][0] = F[Rec_ID][i] * Vn.x;
+                    if (Vn.y > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][1] = F[Rec_ID][i] * Vn.y;
+                    if (Vn.z > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][2] = F[Rec_ID][i] * Vn.z;
                 }
             }
             return Fn;
@@ -718,6 +615,7 @@ namespace Pachyderm_Acoustic
                 return Src.Origin();
             }
         }
+
         public IEnumerable<Hare.Geometry.Point> Rec_Origin
         {
             get
@@ -757,7 +655,6 @@ namespace Pachyderm_Acoustic
             return Orig.ToArray();
         }
 
-        //
         public virtual Vector[] Directions_Pos(int Octave, int Rec_Index, double alt, double azi, bool degrees)
         {
             int length = Dir_Rec_Pos[Rec_Index][Octave].Length;
@@ -799,7 +696,6 @@ namespace Pachyderm_Acoustic
             double alt = Math.Atan2(V.x, V.z);
             return Directions_Neg(Octave, Rec_Index, alt, azi, false);
         }
-        //
 
         public double Dir_Energy(int Octave, int Rec_ID, int dir)
         {
@@ -901,78 +797,27 @@ namespace Pachyderm_Acoustic
             return D;
         }
 
-        public void Create_Pressure()
+        public void Set_Power(double[] swl)
         {
-            P = new double[Receiver.Count][];
-            Pdir = new double[Receiver.Count][][];
-            double scale = Math.Sqrt(4096);
+            SWL = swl;
+            Src.SoundPower = swl;
+        }
 
-            for (int i = 0; i < Receiver.Count; i++)
+        public double[][] Get_Filter(int Rec_ID, int Sampling_Frequency)
+        {
+            if (Sampling_Frequency != 44100)
             {
-                //double[][] ETC = new double[8][];
-
-                //for (int oct = 0; oct < 8; oct++) ETC[oct] = new double[Io[i][0].Length];
-
-                //for (int t = 0; t < ETC[0].Length; t++)
-                //{
-                //    for (int oct = 0; oct < 8; oct++) ETC[oct][t] = Math.Sqrt(Io[i][oct][t] * Rho_C[i]);
-                //}
-
-                P[i] = new double[Io[i][0].Length + 4096];
-                Pdir[i] = new double[6][];
-                for (int j = 0; j < 6; j++) Pdir[i][j] = new double[Io[i][0].Length + 4096];
-                for (int t = 0; t < Io[i][0].Length; t++)
-                {
-                    //Audio.Pach_SP.Initialize_filter_functions();
-                    //Rhino.RhinoApp.CommandPrompt = string.Format("Creating direct sound pressure for receiver {0}. {1}% complete, ", i, Math.Round((double)t / ETC[0].Length * 100));
-                    double[] pr = new double[8];
-                    for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Sqrt(Io[i][oct][t] * Rho_C[i]);
-
-                    double[] Pmin = Audio.Pach_SP.Filter.Signal(pr, 44100, 4096, 0);
-                    //Audio.Pach_SP.Raised_Cosine_Window(ref Pmin);
-                    for (int u = 0; u < Pmin.Length; u++)
-                    {
-                        P[i][t + u] += Pmin[u];// *scale;
-                    }
-
-                    double[][] dir_E = new double[6][];
-                    for (int d = 0; d < 6; d++) dir_E[d] = new double[8];
-                    //double[] totalprms = new double[6];
-                    Vector vpos = new Vector(), vneg = new Vector();
-                    for (int oct = 0; oct < 8; oct++)
-                    {
-                        vpos += new Vector(Math.Abs(Dir_Rec_Pos[i][oct][t][0]), Math.Abs(Dir_Rec_Pos[i][oct][t][1]), Math.Abs(Dir_Rec_Pos[i][oct][t][2]));
-                        vneg += new Vector(Math.Abs(Dir_Rec_Neg[i][oct][t][0]), Math.Abs(Dir_Rec_Neg[i][oct][t][1]), Math.Abs(Dir_Rec_Neg[i][oct][t][2]));
-                    }
-
-                    //6th order normalization:
-                    double length = Math.Sqrt(+vpos.x * vpos.x + vneg.x * vneg.x + vpos.y * vpos.y + vneg.y * vneg.y + vpos.z * vpos.z + vneg.z * vneg.z);
-                    vpos /= length;
-                    vneg /= length;
-
-                    for (int j = 0; j < 3; j++)
-                    {
-                        for (int k = 0; k < 4096; k++)
-                        {
-                            int j2 = 2 * j;
-                            Pdir[i][j2][t + k] += Pmin[k] * vpos.byint(j);//((double.IsNaN(hist_temp[j2][k])) ? 0: hist_temp[j2][k]);
-                            Pdir[i][j2 + 1][t + k] += Pmin[k] * vneg.byint(j);//((double.IsNaN(hist_temp[j2 + 1][k])) ? 0 : hist_temp[j2 + 1][k]);
-                        }
-                    }
-                }
+                return Create_Filter(SWL, Rec_ID, Sampling_Frequency);
+            }
+            else
+            {
+                return F;
             }
         }
 
-        public void Get_Filter(int Rec_ID, out double[] Filter)
-        {
-            if (F == null)
-            {
-                Create_Filter();
-            }
-
-            Filter = F[Rec_ID];
-        }
-
+        /// <summary>
+        /// Creates the default 44100 Hz. Filter. This filter is used for display, and as needed for auralization.
+        /// </summary>
         public void Create_Filter()
         {
             F = new double[Receiver.Count][];
@@ -980,19 +825,11 @@ namespace Pachyderm_Acoustic
             double scale = Math.Sqrt(4096);
 
             double[] p_mod = new double[8];
-            for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (SWL[5] - SWL[i]) / 20);
+            for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
 
             for (int i = 0; i < Receiver.Count; i++)
             {
                 double[][] ETC = new double[8][];
-
-                //for (int oct = 0; oct < 8; oct++) ETC[oct] = new double[Io[i][0].Length];
-
-                //for (int t = 0; t < ETC[0].Length; t++)
-                //{
-                //    for (int oct = 0; oct < 8; oct++) ETC[oct][t] = Math.Sqrt(Io[i][oct][t] * Rho_C[i]);
-                //}
-
                 F[i] = new double[Io[i][0].Length + 4096];
                 Fdir[i] = new double[6][];
                 for (int j = 0; j < 6; j++) Fdir[i][j] = new double[Io[i][0].Length + 4096];
@@ -1009,7 +846,6 @@ namespace Pachyderm_Acoustic
 
                     double[][] dir_E = new double[6][];
                     for (int d = 0; d < 6; d++) dir_E[d] = new double[8];
-                    //double[] totalprms = new double[6];
                     Vector vpos = new Vector(), vneg = new Vector();
                     for (int oct = 0; oct < 8; oct++)
                     {
@@ -1018,7 +854,7 @@ namespace Pachyderm_Acoustic
                     }
 
                     //6th order normalization:
-                    double length = Math.Sqrt(+vpos.x * vpos.x + vneg.x * vneg.x + vpos.y * vpos.y + vneg.y * vneg.y + vpos.z * vpos.z + vneg.z * vneg.z);
+                    double length = Math.Sqrt(vpos.x * vpos.x + vneg.x * vneg.x + vpos.y * vpos.y + vneg.y * vneg.y + vpos.z * vpos.z + vneg.z * vneg.z);
                     vpos /= length;
                     vneg /= length;
 
@@ -1033,6 +869,119 @@ namespace Pachyderm_Acoustic
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Creates a Filter with a custom sampling frequency. This filter is used for auralization. 
+        /// </summary>
+        public double[] Create_Filter(double[] SWL, int Rec_ID, int dim, int Sampling_Frequency)
+        {
+            double[] F_out = new double[Io[Rec_ID][0].Length + 4096];
+            double scale = Math.Sqrt(4096);
+
+            double[] p_mod = new double[8];
+            for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
+
+            double[][] ETC = new double[8][];
+
+            if (dim == 0)
+            {
+                for (int t = 0; t < Io[Rec_ID][0].Length; t++)
+                {
+                    double[] pr = new double[8];
+                    for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Sqrt(Io[Rec_ID][oct][0] * Rho_C[0]) * p_mod[oct];
+
+                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 4096, 0);
+                    for (int u = 0; u < Pmin.Length; u++)
+                    {
+                        F_out[t + u] += Pmin[u];// *scale;
+                    }
+                }
+            }
+            else
+            {
+                for (int t = 0; t < Io[Rec_ID][0].Length; t++)
+                {
+                    double[] pr = new double[8];
+                    for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Sqrt(Io[Rec_ID][oct][0] * Rho_C[0]) * p_mod[oct];
+                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 4096, 0);
+
+                    double[][] dir_E = new double[6][];
+                    for (int d = 0; d < 6; d++) dir_E[d] = new double[8];
+                    Vector vpos = new Vector(), vneg = new Vector();
+                    for (int oct = 0; oct < 8; oct++)
+                    {
+                        vpos += new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][oct][t][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][oct][t][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][oct][t][2]));
+                        vneg += new Vector(Math.Abs(Dir_Rec_Neg[Rec_ID][oct][t][0]), Math.Abs(Dir_Rec_Neg[Rec_ID][oct][t][1]), Math.Abs(Dir_Rec_Neg[Rec_ID][oct][t][2]));
+                    }
+
+                    //6th order normalization:
+                    double length = Math.Sqrt(vpos.x * vpos.x + vneg.x * vneg.x + vpos.y * vpos.y + vneg.y * vneg.y + vpos.z * vpos.z + vneg.z * vneg.z);
+                    vpos /= length;
+                    vneg /= length;
+
+                    for (int k = 0; k < 4096; k++)
+                    {
+                        F_out[t + k] += Pmin[k] * ((dim < 4) ? vpos.byint(dim-1) : vpos.byint(dim - 4));
+                    }
+                }
+            }
+            
+            return F_out;
+        }
+
+        /// <summary>
+        /// Creates a Filter with a custom sampling frequency. This filter is used for auralization. 
+        /// </summary>
+        public double[][] Create_Filter(double[] SWL, int Rec_ID, int Sampling_Frequency)
+        {
+            double[][] F_out = new double[7][];
+            double scale = Math.Sqrt(4096);
+
+            double[] p_mod = new double[8];
+            for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
+
+                double[][] ETC = new double[8][];
+                F_out[0] = new double[Io[Rec_ID][0].Length + 4096];
+                for (int j = 1; j < 7; j++) F_out[j] = new double[Io[Rec_ID][0].Length + 4096];
+                for (int t = 0; t < Io[Rec_ID][0].Length; t++)
+                {
+                    double[] pr = new double[8];
+                    for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Sqrt(Io[Rec_ID][oct][0] * Rho_C[0]) * p_mod[oct];
+
+                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 4096, 0);
+                    for (int u = 0; u < Pmin.Length; u++)
+                    {
+                        F_out[0][t + u] += Pmin[u];// *scale;
+                    }
+
+                    double[][] dir_E = new double[6][];
+                    for (int d = 0; d < 6; d++) dir_E[d] = new double[8];
+                    //double[] totalprms = new double[6];
+                    Vector vpos = new Vector(), vneg = new Vector();
+                    for (int oct = 0; oct < 8; oct++)
+                    {
+                        vpos += new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][oct][t][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][oct][t][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][oct][t][2]));
+                        vneg += new Vector(Math.Abs(Dir_Rec_Neg[Rec_ID][oct][t][0]), Math.Abs(Dir_Rec_Neg[Rec_ID][oct][t][1]), Math.Abs(Dir_Rec_Neg[Rec_ID][oct][t][2]));
+                    }
+
+                    //6th order normalization:
+                    double length = Math.Sqrt(+vpos.x * vpos.x + vneg.x * vneg.x + vpos.y * vpos.y + vneg.y * vneg.y + vpos.z * vpos.z + vneg.z * vneg.z);
+                    vpos /= length;
+                    vneg /= length;
+
+                    for (int j = 0; j < 3; j++)
+                    {
+                        for (int k = 0; k < 4096; k++)
+                        {
+                            int j2 = 2 * j;
+                            F_out[j2+1][t + k] += Pmin[k] * vpos.byint(j);//((double.IsNaN(hist_temp[j2][k])) ? 0: hist_temp[j2][k]);
+                            F_out[j2+2][t + k] += Pmin[k] * vneg.byint(j);//((double.IsNaN(hist_temp[j2 + 1][k])) ? 0 : hist_temp[j2 + 1][k]);
+                        }
+                    }
+                }
+            
+            return F_out;
         }
 
         private void Record_Line_Segment(ref List<double> t, ref List<double[]> I, ref List<Vector> d, int rec_id)

@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2015, Arthur van der Harten 
+//'Copyright (c) 2008-2018, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -48,8 +48,8 @@ namespace Pachyderm_Acoustic
             /// </summary>
             Topology T;
 
-            public SurfaceSource(Hare.Geometry.Point[] samples, Topology T_in, String CodeList, double area, int el_m, int SrcID, Phase_Regime ph)
-            : base(new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 }, new Hare.Geometry.Point(0, 0, 0), ph, SrcID)
+            public SurfaceSource(Hare.Geometry.Point[] samples, Topology T_in, String CodeList, double area, int el_m, int SrcID)
+            : base(new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 }, new Hare.Geometry.Point(0, 0, 0), SrcID)
             {
                 T = T_in;
 
@@ -93,7 +93,7 @@ namespace Pachyderm_Acoustic
                 double Phi = random.NextDouble() * 2 * System.Math.PI;
                 Hare.Geometry.Vector Direction = new Hare.Geometry.Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
                 
-                return new BroadRay(P, Direction, random.Next(), thread, DomainPower, delay, S_ID);
+                return new BroadRay(P, Direction, random.Next(), thread, DomainPower, 0, S_ID);
             }
         }
     }

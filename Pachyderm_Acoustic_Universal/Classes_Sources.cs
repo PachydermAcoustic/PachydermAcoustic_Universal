@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2015, Arthur van der Harten 
+//'Copyright (c) 2008-2018, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -36,9 +36,7 @@ namespace Pachyderm_Acoustic
             protected Hare.Geometry.Point H_Center;
             protected string type = "";
             protected int S_ID = 0;
-            protected double delay = 0;
-            protected Phase_Regime ph;
-
+            public double Rho_C = 411.6;
             /// <summary>
             /// Most explicit constructor.
             /// </summary>
@@ -47,9 +45,8 @@ namespace Pachyderm_Acoustic
             /// <param name="TotalRays_in">Number of rays </param>
             /// <param name="Broadband_Time"></param>
             /// <param name="ID">The identifier of the source</param>
-            public Source(double[] power_In_db, Point Source, Phase_Regime p, int ID)
+            public Source(double[] power_In_db, Point Source, int ID)
             {
-                ph = p;
                 S_ID = ID;
                 H_Center = new Hare.Geometry.Point(Source.x, Source.y, Source.z);
                 Center = Source;                
@@ -119,14 +116,17 @@ namespace Pachyderm_Acoustic
                 {
                     return SourcePower;// new double[] { SourcePower[0], SourcePower[1], SourcePower[2], SourcePower[3], SourcePower[4], SourcePower[5], SourcePower[6], SourcePower[7] };
                 }
+                set
+                {
+                    SourcePower = value;
+                }
             }
 
             public virtual double[] Dir_Filter(int threadid, int random, Vector Direction, int sample_frequency, int length_starttofinish)
             {
                 double[] power = DirPower(threadid, random, Direction);
                 double[] OUT = new double[8];
-                for (int oct = 0; oct < 8; oct++) OUT[oct] = power[oct] / SoundPower[oct];
-
+                for (int oct = 0; oct < 8; oct++) OUT[oct] = Math.Sqrt(Math.Abs(power[oct]));
                 return Audio.Pach_SP.Magnitude_Filter(OUT, sample_frequency, length_starttofinish, threadid);
             }
 
@@ -139,7 +139,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public virtual double[] DirPower(int threadid, int random, Vector Direction)
             {
-                return SoundPower;
+                return new double[8] {1,1,1,1,1,1,1,1};
             }
 
             /// <summary>
@@ -153,27 +153,16 @@ namespace Pachyderm_Acoustic
                 return 10 * Math.Log10(Math.Pow(10, .1 * SPL[0]) + Math.Pow(10, .1 * SPL[1]) + Math.Pow(10, .1 * SPL[2]) + Math.Pow(10, .1 * SPL[3]) + Math.Pow(10, .1 * SPL[4]) + Math.Pow(10, .1 * SPL[5]) + Math.Pow(10, .1 * SPL[6]) + Math.Pow(10, .1 * SPL[7]));
             }
 
+            public virtual double[] SWL()
+            {
+                return SPL.Clone() as double[];
+            }
+
             /// <summary>
             /// The list of directions. For stochastic calculations only.
             /// </summary>
             public abstract BroadRay Directions(int index, int thread, ref Random random);
             public abstract BroadRay Directions(int index, int thread, ref Random random, int[] Octaves);
-
-            /// <summary>
-            /// return the sound power of the source.
-            /// </summary>
-            /// <param name="Octave"></param>
-            /// <returns></returns>
-            public double TotalPower(int Octave)
-            {
-                if (Octave < 8) return SourcePower[Octave];
-                return SourcePowerSum();
-            }
-
-            public double SourcePowerSum()
-            {
-                return SourcePower[0] + SourcePower[1] + SourcePower[2] + SourcePower[3] + SourcePower[4] + SourcePower[5] + SourcePower[6] + SourcePower[7];
-            }
             
             /// <summary>
             /// The origin of the source.
@@ -202,24 +191,6 @@ namespace Pachyderm_Acoustic
             {
                 return S_ID;
             }
-
-            public double Delay
-            {
-                get
-                {
-                    return this.delay;
-                }
-                set
-                {
-                    delay = value;
-                }
-            }
-
-            public enum Phase_Regime
-            {
-                PhaseMatched,
-                PhaseRandom
-            }
         }
 
         /// <summary>
@@ -228,20 +199,8 @@ namespace Pachyderm_Acoustic
         [Serializable]
         public class RandomSource: Source
         {
-            public RandomSource(double[] power_in_db, Point Source, double delay_in, int ID)
-            :this(power_in_db, Source, ID)
-            {
-                delay = delay_in;
-            }
-
             public RandomSource(double[] power_in_db, Point Source, int ID)
-                :base(power_in_db, Source, Phase_Regime.PhaseMatched, ID)
-            {
-                type = "PseudoRandom";
-            }
-
-            public RandomSource(double[] power_in_db, Point Source, Phase_Regime ph, int ID)
-                : base(power_in_db, Source, ph, ID)
+                :base(power_in_db, Source, ID)
             {
                 type = "PseudoRandom";
             }
@@ -252,7 +211,7 @@ namespace Pachyderm_Acoustic
                 double Phi = random.NextDouble() * 2 * System.Math.PI;
                 Vector Direction = new Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
                 
-                BroadRay B = new BroadRay(H_Center, Direction, random.Next(), thread, SourcePower, delay, Source_ID()); //Provides divided Power[stochastic]
+                BroadRay B = new BroadRay(H_Center, Direction, random.Next(), thread, DirPower(thread, random.Next(), Direction), 0, Source_ID());
                 return B;
             }
 
@@ -262,7 +221,7 @@ namespace Pachyderm_Acoustic
                 double Phi = random.NextDouble() * 2 * System.Math.PI;
                 Vector Direction = new Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
                 
-                BroadRay B = new BroadRay(H_Center, Direction, random.Next(), thread, SourcePower, delay, Source_ID(), Octaves); //Provides divided Power[stochastic]
+                BroadRay B = new BroadRay(H_Center, Direction, random.Next(), thread, DirPower(thread, random.Next(), Direction), 0, Source_ID(), Octaves);
                 return B;
             }
         }
@@ -277,14 +236,8 @@ namespace Pachyderm_Acoustic
             int Fnum = 0;
             protected int rayct = 0;
             
-            public GeodesicSource(double[] power_in_db, Point Source, double delay_in, int ID)
-            :this(power_in_db, Source, ID)
-            {
-                delay = delay_in;
-            }
-
             public GeodesicSource(double[] power_in_db, Point Source, int ID)
-                :base(power_in_db, Source, Phase_Regime.PhaseMatched, ID)
+                :base(power_in_db, Source, ID)
             {
                 Random RAND = new Random();
                 type = "Geodesic";
@@ -389,7 +342,7 @@ namespace Pachyderm_Acoustic
                 P.Normalize();
                 rayct++;
 
-                return new BroadRay(H_Center, P, random.Next(), thread, SourcePower, delay, Source_ID()); //Provides divided Power[stochastic]
+                return new BroadRay(H_Center, P, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID()); //Provides divided Power[stochastic]
             }
 
             public override BroadRay Directions(int index, int thread, ref Random random, int[] Octaves)
@@ -399,7 +352,7 @@ namespace Pachyderm_Acoustic
                 P.Normalize();
                 rayct++;
 
-                return new BroadRay(H_Center, P, random.Next(), thread, SourcePower, delay, Source_ID(), Octaves); //Provides divided Power[stochastic]
+                return new BroadRay(H_Center, P, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID(), Octaves); //Provides divided Power[stochastic]
             }
         }
 
@@ -408,14 +361,8 @@ namespace Pachyderm_Acoustic
         {
             Hare.Geometry.Voxel_Grid Balloon;
 
-            public DirectionalSource(Balloon S, double[] power_in_db, Point Source, int[] Bands, double delay_in, int ID)
-            :this(S, power_in_db, Source, Bands, ID)
-            {
-                delay = delay_in;
-            }
-
             public DirectionalSource(Balloon S, double[] power_in_db, Point Source, int[] Bands, int ID)
-                :base(power_in_db, Source, 0, ID)
+                :base(power_in_db, Source, ID)
             {
                 for (int oct = 0; oct < 8; oct++)
                 {
@@ -427,7 +374,7 @@ namespace Pachyderm_Acoustic
                 }
 
                 type = "Directional";
-                Balloon = new Voxel_Grid(S.Balloons(power_in_db), 1);
+                Balloon = new Voxel_Grid(S.Balloons(new double[8] {120,120,120,120,120,120,120,120}), 1);
                 ///Testing///
                 //Utilities.PachTools.Plot_Hare_Topology(Balloon.Model[0]);
                 //Utilities.PachTools.Plot_Hare_Topology(Balloon.Model[1]);
@@ -470,12 +417,9 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                double[] phtemp = new double[8];
-                if (ph == Phase_Regime.PhaseRandom) for (int o = 0; o < 8; o++) phtemp[o] = random.Next() * 2 * Math.PI;
-                else for (int o = 0; o < 8; o++) phtemp[o] = 0 - Delay * Utilities.Numerics.angularFrequency[o];
                 base.rayct++;
 
-                return new BroadRay(H_Center, P, random.Next(), thread, RayPower, delay, Source_ID());
+                return new BroadRay(H_Center, P, random.Next(), thread, RayPower, 0, Source_ID());
             }
 
             /// <summary>
@@ -517,7 +461,7 @@ namespace Pachyderm_Acoustic
             int ct = 0;
 
             public GeodesicMeshSource(double[] power_in_db, Point Source, int MinRays, int ID)
-                : base(power_in_db, Source, Phase_Regime.PhaseMatched, ID)
+                : base(power_in_db, Source, ID)
             {
                 Random RAND = new Random();
                 type = "Geodesic";
@@ -633,12 +577,12 @@ namespace Pachyderm_Acoustic
             public override BroadRay Directions(int index, int thread, ref Random random)
             {
 
-                return new BroadRay(H_Center, Dir_Random(ref random), random.Next(), thread, SourcePower, delay, Source_ID());
+                return new BroadRay(H_Center, Dir_Random(ref random), random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID());
             }
 
             public override BroadRay Directions(int index, int thread, ref Random random, int[] Octaves)
             {
-                return new BroadRay(H_Center, Dir_Random(ref random), random.Next(), thread, SourcePower, delay, Source_ID(), Octaves);
+                return new BroadRay(H_Center, Dir_Random(ref random), random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID(), Octaves);
             }
         }
     }

@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2015, Arthur van der Harten 
+//'Copyright (c) 2008-2018, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -95,12 +95,6 @@ namespace Pachyderm_Acoustic
                 {
                     for (int u = 0; u < balloons[oct][v].Length; u++)
                     {
-                        //if (double.IsInfinity(SWL[oct]) || double.IsNaN(SWL[oct]))
-                        //{
-                        //    Magnitude[u, v] = new Vector();
-                        //}
-                        //else
-                        //{
                             Theta = u * System.Math.PI / (umax - 1);
                             Phi = 2 * v * System.Math.PI / (vmax) + System.Math.PI / 2;
                             Magnitude[u, v] = new Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Cos(Theta), Math.Sin(Theta) * Math.Sin(Phi));
@@ -126,8 +120,6 @@ namespace Pachyderm_Acoustic
                                 Magnitude[(vmax - u) % vmax, v] = Magnitude[u, v];
                                 mag[(vmax - u) % vmax, v] = mag[u, v];
                             }
-                        //}
-                        //idx++;
                     }
                 }
 

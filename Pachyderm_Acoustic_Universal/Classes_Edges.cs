@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2015, Arthur van der Harten 
+//'Copyright (c) 2008-2018, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -706,7 +706,7 @@ namespace Pachyderm_Acoustic
                 i += DeltaZ;
                 if (i > EdgeLength) break;
                 Hare.Geometry.Point pt2 = new Point(Edge_Crv[0].Interpolate(i), Edge_Crv[1].Interpolate(i), Edge_Crv[2].Interpolate(i));
-                Sources.Add(new EdgeSource(Edge.Rigid, pt1, pt2, new Vector[2] { new Vector(TangentA[0].Interpolate(i), TangentA[1].Interpolate(i), TangentA[2].Interpolate(i)), new Vector(TangentB[0].Interpolate(i), TangentB[1].Interpolate(i), TangentB[2].Interpolate(i)) }));
+                Sources.Add(new EdgeSource(Edge.Rigid, pt1, pt2, new Vector[2] { new Vector(TangentA[0].Interpolate(i), TangentA[1].Interpolate(i), TangentA[2].Interpolate(i)), new Vector(TangentA[3].Interpolate(i), TangentA[4].Interpolate(i), TangentA[5].Interpolate(i)) }));
                 pt1 = pt2;
             } while (true);
         }

@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2015, Arthur van der Harten 
+//'Copyright (c) 2008-2018, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -15,7 +15,6 @@
 //'You should have received a copy of the GNU General Public 
 //'License along with Pachyderm-Acoustic; if not, write to the Free Software 
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
-
 using System;
 
 namespace Pachyderm_Acoustic
@@ -135,7 +134,6 @@ namespace Pachyderm_Acoustic
                     return Read_Pac1(sf.FileName, ref Direct_Data, ref IS_Data, ref Receiver);
             }
 
-
             public static bool Read_Pac1(string filename, ref Direct_Sound[] Direct_Data, ref ImageSourceData[] IS_Data, ref Environment.Receiver_Bank[] Receiver)
             {
                  System.IO.BinaryReader sr = new System.IO.BinaryReader(System.IO.File.Open(filename, System.IO.FileMode.Open));
@@ -196,7 +194,7 @@ namespace Pachyderm_Acoustic
                                 break;
                             case "Ray-Traced_Data":
                                 //11. Read Ray Traced Sound Data
-                                Receiver[RTCT] = Environment.Receiver_Bank.Read_Data(ref sr, Rec_Ct, Recs, Rho_C, Direct_Data[RTCT].Delay_ms, ref SampleRate, Pach_version);
+                                Receiver[RTCT] = Environment.Receiver_Bank.Read_Data(ref sr, Direct_Data[RTCT].SWL, Rec_Ct, Recs, Rho_C, Direct_Data[RTCT].Delay_ms, ref SampleRate, Pach_version);
                                 RTCT++;
                                 break;
                             case "End":
