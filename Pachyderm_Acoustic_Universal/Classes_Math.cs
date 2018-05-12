@@ -1733,10 +1733,12 @@ namespace Pachyderm_Acoustic
                         Hare.Geometry.Vector Vneg = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(-hist_temp[1][i], -hist_temp[3][i], -hist_temp[5][i]), xpos_azi, 0, true), 0, xpos_alt, true);
                         double magpos = Math.Sqrt(Vpos.x * Vpos.x + Vpos.y * Vpos.y + Vpos.z * Vpos.z);
                         double magneg = Math.Sqrt(Vneg.x * Vneg.x + Vneg.y * Vneg.y + Vneg.z * Vneg.z);
-                        double phipos = Math.Asin(Vpos.z / magpos);
-                        double phineg = Math.Asin(Vneg.z / magneg);
-                        double thetapos = Math.Asin(Vpos.y / magpos / Math.Cos(phipos));
-                        double thetaneg = Math.Asin(Vneg.y / magneg / Math.Cos(phineg));
+                        double magxyp = Math.Sqrt(Vpos.x * Vpos.x + Vpos.y * Vpos.y);
+                        double magxyn = Math.Sqrt(Vneg.x * Vneg.x + Vneg.y * Vneg.y);
+                        double phipos = Math.Atan(Vpos.z / (magxyp == 0? 1:magxyp));
+                        double phineg = Math.Atan(Vneg.z / (magxyn == 0? 1:magxyn));
+                        double thetapos = Math.Asin(Vpos.y / (magxyp == 0 ? 1 : magxyp));
+                        double thetaneg = Math.Asin(Vneg.y / (magxyn == 0 ? 1 : magxyn));
                         double rt3_2 = Math.Sqrt(3) / 2;
 
                         double sin2phpos = Math.Sin(2 * phipos);
@@ -1769,8 +1771,9 @@ namespace Pachyderm_Acoustic
                     for (int i = 0; i < V.Length; i++)
                     {
                         double mag = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1] + V[i][2] * V[i][2]);
-                        double phi = Math.Asin(V[i][2] / mag);
-                        double theta = Math.Asin(V[i][1] / mag / Math.Cos(phi));
+                        double magxy = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1]);
+                        double phi = Math.Atan(V[i][2] / (magxy == 0 ? 1 : magxy));// Math.Asin(Vpos.z / (magpos == 0? 1 : magpos));
+                        double theta = Math.Asin(V[i][1] / (magxy == 0 ? 1 : magxy));//phipos / Math.Cos(phipos));
                         double rt3_2 = Math.Sqrt(3) / 2;
 
                         double sin2phi = Math.Sin(2 * phi);
@@ -1799,8 +1802,9 @@ namespace Pachyderm_Acoustic
                             for (int i = 0; i < V.Length; i++)
                             {
                                 double mag = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1] + V[i][2] * V[i][2]);
-                                double phi = Math.Asin(V[i][2] / mag);
-                                double theta = Math.Asin(V[i][1] / mag / Math.Cos(phi));
+                                double magxy = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1]);
+                                double phi = Math.Atan(V[i][2] / (magxy == 0 ? 1 : magxy));
+                                double theta = Math.Asin(V[i][1] / (magxy == 0 ? 1 : magxy));
                                 double rt3_2 = Math.Sqrt(3) / 2;
 
                                 double sin2phi = Math.Sin(2 * phi);
@@ -1838,13 +1842,15 @@ namespace Pachyderm_Acoustic
                         Hare.Geometry.Vector Vneg = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(-hist_temp[1][i], -hist_temp[3][i], -hist_temp[5][i]), xpos_azi, 0, true), 0, xpos_alt, true);
                         double magpos = Math.Sqrt(Vpos.x * Vpos.x + Vpos.y * Vpos.y + Vpos.z * Vpos.z);
                         double magneg = Math.Sqrt(Vneg.x * Vneg.x + Vneg.y * Vneg.y + Vneg.z * Vneg.z);
-                        double phipos = Math.Asin(Vpos.z / magpos);
-                        double phineg = Math.Asin(Vneg.z / magneg);
-                        double thetapos = Math.Asin(Vpos.y / magpos / Math.Cos(phipos));
-                        double thetaneg = Math.Asin(Vneg.y / magneg / Math.Cos(phineg));
-                        double rt3_8 = Math.Sqrt(3) / 8;
-                        double rt15_2 = Math.Sqrt(15) / 2;
-                        double rt5_8 = Math.Sqrt(5) / 8;
+                        double magxyp = Math.Sqrt(Vpos.x * Vpos.x + Vpos.y * Vpos.y);
+                        double magxyn = Math.Sqrt(Vneg.x * Vneg.x + Vneg.y * Vneg.y);
+                        double phipos = Math.Atan(Vpos.z / (magxyp == 0 ? 1 : magxyp));
+                        double phineg = Math.Atan(Vneg.z / (magxyn == 0 ? 1 : magxyn));
+                        double thetapos = Math.Asin(Vpos.y / (magxyp == 0 ? 1 : magxyp));
+                        double thetaneg = Math.Asin(Vneg.y / (magxyn == 0 ? 1 : magxyn));
+                        double rt3_8 = Math.Sqrt(3.0 / 8.0);
+                        double rt15_2 = Math.Sqrt(15.0) / 2.0;
+                        double rt5_8 = Math.Sqrt(5.0 / 8.0);
 
                         double LM_compos = Math.Cos(phipos) * (5 * Math.Pow(Math.Sin(phipos), 2) - 1);
                         double LM_comneg = Math.Cos(phineg) * (5 * Math.Pow(Math.Sin(phineg), 2) - 1);
@@ -1854,12 +1860,12 @@ namespace Pachyderm_Acoustic
                         double PQ_comneg = Math.Pow(Math.Cos(phipos), 3);
 
                         Histogram[0][i] = magpos * Math.Sin(phipos) * (5 * Math.Sin(phipos) * Math.Sin(phipos) - 3) / 2 + magneg * Math.Sin(phineg) * (5 * Math.Sin(phineg) * Math.Sin(phineg) - 3) / 2;
-                        Histogram[1][i] = rt3_8 * (Math.Cos(thetapos) * LM_compos + Math.Cos(thetaneg) * LM_comneg);
-                        Histogram[2][i] = rt3_8 * (Math.Sin(thetapos) * LM_compos + Math.Sin(thetaneg) * LM_comneg);
-                        Histogram[3][i] = rt15_2 * (Math.Cos(2 * thetapos) * NO_compos + Math.Cos(2 * thetaneg) * NO_compos);
-                        Histogram[4][i] = rt15_2 * (Math.Sin(2 * thetapos) * NO_compos + Math.Sin(2 * thetaneg) * NO_compos);
-                        Histogram[5][i] = rt5_8 * (Math.Cos(3 * thetapos) * PQ_compos + Math.Cos(3 * thetaneg) * PQ_compos);
-                        Histogram[6][i] = rt5_8 * (Math.Sin(3 * thetapos) * PQ_compos + Math.Sin(3 * thetaneg) * PQ_compos);
+                        Histogram[1][i] = rt3_8 * (magpos * Math.Cos(thetapos) * LM_compos + magneg * Math.Cos(thetaneg) * LM_comneg);
+                        Histogram[2][i] = rt3_8 * (magpos * Math.Sin(thetapos) * LM_compos + magneg * Math.Sin(thetaneg) * LM_comneg);
+                        Histogram[3][i] = rt15_2 * (magpos * Math.Cos(2 * thetapos) * NO_compos + magneg * Math.Cos(2 * thetaneg) * NO_compos);
+                        Histogram[4][i] = rt15_2 * (magpos * Math.Sin(2 * thetapos) * NO_compos + magneg * Math.Sin(2 * thetaneg) * NO_compos);
+                        Histogram[5][i] = rt5_8 * (magpos * Math.Cos(3 * thetapos) * PQ_compos + magneg * Math.Cos(3 * thetaneg) * PQ_compos);
+                        Histogram[6][i] = rt5_8 * (magpos * Math.Sin(3 * thetapos) * PQ_compos + magneg * Math.Sin(3 * thetaneg) * PQ_compos);
                     }
                 }
                 else
@@ -1882,23 +1888,24 @@ namespace Pachyderm_Acoustic
                     for (int i = 0; i < V.Length; i++)
                     {
                         double mag = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1] + V[i][2] * V[i][2]);
-                        double phi = Math.Asin(V[i][2] / mag);
-                        double theta = Math.Asin(V[i][1] / mag / Math.Cos(phi));
-                        double rt3_8 = Math.Sqrt(3) / 8;
-                        double rt15_2 = Math.Sqrt(15) / 2;
-                        double rt5_8 = Math.Sqrt(5) / 8;
+                        double magxy = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1]);
+                        double phi = Math.Atan(V[i][2] / (magxy == 0 ? 1 : magxy));
+                        double theta = Math.Asin(V[i][1] / (magxy == 0 ? 1 : magxy));
+                        double rt3_8 = Math.Sqrt(3.0 / 8.0);
+                        double rt15_2 = Math.Sqrt(15.0) / 2.0;
+                        double rt5_8 = Math.Sqrt(5.0 / 8.0);
 
                         double LM_com = Math.Cos(phi) * (5 * Math.Pow(Math.Sin(phi), 2) - 1);
                         double NO_com = Math.Sin(phi) * Math.Pow(Math.Cos(phi), 2);
                         double PQ_com = Math.Pow(Math.Cos(phi), 3);
 
                         Histogram[0][i + D_Start] += mag * Math.Sin(phi) * (5 * Math.Sin(phi) * Math.Sin(phi) - 3) / 2;
-                        Histogram[1][i + D_Start] += rt3_8 * Math.Cos(theta) * LM_com;
-                        Histogram[2][i + D_Start] += rt3_8 * Math.Sin(theta) * LM_com;
-                        Histogram[3][i + D_Start] += rt15_2 * Math.Cos(2 * theta) * NO_com;
-                        Histogram[4][i + D_Start] += rt15_2 * Math.Sin(2 * theta) * NO_com;
-                        Histogram[5][i + D_Start] += rt5_8 * Math.Cos(3 * theta) * PQ_com;
-                        Histogram[6][i + D_Start] += rt5_8 * Math.Sin(3 * theta) * PQ_com;
+                        Histogram[1][i + D_Start] += rt3_8 * mag * Math.Cos(theta) * LM_com;
+                        Histogram[2][i + D_Start] += rt3_8 * mag * Math.Sin(theta) * LM_com;
+                        Histogram[3][i + D_Start] += rt15_2 * mag * Math.Cos(2 * theta) * NO_com;
+                        Histogram[4][i + D_Start] += rt15_2 * mag * Math.Sin(2 * theta) * NO_com;
+                        Histogram[5][i + D_Start] += rt5_8 * mag * Math.Cos(3 * theta) * PQ_com;
+                        Histogram[6][i + D_Start] += rt5_8 * mag * Math.Sin(3 * theta) * PQ_com;
                     }
                 }
 
@@ -1917,23 +1924,24 @@ namespace Pachyderm_Acoustic
                             for (int i = 0; i < V.Length; i++)
                             {
                                 double mag = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1] + V[i][2] * V[i][2]);
-                                double phi = Math.Asin(V[i][2] / mag);
-                                double theta = Math.Asin(V[i][1] / mag / Math.Cos(phi));
-                                double rt3_8 = Math.Sqrt(3) / 8;
-                                double rt15_2 = Math.Sqrt(15) / 2;
-                                double rt5_8 = Math.Sqrt(5) / 8;
+                                double magxy = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1]);
+                                double phi = Math.Atan(V[i][2] / (magxy == 0 ? 1 : magxy));// Math.Asin(Vpos.z / (magpos == 0? 1 : magpos));
+                                double theta = Math.Asin(V[i][1] / (magxy == 0 ? 1 : magxy));//phipos / Math.Cos(phipos));
+                                double rt3_8 = Math.Sqrt(3.0 / 8.0);
+                                double rt15_2 = Math.Sqrt(15.0) / 2.0;
+                                double rt5_8 = Math.Sqrt(5.0 / 8.0);
 
                                 double LM_com = Math.Cos(phi) * (5 * Math.Pow(Math.Sin(phi), 2) - 1);
                                 double NO_com = Math.Sin(phi) * Math.Pow(Math.Cos(phi), 2);
                                 double PQ_com = Math.Pow(Math.Cos(phi), 3);
 
                                 Histogram[0][i + R_Start] += mag * Math.Sin(phi) * (5 * Math.Sin(phi) * Math.Sin(phi) - 3) / 2;
-                                Histogram[1][i + R_Start] += rt3_8 * Math.Cos(theta) * LM_com;
-                                Histogram[2][i + R_Start] += rt3_8 * Math.Sin(theta) * LM_com;
-                                Histogram[3][i + R_Start] += rt15_2 * Math.Cos(2 * theta) * NO_com;
-                                Histogram[4][i + R_Start] += rt15_2 * Math.Sin(2 * theta) * NO_com;
-                                Histogram[5][i + R_Start] += rt5_8 * Math.Cos(3 * theta) * PQ_com;
-                                Histogram[6][i + R_Start] += rt5_8 * Math.Sin(3 * theta) * PQ_com;
+                                Histogram[1][i + R_Start] += rt3_8 * mag * Math.Cos(theta) * LM_com;
+                                Histogram[2][i + R_Start] += rt3_8 * mag * Math.Sin(theta) * LM_com;
+                                Histogram[3][i + R_Start] += rt15_2 * mag * Math.Cos(2 * theta) * NO_com;
+                                Histogram[4][i + R_Start] += rt15_2 * mag * Math.Sin(2 * theta) * NO_com;
+                                Histogram[5][i + R_Start] += rt5_8 * mag * Math.Cos(3 * theta) * PQ_com;
+                                Histogram[6][i + R_Start] += rt5_8 * mag * Math.Sin(3 * theta) * PQ_com;
                             }
                         }
                     }

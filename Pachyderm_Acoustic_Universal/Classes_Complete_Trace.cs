@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using Hare.Geometry;
 using Pachyderm_Acoustic.Environment;
 using System.Runtime.InteropServices;
+using System.Linq;
 
 namespace Pachyderm_Acoustic
 {
@@ -47,21 +48,8 @@ namespace Pachyderm_Acoustic
         private TimeSpan _ts;
         private int h_oct;
         private int[] _octaves;
-
-        /// <summary>
-        /// Constructor for the general case ray tracer.
-        /// </summary>
-        /// <param name="sourcein"></param>
-        /// <param name="receiverin"></param>
-        /// <param name="roomin"></param>
-        /// <param name="cutofflengthin"></param>
-        /// <param name="raycountin"></param>
-        /// <param name="isorderin"></param>
-        /// <param name="partitionedreceiver"></param>
-        public SplitRayTracer(Source sourcein, Receiver_Bank receiverin, Scene roomin, double cutoffTime, int raycountin, int isorderin)
-            :this(sourcein, receiverin, roomin, cutoffTime, raycountin, new int[]{0, 7}, isorderin) 
-        {
-        }
+        private Convergence_Check[] check;
+        private bool conclude = false;
 
         /// <summary>
         /// Constructor for the general case ray tracer.
@@ -74,18 +62,18 @@ namespace Pachyderm_Acoustic
         /// <param name="octaveRange">Two values - the lowest octave to be calculated and the highest octave to be calculated - 0 being 62.5, and 7 being 8k.</param>
         /// <param name="isOrderIn">The highest order for which image source was calcualted. If no Image Source, then enter 0.</param>
         /// <param name="partitionedReceiver">Is the receiver partitioned... i.e., did you use a mapping receiver bank?</param>
-        public SplitRayTracer(Source sourceIn, Receiver_Bank receiverIn, Scene roomIn, double cutoffTime, int rayCountIn, int[] octaveRange, int isOrderIn)
+        public SplitRayTracer(Source sourceIn, Receiver_Bank receiverIn, Scene roomIn, double cutoffTime, int[] octaveRange, int isOrderIn, int rayCountIn, Direct_Sound D_ConvergenceCheck =  null)
         {
             IS_Order = isOrderIn;
             Room = roomIn;
             RecMain = receiverIn;
             Raycount = rayCountIn;
-            _octaves = new int[octaveRange[1]- octaveRange[0] + 1];
-            for (int o = octaveRange[0]; o <= octaveRange[1]; o++) _octaves[o - octaveRange[0]] = o; 
+            _octaves = new int[octaveRange[1] - octaveRange[0] + 1];
+            for (int o = octaveRange[0]; o <= octaveRange[1]; o++) _octaves[o - octaveRange[0]] = o;
             COTime = cutoffTime;
             Source = sourceIn;
             double[] totalAbs = new double[8];
-            
+
             for (int s = 0; s < Room.Count(); s++)
             {
                 double area = Room.SurfaceArea(s);
@@ -99,7 +87,7 @@ namespace Pachyderm_Acoustic
             double octpower = 0;
             foreach (int o in _octaves) if (Source.SoundPower[o] > octpower) { octpower = Source.SoundPower[o]; }
 
-            foreach(int o in _octaves)
+            foreach (int o in _octaves)
             {
                 if (Source.SoundPower[o] < octpower * 1E-6) continue;
                 if (min > totalAbs[o])
@@ -108,6 +96,33 @@ namespace Pachyderm_Acoustic
                     h_oct = o;
                 }
             }
+
+            if (D_ConvergenceCheck != null)
+            {
+                Raycount = int.MaxValue;
+                double maxT_T = 0;
+                int T_id = -1;
+                double maxT_F = 0;
+                int F_id = -1;
+                for (int i = 0; i < D_ConvergenceCheck.Time_Pt.Length; i++)
+                {
+                    if (D_ConvergenceCheck.Validity[i])
+                    {
+                        if (maxT_T < D_ConvergenceCheck.Time_Pt[i])
+                        {
+                            T_id = i;
+                            maxT_T = D_ConvergenceCheck.Time_Pt[i];
+                        }
+                        else
+                        {
+                            F_id = i;
+                            maxT_F = D_ConvergenceCheck.Time_Pt[i];
+                        }
+                    }
+                }
+                check = new Convergence_Check[2] { new Convergence_Check(receiverIn, T_id, h_oct), new Convergence_Check(receiverIn, F_id, h_oct) };
+            }
+            else check = null;
         }
 
         /// <summary>
@@ -124,7 +139,7 @@ namespace Pachyderm_Acoustic
             _u = new double[_processorCt];
             _v = new double[_processorCt];
             _tlist = new System.Threading.Thread[_processorCt];
-            
+
             for (int P_I = 0; P_I < _processorCt; P_I++)
             {
                 int start = (int)Math.Floor((double)P_I * Raycount / _processorCt);
@@ -137,7 +152,7 @@ namespace Pachyderm_Acoustic
                 _tlist[P_I].Start();
             }
 
-            System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.Batch;
+            System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
         }
 
         /// <summary>
@@ -162,6 +177,15 @@ namespace Pachyderm_Acoustic
             {
                 T.Abort();
             }
+        }
+
+        public void Conclude_Simulation()
+        {
+            conclude = true;
+            //foreach (System.Threading.Thread T in _tlist)
+            //{
+            //    T.Join();
+            //}
         }
 
         /// <summary>
@@ -189,7 +213,7 @@ namespace Pachyderm_Acoustic
             for (_currentRay[Params.ThreadID] = 0; _currentRay[Params.ThreadID] < Params.EndIndex - Params.StartIndex; _currentRay[Params.ThreadID]++)
             {
                 R = Source.Directions(_currentRay[Params.ThreadID] + Params.StartIndex, Params.ThreadID, ref Rnd, _octaves);
-                for (int oct = 0; oct < 8; oct++) R.Energy[oct] /= Raycount;
+                //for (int oct = 0; oct < 8; oct++) R.Energy[oct] /= Raycount;
                 for (int j = 0; j < 8; j++) _eInit[Params.ThreadID] += R.Energy[j];
                 Threshold_Power_1 = R.Energy[h_oct] * 1E-3;
                 foreach (int o in _octaves)
@@ -243,12 +267,12 @@ namespace Pachyderm_Acoustic
                     //3. Apply Scattering
                     Room.Scatter_Early(ref R, ref Rays, ref Rnd, cos_theta, u, v);
                     ///////////////////////////////////////////////////////////////
-                    
+
                     //Utilities.PachTools.Ray_Acoustics.SpecularReflection(ref R.direction, ref Room, ref _u[Params.ThreadID], ref _v[Params.ThreadID], ref R.Surf_ID);
                 } while (R.Energy[h_oct] > Threshold_Power_1);
-                 
+
                 foreach (int o in _octaves) Rays.Enqueue(R.SplitRay(o));//Split all rays into individual octaves.
-            Do_Scattered:
+                Do_Scattered:
 
                 if (Rays.Count > 0)
                 {
@@ -362,15 +386,35 @@ namespace Pachyderm_Acoustic
         /// <returns></returns>
         public override string ProgressMsg()
         {
-            _ts = DateTime.Now - _st;
-            int Ray_CT = 0;
-            for (int i = 0; i < _processorCt; i++)
+            if (check == null)
             {
-                Ray_CT += (int)_currentRay[i];
+                _ts = DateTime.Now - _st;
+                int Ray_CT = 0;
+                for (int i = 0; i < _processorCt; i++)
+                {
+                    Ray_CT += (int)_currentRay[i];
+                }
+                if (Ray_CT == 0) return "Preparing Threads";
+                _ts = new TimeSpan((long)(_ts.Ticks * (((double)(Raycount - Ray_CT)) / (Ray_CT + 1))));
+                return string.Format("Calculating Ray {0} of {1}. ({2} hours,{3} minutes,{4} seconds Remaining.) Press 'Esc' to Cancel...", Ray_CT, Raycount, _ts.Hours, _ts.Minutes, _ts.Seconds);
             }
-            if (Ray_CT == 0) return "Preparing Threads";
-            _ts = new TimeSpan((long)(_ts.Ticks * (((double)(Raycount - Ray_CT)) / (Ray_CT + 1))));
-            return string.Format("Calculating Ray {0} of {1}. ({2} hours,{3} minutes,{4} seconds Remaining.) Press 'Esc' to Cancel...", Ray_CT, Raycount, _ts.Hours, _ts.Minutes, _ts.Seconds);
+            else
+            {
+                foreach (Convergence_Check c in check)
+                {                   
+                    if (c != null && c.Check())
+                    {
+                        this.Abort_Calculation();
+                        return "Concluding Simulation...";
+                    }
+                }
+                int Ray_CT = 0;
+                for (int i = 0; i < _processorCt; i++)
+                {
+                    Ray_CT += (int)_currentRay[i];
+                }
+                return string.Format("Ray {0} - Convergence not yet reached...", Ray_CT);
+            }
         }
 
         /// <summary>
@@ -378,6 +422,8 @@ namespace Pachyderm_Acoustic
         /// </summary>
         public override void Combine_ThreadLocal_Results()
         {
+            RecMain.Scale(_currentRay.Sum());
+
             double LTotal = 0;
             double RTotal = 0;
             foreach (double L in _lost)
@@ -396,6 +442,79 @@ namespace Pachyderm_Acoustic
             get
             {
                 return _lost_percent;
+            }
+        }
+
+        public class Convergence_Check
+        {
+            //int MaxCheck;
+            double[] RunningSim;
+            double[] Snapshot;
+            int oct;
+            int count = 0;
+            int step;
+            int binct;
+
+            public Convergence_Check(Receiver_Bank R, int id, int _oct)
+            {
+                //MaxCheck = (int)Math.Max((R.CutOffTime * R.SampleRate / 1000) / 2, R.SampleRate * 0.3);
+                //oct = _oct;
+                //RunningSim = R.Rec_List[id].Recs.Energy[oct];
+                //Snapshot = new double[RunningSim.Length];
+                oct = _oct;
+                RunningSim = R.Rec_List[id].Recs.Energy[oct];
+                step = (R.SampleRate / 1000);
+                binct = RunningSim.Length / step;
+                Snapshot = new double[binct];
+            }
+
+            public bool Check()
+            {
+                //double[] sn = new double[Snapshot.Length];
+                //for (int i = 0; i < Snapshot.Length; i++)
+                //{
+                //    sn[i] = RunningSim[i];
+                //}
+
+                //for (int i = 0; i < MaxCheck; i++)
+                //{
+                //    if (sn[i] == 0) continue;
+                //    double d = (sn[i] - Snapshot[i]) / Snapshot[i];
+                //    if (d > 0.1)
+                //    {
+                //        Snapshot = sn;
+                //        count = 0;
+                //        return false;
+                //    }
+                //}
+                //Snapshot = sn;
+                //count++;
+                //if (count > 10) return true;
+                //return false;
+                double[] sn = new double[Snapshot.Length];
+                for (int i = 0; i < Snapshot.Length; i++)
+                {
+                    for (int j = 0; j < step; j++)
+                    {
+                        sn[i] += RunningSim[i*step + j];
+                    }
+                }
+
+                for (int i = 0; i < sn.Length; i++)
+                {
+                    if (sn[i] == 0) continue;
+                    double d = (sn[i] - Snapshot[i]) / Snapshot[i];
+                    if (d > 0.1)
+                    {
+                        Snapshot = sn;
+                        count = 0;
+                        return false;
+                    }
+                }
+                Snapshot = sn;
+                count++;
+                if (count > 10) return true;
+                return false;
             }
         }
     }

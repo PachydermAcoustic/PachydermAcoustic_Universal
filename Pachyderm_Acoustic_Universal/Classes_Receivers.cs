@@ -617,6 +617,10 @@ namespace Pachyderm_Acoustic
                 return Rec_List[rec_id].Filter3Axis();
             }
 
+            public void Scale(int Ray_CT)
+            {
+                for (int i = 0; i < Rec_List.Length; i++) Rec_List[i].Scale(Ray_CT);
+            }
         }
 
         /// <summary>
@@ -936,6 +940,11 @@ namespace Pachyderm_Acoustic
                 else return null;
             }
 
+            public void Scale(int ray_ct)
+            {
+                Recs.Scale(ray_ct);
+            }
+
             /// <summary>
             /// Class used ot store the energy histogram of the receiver.
             /// </summary>
@@ -1032,20 +1041,10 @@ namespace Pachyderm_Acoustic
                     return Audio.Pach_SP.ETCToFilter(this.Energy, SWL, this.CO_Time, this.SampleRate, 44100, Rho_C, "Signal Progress...");
                 }
 
-                //public virtual void Create_Pressure(double[] SWL, double Rho_C)
-                //{
-                //    double[][] hist = new double[8][];
-                //    for (int oct = 0; oct < 8; oct++)
-                //    {
-                //        double p = Pachyderm_Acoustic.Utilities.AcousticalMath.Intensity_SPL(SWL[oct]);
-                //        for (int i = 0; i < Energy.Length; i++) hist[oct][i] = Energy[oct][i] * p;
-                //    }
-                //    if (Energy[0].Length == 1)
-                //    {
-                //        return;
-                //    }
-                //    P = Audio.Pach_SP.ETCToPTC(hist, this.CO_Time, this.SampleRate, 44100, Rho_C, "Signal Progress...");
-                //}
+                public virtual void Scale(int ray_ct)
+                {
+                    for (int oct = 0; oct < Energy.Length; oct++) for (int i = 0; i < Energy[oct].Length; i++) Energy[oct][i] /= ray_ct;
+                }
 
                 /// <summary>
                 /// Returns the energy response of the simulation.
@@ -1203,7 +1202,6 @@ namespace Pachyderm_Acoustic
             {
                 public double[][][] Dir_Rec_Pos;
                 public double[][][] Dir_Rec_Neg;
-                //public double[][] Pdir;
                 public double[][] Fdir;
                 public Directional_Histogram(int SampleRate_in, int SampleCT)
                 : base(SampleRate_in, SampleCT)
@@ -1274,9 +1272,19 @@ namespace Pachyderm_Acoustic
                     Dir_Rec_Pos[0][Octave][Sample] += (direction_pos.x);
                     Dir_Rec_Pos[1][Octave][Sample] += (direction_pos.y);
                     Dir_Rec_Pos[2][Octave][Sample] += (direction_pos.z);
-                    Dir_Rec_Pos[0][Octave][Sample] += (direction_neg.x);
-                    Dir_Rec_Pos[1][Octave][Sample] += (direction_neg.y);
-                    Dir_Rec_Pos[2][Octave][Sample] += (direction_neg.z);
+                    Dir_Rec_Neg[0][Octave][Sample] += (direction_neg.x);
+                    Dir_Rec_Neg[1][Octave][Sample] += (direction_neg.y);
+                    Dir_Rec_Neg[2][Octave][Sample] += (direction_neg.z);
+                }
+
+                public override void Scale(int ray_ct)
+                {
+                    for (int oct = 0; oct < Energy.Length; oct++) for (int i = 0; i < Energy[oct].Length; i++) Energy[oct][i] /= ray_ct;
+                    for (int dir = 0; dir < 3; dir++) for (int oct = 0; oct < Dir_Rec_Pos[dir].Length; oct++) for (int i = 0; i < Dir_Rec_Pos[dir][oct].Length; i++)
+                            {
+                                Dir_Rec_Pos[dir][oct][i] /= ray_ct;
+                                Dir_Rec_Neg[dir][oct][i] /= ray_ct;
+                            }
                 }
 
                 /// <summary>
@@ -1475,11 +1483,6 @@ namespace Pachyderm_Acoustic
             {
                 RayCount = RCT;
             }
-
-            //public Expanding_Receiver(Spherical_Receiver Rec)
-            //    : base(Rec, )
-            //{
-            //}
 
             public Expanding_Receiver(Hare.Geometry.Point Point, Hare.Geometry.Point SrcPoint, Scene room, int RCT, double Speed_of_Sound, int SampleRate_in, double COTime_in)
                 :base(Point, SrcPoint, room, Speed_of_Sound,SampleRate_in,COTime_in)

@@ -623,6 +623,7 @@ namespace Pachyderm_Acoustic
                     double min = double.PositiveInfinity;
                     for (int i = 0; i < Times.Count; i++)
                     {
+                        if (Pr[i].Count < 5) continue;
                         Pr_Spline[i] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(Times[i], Pr[i]);
                         X_Spline[i] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(Times[i], Xe[i]);
                         Y_Spline[i] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(Times[i], Ye[i]);
@@ -641,6 +642,7 @@ namespace Pachyderm_Acoustic
 
                     for (int i = 0; i < t_limits.Count; i++)
                     {
+                        if (Pr[i] == null) continue;
                         for (double t = t_limits[i][0]; t < t_limits[i][1]; t += dt)
                         {
                             Vector dir = new Vector(Xs_Spline[i].Interpolate(t), Ys_Spline[i].Interpolate(t), Zs_Spline[i].Interpolate(t));
@@ -723,6 +725,9 @@ namespace Pachyderm_Acoustic
                             }
                         }
                     }
+
+                if (H_d.Count == 0) continue;
+
                     int minsample = H_d.Keys.Min();
                     int maxsample = H_d.Keys.Max();
                     double T0 = (double)minsample / SampleRate;
@@ -1178,6 +1183,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
             }
+            IS.Create_Filter(Direct.SWL, 4096);
             return IS;
         }
 
@@ -1370,7 +1376,7 @@ namespace Pachyderm_Acoustic
             double[] tf_spec = new double[8];
             for (int i = 0; i < 8; i++) tf_spec[i] = prms[i] * Math.Pow(10, (120 - SWL[i]) / 20);
 
-            return new double[1][] { Audio.Pach_SP.Filter.Transfer_Function(tf_spec, length, Sample_Frequnency, threadid) };
+            return new double[1][] { Audio.Pach_SP.Filter.Transfer_Function(tf_spec, Sample_Frequnency, length, threadid) };
         }
 
         private void Identify(int SrcID, double Direct_Time)
