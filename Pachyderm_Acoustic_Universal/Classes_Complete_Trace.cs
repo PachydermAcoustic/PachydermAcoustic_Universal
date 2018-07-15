@@ -35,7 +35,7 @@ namespace Pachyderm_Acoustic
         protected Receiver_Bank RecMain;
         protected int Raycount;
         protected double COTime;
-        private int[] _currentRay;
+        public int[] _currentRay;
         private DateTime _st;
         private double[] _u, _v;
         private double[] _lost;
@@ -44,8 +44,8 @@ namespace Pachyderm_Acoustic
         private int IS_Order;
         private System.Threading.Thread[] _tlist;
         private int _processorCt;
-        private int[] _rayTotal;
-        private TimeSpan _ts;
+        public int[] _rayTotal;
+        public TimeSpan _ts;
         private int h_oct;
         private int[] _octaves;
         private Convergence_Check[] check;
@@ -62,7 +62,7 @@ namespace Pachyderm_Acoustic
         /// <param name="octaveRange">Two values - the lowest octave to be calculated and the highest octave to be calculated - 0 being 62.5, and 7 being 8k.</param>
         /// <param name="isOrderIn">The highest order for which image source was calcualted. If no Image Source, then enter 0.</param>
         /// <param name="partitionedReceiver">Is the receiver partitioned... i.e., did you use a mapping receiver bank?</param>
-        public SplitRayTracer(Source sourceIn, Receiver_Bank receiverIn, Scene roomIn, double cutoffTime, int[] octaveRange, int isOrderIn, int rayCountIn, Direct_Sound D_ConvergenceCheck =  null)
+        public SplitRayTracer(Source sourceIn, Receiver_Bank receiverIn, Scene roomIn, double cutoffTime, int[] octaveRange, int isOrderIn, int rayCountIn)
         {
             IS_Order = isOrderIn;
             Room = roomIn;
@@ -97,32 +97,93 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            if (D_ConvergenceCheck != null)
+            if (Raycount < 1)
             {
+                List<Point> spt = new List<Point>();
+                if (!(Source is LineSource) && !(Source is SurfaceSource))
+                {
+                    spt.Add(Source.Origin());
+                }
+                else if (Source is LineSource)
+                {
+                    foreach (Point p in (Source as LineSource).Samples)
+                    {
+                        spt.Add(p);
+                    }
+                }
+                else
+                {
+                    foreach (Point p in (Source as SurfaceSource).Samples)
+                    {
+                        spt.Add(p);
+                    }
+                }
+                Random r = new Random();
                 Raycount = int.MaxValue;
                 double maxT_T = 0;
                 int T_id = -1;
                 double maxT_F = 0;
                 int F_id = -1;
-                for (int i = 0; i < D_ConvergenceCheck.Time_Pt.Length; i++)
+                double t;
+                for (int i = 0; i < RecMain.Rec_List.Length; i++)
                 {
-                    if (D_ConvergenceCheck.Validity[i])
+                    Hare.Geometry.Point s = new Point();
+                    double d = double.MaxValue;
+                    foreach (Point p in spt)
                     {
-                        if (maxT_T < D_ConvergenceCheck.Time_Pt[i])
+                        double dt = (p - RecMain.Rec_List[i].Origin).Length();
+                        if (dt < d)
+                        {
+                            s = p;
+                            d = dt;
+                        }
+                    }
+
+                    if (Check_Validity(s, i, r.Next(), out t))
+                    {
+                        if (maxT_T < t)
                         {
                             T_id = i;
-                            maxT_T = D_ConvergenceCheck.Time_Pt[i];
+                            maxT_T = t;
                         }
-                        else
+                    }
+                    else
+                    {
+                        if (maxT_F < t)
                         {
                             F_id = i;
-                            maxT_F = D_ConvergenceCheck.Time_Pt[i];
+                            maxT_F = t;
                         }
                     }
                 }
-                check = new Convergence_Check[2] { new Convergence_Check(receiverIn, T_id, h_oct), new Convergence_Check(receiverIn, F_id, h_oct) };
+                check = (rayCountIn < 0) ? new Convergence_Check[2] { T_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, T_id, h_oct), F_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, F_id, h_oct) }
+                : new Convergence_Check[2] { T_id < 0 ? null : new Detailed_Convergence_Check(receiverIn, T_id, h_oct), F_id < 0 ? null : new Detailed_Convergence_Check(receiverIn, F_id, h_oct) };
             }
             else check = null;
+        }
+
+        private bool Check_Validity(Point p, int rec_id, int rnd, out double dist)
+        {
+            Hare.Geometry.Vector d = RecMain.Origin(rec_id) - p;
+            dist = d.Length();
+            d.Normalize();
+            Ray R = new Ray(Source.H_Origin(), d, 0, rnd);
+            double x1 = 0, x2 = 0;
+            double t;
+            int x3 = 0;
+            Point x4;
+
+            while (true)
+            {
+                if (Room.shoot(R, out x1, out x2, out x3, out x4, out t))
+                {
+                    return (t >= dist);
+                }
+                else
+                {
+                    return true;
+                }
+            }
         }
 
         /// <summary>
@@ -140,19 +201,19 @@ namespace Pachyderm_Acoustic
             _v = new double[_processorCt];
             _tlist = new System.Threading.Thread[_processorCt];
 
+            System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
+
             for (int P_I = 0; P_I < _processorCt; P_I++)
             {
                 int start = (int)Math.Floor((double)P_I * Raycount / _processorCt);
                 int end;
                 if (P_I == _processorCt - 1) end = Raycount;
-                else end = (P_I + 1) * Raycount / _processorCt;
+                else end = (P_I + 1) * (Raycount / _processorCt);
                 Calc_Params T = new Calc_Params(Room, start, end, P_I, Rnd.Next());
                 System.Threading.ParameterizedThreadStart TS = new System.Threading.ParameterizedThreadStart(delegate { Calculate(T); });
                 _tlist[P_I] = new System.Threading.Thread(TS);
                 _tlist[P_I].Start();
             }
-
-            System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
         }
 
         /// <summary>
@@ -424,6 +485,8 @@ namespace Pachyderm_Acoustic
         {
             RecMain.Scale(_currentRay.Sum());
 
+            this._ts = DateTime.Now - _st;
+
             double LTotal = 0;
             double RTotal = 0;
             foreach (double L in _lost)
@@ -445,52 +508,38 @@ namespace Pachyderm_Acoustic
             }
         }
 
-        public class Convergence_Check
+        public abstract class Convergence_Check
         {
-            //int MaxCheck;
-            double[] RunningSim;
-            double[] Snapshot;
-            int oct;
-            int count = 0;
-            int step;
-            int binct;
-
+            protected double[] RunningSim;
+            protected int oct;
+            
             public Convergence_Check(Receiver_Bank R, int id, int _oct)
             {
-                //MaxCheck = (int)Math.Max((R.CutOffTime * R.SampleRate / 1000) / 2, R.SampleRate * 0.3);
-                //oct = _oct;
-                //RunningSim = R.Rec_List[id].Recs.Energy[oct];
-                //Snapshot = new double[RunningSim.Length];
                 oct = _oct;
                 RunningSim = R.Rec_List[id].Recs.Energy[oct];
+            }
+
+            public abstract bool Check();
+        }
+
+        public class Detailed_Convergence_Check: Convergence_Check
+        {
+            //int MaxCheck;
+            double[] Snapshot;
+            int step;
+            int binct;
+            int count = 0;
+
+            public Detailed_Convergence_Check(Receiver_Bank R, int id, int _oct)
+                : base(R, id, _oct)
+            {
                 step = (R.SampleRate / 1000);
                 binct = RunningSim.Length / step;
                 Snapshot = new double[binct];
             }
 
-            public bool Check()
+            public override bool Check()
             {
-                //double[] sn = new double[Snapshot.Length];
-                //for (int i = 0; i < Snapshot.Length; i++)
-                //{
-                //    sn[i] = RunningSim[i];
-                //}
-
-                //for (int i = 0; i < MaxCheck; i++)
-                //{
-                //    if (sn[i] == 0) continue;
-                //    double d = (sn[i] - Snapshot[i]) / Snapshot[i];
-                //    if (d > 0.1)
-                //    {
-                //        Snapshot = sn;
-                //        count = 0;
-                //        return false;
-                //    }
-                //}
-                //Snapshot = sn;
-                //count++;
-                //if (count > 10) return true;
-                //return false;
                 double[] sn = new double[Snapshot.Length];
                 for (int i = 0; i < Snapshot.Length; i++)
                 {
@@ -512,6 +561,63 @@ namespace Pachyderm_Acoustic
                     }
                 }
                 Snapshot = sn;
+                count++;
+                if (count > 10) return true;
+                return false;
+            }
+        }
+
+        public class Minimum_Convergence_Check: Convergence_Check
+        {
+            double snapshot50, snapshot80, snapshotinf;
+            int SampleStart, Sample50, Sample80, SampleInf;
+            int count = 0;
+
+            public Minimum_Convergence_Check(Source S, Scene Sc, Receiver_Bank R, int id, int _oct)
+                :base(R, id, _oct)
+            {
+                SampleStart =(int)Math.Floor((S.H_Origin() - R.Origin(id)).Length() / Sc.Sound_speed(R.Origin(id)) * R.SampleRate);
+                Sample50 = (int)Math.Floor(50.0 * R.SampleRate / 1000) + SampleStart;
+                Sample80 = (int)Math.Floor(80.0 * R.SampleRate / 1000) + SampleStart;
+                SampleInf = R.SampleCT;
+            }
+
+            public override bool Check()
+            {
+                double sn50 = 0;
+                double sn80 = 0;
+                double sninf = 0;
+                for (int i = SampleStart; i < Sample50; i++)
+                {
+                    sn50 += RunningSim[i];
+                }
+                sn80 += sn50;
+                for (int i = Sample50; i < Sample80; i++)
+                {
+                    sn80 += RunningSim[i];
+                }
+                for (int i = Sample80; i < SampleInf; i++)
+                {
+                    sninf += RunningSim[i];
+                }
+
+                if (sn50 == 0
+                    || sn50 / snapshot50 > 1.02
+                    || sn80 == 0
+                    || sn80 / snapshot80 > 1.02
+                    || sninf == 0
+                    || sninf / snapshotinf > 1.1)
+                {
+                    snapshot50 = sn50;
+                    snapshot80 = sn80;
+                    snapshotinf = sninf;
+                    count = 0;
+                    return false;
+                }
+
+                snapshot50 = sn50;
+                snapshot80 = sn80;
+                snapshotinf = sninf;
                 count++;
                 if (count > 10) return true;
                 return false;

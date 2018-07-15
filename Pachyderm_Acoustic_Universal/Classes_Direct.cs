@@ -319,13 +319,11 @@ namespace Pachyderm_Acoustic
         private void Check_Validity(int rec_id, int rnd, out double[] TransMod)
         {
             Vector d = Receiver[rec_id] - Src.H_Origin();
-            //double dist = Receiver.Origin(rec_id).DistanceTo(Src.Origin());
             double dist = d.Length();
             d.Normalize();
             Ray R = new Ray(Src.H_Origin(), d, 0, rnd);
             double x1 = 0, x2 = 0;
             double t;
-            //List<int> code;
             int x3 = 0;
             Point x4;
             TransMod = new double[8] {1,1,1,1,1,1,1,1};
@@ -338,7 +336,6 @@ namespace Pachyderm_Acoustic
                         for(int oct = 0; oct < 8; oct++) TransMod[oct] *= Room.TransmissionValue[x3][oct];
                         continue;
                     }
-                    //if (t < dist) RMA.Rhino.RhUtil.RhinoApp().ActiveDoc().AddCurveObject(new RMA.OpenNURBS.OnLineCurve(new RMA.OpenNURBS.OnLineCurve(Receiver.Origin(rec_id), Src.Origin())));
                     Validity[rec_id] = (t >= dist);
                     break;
                 }
@@ -1277,7 +1274,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
                 Validity[i] = (total != 0);
-            }//);
+            }
 
             return true;
         }

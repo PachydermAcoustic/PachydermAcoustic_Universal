@@ -373,38 +373,11 @@ namespace Pachyderm_Acoustic
             /// <returns>the energy response</returns>
             public virtual double[] GetEnergyHistogram(int Octave, double Delay_ms, int Rec_Index)
             {
-                if (Octave < 8)
-                {
                     double[] hist = (double[])Rec_List[Rec_Index].GetEnergyHistogram(Octave).Clone();
                     double[] pad = new double[(int)Math.Floor(Delay_ms / 1000.0 * SampleRate) + hist.Length];
                     Array.Copy(hist, 0, pad, (int)Math.Floor(Delay_ms / 1000.0 * SampleRate), hist.Length);
                     return pad;
-                }
-                else
-                {
-                    throw new Exception();
-                    //int delay = (int)Math.Floor(Delay_ms / 1000.0 * SampleRate);
-                    //double[] Hist = Rec_List[Rec_Index].GetEnergyHistogram(0);
-                    //double[] SUM = new double[delay + Hist.Length];
-                    //for (int o = 1; o < 8; o++)
-                    //{
-                    //    Hist = Rec_List[Rec_Index].GetEnergyHistogram(o);
-                    //    for (int i = 0; i < Hist.Length; i++)
-                    //    {
-                    //        SUM[delay + i] += Hist[i];
-                    //    }
-                    //}
-                    //return SUM;
-                }
             }
-
-            //public void reset_pressure()
-            //{
-            //    for (int i = 0; i < Rec_List.Length; i++)
-            //    {
-            //        Rec_List[i].Recs.P = null;
-            //    }
-            //}
 
             public void reset_filter()
             {
@@ -413,11 +386,6 @@ namespace Pachyderm_Acoustic
                     Rec_List[i].Recs.F = null;
                 }
             }
-
-            //public virtual bool HasPressure()
-            //{
-            //    return Rec_List[0].Recs.P != null;
-            //}
 
             public virtual bool HasFilter()
             {
@@ -1070,16 +1038,6 @@ namespace Pachyderm_Acoustic
                         return Sum_Energy;
                     }
                 }
-
-                //public virtual double[] GetPressure()
-                //{
-                //    return P;
-                //}
-
-                //public virtual double[][] GetPressure3Axis(int rec_id)
-                //{
-                //    return null;
-                //}
 
                 public virtual double[] GetFilter()
                 {

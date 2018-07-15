@@ -81,6 +81,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Sphere_Arbitrary.cs" />
     <Compile Include="Pach_Absorption_Designer.cs">
       <SubType>Form</SubType>
     </Compile>

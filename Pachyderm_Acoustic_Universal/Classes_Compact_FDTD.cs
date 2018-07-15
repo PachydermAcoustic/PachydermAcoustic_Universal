@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Collections.Generic;
 using Pachyderm_Acoustic.Environment;
 using Hare.Geometry;
@@ -70,7 +71,7 @@ namespace Pachyderm_Acoustic
                     {
                         Build_ScatteringLaboratory_FVM13(ref xDim, ref yDim, ref zDim, true, SampleOrigin, mindimx, mindimy, mindimz);
                         SD.Connect_Grid_Laboratory(PFrame, Bounds, dx, dy, dz, tmax, dt, no_of_Layers);
-                        Mic.Connect_Grid_UniqueOnly_Laboratory(PFrame, Bounds, dx, tmax, dt, no_of_Layers);
+                        Mic.Connect_Grid_Hemisphere_Laboratory(PFrame, Bounds, new Point(), 1, dx, tmax, dt, no_of_Layers);
                     }
                     else if (GT == GridType.TransparencyLab)
                     {
@@ -124,14 +125,14 @@ namespace Pachyderm_Acoustic
                     z_length += (no_of_Layers * 4 + 1) * dydz;
 
                     //estimated distance between nodes
-                    xDim = (int)Math.Ceiling(x_length / (2 * dx));                                //set number of nodes in x direction
+                    xDim = (int)Math.Ceiling(x_length / (dx));                                //set number of nodes in x direction
                     dx = x_length / xDim;                                                   //refined distance between nodes
                     yDim = (int)Math.Ceiling(y_length / dydz);                                //set number of nodes in y direction
                     dy = y_length / yDim;
                     zDim = (int)Math.Ceiling(z_length / dydz);                                //set number of nodes in z direction
                     dz = z_length / zDim;
 
-                    dt = dy / (Rm.Sound_speed(0));                           //set time step small enough to satisfy courrant condition
+                    dt = dy * rt2 / (Rm.Sound_speed(0));                           //set time step small enough to satisfy courrant condition
                     dxrt2 = dx * rt2;
                     dxrt3 = dx * rt3;
 
@@ -241,7 +242,7 @@ namespace Pachyderm_Acoustic
 
                     //double x_length = Bounds.X_Length(), y_length = Bounds.Y_Length(), z_length = Bounds.Z_Length();
                     double x_length, y_length, z_length;
-                    Point MinPt = SampleOrigin;
+                    Point MinPt = new Hare.Geometry.Point(SampleOrigin.x, SampleOrigin.y, 0);
                     //if (x_length < xmin)
                     //{
                         x_length = xmin;
@@ -263,14 +264,14 @@ namespace Pachyderm_Acoustic
                     z_length += (no_of_Layers * 2 + 1) * dydz;
 
                     //estimated distance between nodes
-                    xDim = (int)Math.Ceiling(x_length / (2*dx));                                //set number of nodes in x direction
+                    xDim = (int)Math.Ceiling(x_length / (dx));                                //set number of nodes in x direction
                     dx = x_length / xDim;                                                   //refined distance between nodes
                     yDim = (int)Math.Ceiling(y_length / dydz);                                //set number of nodes in y direction
                     dy = y_length / yDim;
                     zDim = (int)Math.Ceiling(z_length / dydz);                                //set number of nodes in z direction
                     dz = z_length / zDim;
 
-                    dt = dy / (Rm.Sound_speed(0));                           //set time step small enough to satisfy courrant condition
+                    dt = dy * rt2 / (Rm.Sound_speed(0));                           //set time step small enough to satisfy courrant condition
                     dxrt2 = dx * rt2;
                     dxrt3 = dx * rt3;
 
@@ -309,11 +310,11 @@ namespace Pachyderm_Acoustic
                     for (int x = 0; x < PFrame.Length; x++)
                     {
                         int mod = x % 2;
-                        PFrame[x] = new Node[(int)(Math.Floor((double)yDimt / 2) + yDimt % 2 * mod)][];
+                        PFrame[x] = new Node[(int)(Math.Floor((double)yDimt) + yDimt % 2 * mod)][];
                         Random Rnd = new Random(x);
                         for (int y = 0; y < PFrame[x].Length; y++)
                         {
-                            PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt / 2) + yDimt % 2 * mod)];
+                            PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt) + yDimt % 2 * mod)];
                             for (int z = 0; z < PFrame[x][y].Length; z++)
                             {
                                 List<double> abs;
@@ -409,7 +410,7 @@ namespace Pachyderm_Acoustic
                     zDim = (int)Math.Ceiling(z_length / dydz);                                //set number of nodes in z direction
                     dz = z_length / zDim;
 
-                    dt = dy / (Rm.Sound_speed(0));                           //set time step small enough to satisfy courrant condition
+                    dt = dy * rt2 / (Rm.Sound_speed(0));                           //set time step small enough to satisfy courrant condition
                     dxrt2 = dx * rt2;
                     dxrt3 = dx * rt3;
 
@@ -1687,7 +1688,15 @@ namespace Pachyderm_Acoustic
                 Hare.Geometry.Point[] Loc;
                 public int[] X, Y, Z;
                 double tmax;
+                double Sample_Freq;
                 int no_of_samples;
+
+                public Microphone_Compact()
+                {
+                    Loc = new Point[0];
+                    Random R = new Random();
+                    RecNode = new Acoustic_Compact_FDTD.Node[Loc.Length];
+                }
 
                 public Microphone_Compact(Hare.Geometry.Point[] Loc_in)
                 {
@@ -1698,6 +1707,7 @@ namespace Pachyderm_Acoustic
 
                 public void Connect_Grid_Freefield(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double _tmax, double dt, int no_of_Layers)
                 {
+                    Sample_Freq = 1 / dt;
                     no_of_samples = (int)Math.Ceiling(_tmax / dt / 1000);
                     tmax = _tmax;
                     recording = new double[Loc.Length][];
@@ -1713,19 +1723,6 @@ namespace Pachyderm_Acoustic
                         Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
                         RecNode[i] = Frame[X[i]][Y[i]][Z[i]];
                     }
-
-                    //for (int i = 0; i < Loc.Length; i++)
-                    //{
-                        
-                    //    //int X = (int)Math.Floor((Loc[i].X - Bounds.Min_PT.x) * Utilities.Numerics.rt2 / (2 * dx) + no_of_Layers / Math.Sqrt(2));
-                    //    //int Y = (int)Math.Floor((Loc[i].Y - Bounds.Min_PT.y) / (2 * dx)) + no_of_Layers/2;
-                    //    //int Z = (int)Math.Floor((Loc[i].Z - Bounds.Min_PT.z) / (2 * dx)) + no_of_Layers/2;
-                    //    int X = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                    //    int Y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                    //    int Z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                    //    //Rhino.RhinoDoc.ActiveDoc.Objects.AddPoint(Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, X, Y, Z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)));
-                    //    RecNode[i] = Frame[X][Y][Z];
-                    //}
                 }
 
                 public void Connect_Grid_Laboratory(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double _tmax, double dt, int no_of_Layers)
@@ -1745,19 +1742,6 @@ namespace Pachyderm_Acoustic
                         Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
                         RecNode[i] = Frame[X[i]][Y[i]][Z[i]];
                     }
-
-                    //for (int i = 0; i < Loc.Length; i++)
-                    //{
-                    //    recording[i] = new double[no_of_samples];
-                    //    //int X = (int)Math.Floor((Loc[i].X - Bounds.Min_PT.x) * Utilities.Numerics.rt2 / (2 * dx) + no_of_Layers / Math.Sqrt(2));
-                    //    //int Y = (int)Math.Floor((Loc[i].Y - Bounds.Min_PT.y) / (2 * dx)) + no_of_Layers/2;
-                    //    //int Z = (int)Math.Floor((Loc[i].Z - Bounds.Min_PT.z) / (2 * dx));
-                    //    int X = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                    //    int Y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                    //    int Z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                    //    //Rhino.RhinoDoc.ActiveDoc.Objects.AddPoint(Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, X, Y, Z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)));
-                    //    RecNode[i] = Frame[X][Y][Z];
-                    //}
                 }
 
                 public void Connect_Grid_UniqueOnly_Freefield(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double _tmax, double dt, int no_of_Layers)
@@ -1771,25 +1755,102 @@ namespace Pachyderm_Acoustic
                     Y = new int[Loc.Length];
                     Z = new int[Loc.Length];
 
+                    int j = 0;
                     for (int i = 0; i < Loc.Length; i++)
                     {
-                        //int X = (int)Math.Floor((Loc[i].X - Bounds.Min_PT.x) * Utilities.Numerics.rt2 / (2 * dx) + no_of_Layers / Math.Sqrt(2)/2);
-                        //int Y = (int)Math.Floor((Loc[i].Y - Bounds.Min_PT.y) / (2 * dx)) + no_of_Layers/4;
-                        //int Z = (int)Math.Floor((Loc[i].Z - Bounds.Min_PT.z) / (2 * dx)) + no_of_Layers/4;
-                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        int x = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (2 * dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        int y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        int z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddPoint(Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, X, Y, Z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)));
-                        if (!Check_Frame[X[i], Y[i], Z[i]])
+                        if (!Check_Frame[x, y, z])
                         {
+                            X[j] = x; Y[j] = y; Z[j] = z;
+                            j++;
                             Check_Frame[X[i], Y[i], Z[i]] = true;
                             Rec_Unique.Add(Frame[X[i]][Y[i]][Z[i]]);
                         }
                     }
+                    Array.Resize(ref X, j);
+                    Array.Resize(ref Y, j);
+                    Array.Resize(ref Z, j);
+
                     recording = new double[Rec_Unique.Count][];
                     for (int i = 0; i < recording.Length; i++) recording[i] = new double[no_of_samples];
 
                     RecNode = Rec_Unique.ToArray();
+                }
+
+                //public void Connect_Grid_UniqueOnly_Laboratory(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double _tmax, double dt, int no_of_Layers)
+                //{
+                //    no_of_samples = (int)Math.Ceiling(_tmax / dt / 1000);
+                //    tmax = _tmax;
+
+                //    bool[,,] Check_Frame = new bool[Frame.Length, Frame[0].Length, Frame[0][0].Length];
+                //    List<Acoustic_Compact_FDTD.Node> Rec_Unique = new List<Acoustic_Compact_FDTD.Node>();
+                //    X = new int[Loc.Length];
+                //    Y = new int[Loc.Length];
+                //    Z = new int[Loc.Length];
+
+                //    for (int i = 0; i < Loc.Length; i++)
+                //    {
+                //        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                //        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                //        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddPoint(Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, X, Y, Z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)));
+                //        if (!Check_Frame[X[i], Y[i], Z[i]])
+                //        {
+                //            Check_Frame[X[i], Y[i], Z[i]] = true;
+                //            Rec_Unique.Add(Frame[X[i]][Y[i]][Z[i]]);
+                //        }
+                //    }
+
+                //    recording = new double[Rec_Unique.Count][];
+                //    for (int i = 0; i < recording.Length; i++) recording[i] = new double[no_of_samples];
+
+                //    RecNode = Rec_Unique.ToArray();
+                //}
+                public void Connect_Grid_Hemisphere_Laboratory(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, Point center, double radius, double dx, double _tmax, double dt, int no_of_Layers)
+                {
+                    List<Point> Loc_List = new List<Point>();
+                    no_of_samples = (int)Math.Ceiling(_tmax / dt / 1000);
+                    tmax = _tmax;
+
+                    List<Point> ptlist = new List<Point>();
+                    List<Acoustic_Compact_FDTD.Node> Rec = new List<Acoustic_Compact_FDTD.Node>();
+                    List<int> Xl = new List<int>();
+                    List<int> Yl = new List<int>();
+                    List<int> Zl = new List<int>();
+
+                    for(int i = 0; i < Frame.Length; i++)
+                    {
+                        for (int j = 0; j < Frame[i].Length; j++)
+                        {
+                            for (int k = 0; k < Frame[i][j].Length; k++)
+                            {
+                                Point p = Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, i, j, k, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2);// /2
+                                if (p.z < center.z) continue;
+                                double dist = (p - center).Length();
+                                if (dist < radius + dx / 2 && dist > radius - dx / 2)
+                                {
+                                    Xl.Add(i);
+                                    Yl.Add(j);
+                                    Zl.Add(k);
+                                    ptlist.Add(p);
+                                    Rec.Add(Frame[i][j][k]);
+                                }
+                            }
+                        }
+                    }
+
+                    Loc = ptlist.ToArray();
+                    X = Xl.ToArray();
+                    Y = Yl.ToArray();
+                    Z = Zl.ToArray();
+
+                    recording = new double[Rec.Count][];
+                    for (int i = 0; i < recording.Length; i++) recording[i] = new double[no_of_samples];
+
+                    RecNode = Rec.ToArray();
                 }
 
                 public void Connect_Grid_UniqueOnly_Laboratory(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double _tmax, double dt, int no_of_Layers)
@@ -1803,21 +1864,24 @@ namespace Pachyderm_Acoustic
                     Y = new int[Loc.Length];
                     Z = new int[Loc.Length];
 
+                    int j = 0;
                     for (int i = 0; i < Loc.Length; i++)
                     {
-                        //int X = (int)Math.Floor((Loc[i].X - Bounds.Min_PT.x) * Utilities.Numerics.rt2 / (2 * dx) + no_of_Layers);
-                        //int Y = (int)Math.Floor((Loc[i].Y - Bounds.Min_PT.y) / (2 * dx)) + no_of_Layers / 2;
-                        //int Z = (int)Math.Floor((Loc[i].Z - Bounds.Min_PT.z) / (2 * dx));
-                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        int x = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (2 * dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        int y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        int z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddPoint(Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, X, Y, Z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)));
-                        if (!Check_Frame[X[i], Y[i], Z[i]])
+                        if (!Check_Frame[x, y, z])
                         {
+                            X[j] = x; Y[j] = y; Z[j] = z;
+                            j++;
                             Check_Frame[X[i], Y[i], Z[i]] = true;
                             Rec_Unique.Add(Frame[X[i]][Y[i]][Z[i]]);
                         }
                     }
+                    Array.Resize(ref X, j);
+                    Array.Resize(ref Y, j);
+                    Array.Resize(ref Z, j);
 
                     recording = new double[Rec_Unique.Count][];
                     for (int i = 0; i < recording.Length; i++) recording[i] = new double[no_of_samples];
@@ -1837,15 +1901,44 @@ namespace Pachyderm_Acoustic
                 {
                     storage.Add(recording);
                     recording = new double[Loc.Length][];
-                    for (int i = 0; i < Loc.Length; i++)
+                    for (int i = 0; i < RecNode.Length; i++)
                     {
                         recording[i] = new double[no_of_samples];
                     }
                 }
 
-                public List<double[][]> Recordings
+                public double RMS(int index, int omitsamples = 0)
                 {
-                    get { return storage; }
+                    double sum = 0;
+                    if (index > storage[0].Length - 1) throw new Exception("Index out of range");
+                    for (int i = omitsamples; i < storage[0][index].Length; i++) sum += storage[0][index][i] * storage[0][index][i];
+                    return Math.Sqrt(sum);
+                }
+
+                public double RMS(int index, int octave_id, int omitsamples = 0)
+                {
+                    if (octave_id > 7) return RMS(index);
+                    double sum = 0;
+                    if (index > storage[0].Length - 1) throw new Exception("Index out of range");
+
+                    double[] filtered = Pachyderm_Acoustic.Audio.Pach_SP.FIR_Bandpass(Recordings()[0][index], octave_id, (int)Math.Round(this.Sample_Freq), 0);
+                    for (int i = omitsamples; i < filtered.Length; i++) sum += filtered[i] * filtered[i];
+
+                    return Math.Sqrt(sum);
+                }
+
+                public List<double[][]> Recordings()
+                {
+                    return storage;
+                }
+
+                public double[] Recordings(int mic_id, int omit = 0, int storage_id = 0)
+                {
+                    if (omit == 0) return storage[0][mic_id];
+                    int l = storage[storage_id][mic_id].Count() - omit;
+                    double[] range = new double[l];
+                    range = storage[storage_id][mic_id].ToList().GetRange(omit, l).ToArray();
+                    return range;
                 }
             }
         }
