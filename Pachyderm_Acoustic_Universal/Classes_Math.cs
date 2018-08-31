@@ -856,7 +856,7 @@ namespace Pachyderm_Acoustic
             /// </summary>
             /// <param name="etc"></param>
             /// <returns>ITDG in milliseconds</returns>
-            public static int InitialTimeDelayGap(double[] etc)
+            public static double InitialTimeDelayGap(double[] etc, int Sample_Frequency)
             {
                 int t1 = 0, t2 = 0;
                 double maxdiff = 0, nextdiff = 0;
@@ -878,7 +878,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                return t2 - t1;
+                return 1000 * (t2 - t1) / Sample_Frequency;
             }
         }
 
@@ -2589,6 +2589,7 @@ namespace Pachyderm_Acoustic
 
             public static bool DecodeAcoustics(string Code, ref double[] Absorption, ref double[] Scattering, ref double[] Transparency)
             {
+                if (Code == null) return false;
                 Absorption = new double[8];
                 Scattering = new double[8];
                 Transparency = new double[8];

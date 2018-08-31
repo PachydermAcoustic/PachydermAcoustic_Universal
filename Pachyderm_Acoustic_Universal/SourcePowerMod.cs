@@ -15,7 +15,7 @@ namespace Pachyderm_Acoustic
             AcceptButton = OK;
             CancelButton = Cancel;
             InitializeComponent();
-            if (initpower.Length != 8) initpower = new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 };
+            if (initpower == null || initpower.Length != 8) initpower = new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 };
             SWL0.Value = (decimal)initpower[0];
             SWL1.Value = (decimal)initpower[1];
             SWL2.Value = (decimal)initpower[2];

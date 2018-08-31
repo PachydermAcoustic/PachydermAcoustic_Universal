@@ -156,8 +156,9 @@ namespace Pachyderm_Acoustic
                         }
                     }
                 }
-                check = (rayCountIn < 0) ? new Convergence_Check[2] { T_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, T_id, h_oct), F_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, F_id, h_oct) }
-                : new Convergence_Check[2] { T_id < 0 ? null : new Detailed_Convergence_Check(receiverIn, T_id, h_oct), F_id < 0 ? null : new Detailed_Convergence_Check(receiverIn, F_id, h_oct) };
+                check = (rayCountIn < 0) ? new Convergence_Check[2] { T_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, T_id, h_oct, 0), F_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, F_id, h_oct, 1) }
+                : new Convergence_Check[2] { T_id < 0 ? null : new Detailed_Convergence_Check(receiverIn, T_id, h_oct, 0), F_id < 0 ? null : new Detailed_Convergence_Check(receiverIn, F_id, h_oct, 1) };
+                Convergence_Progress_WinForms.Instance.Show();
             }
             else check = null;
         }
@@ -290,6 +291,7 @@ namespace Pachyderm_Acoustic
                     if (!Params.Room.shoot(R, out u, out v, out R.Surf_ID, out Start, out leg, out code))
                     {
                         //Ray is lost... move on...
+                        RecMain.CheckBroadbandRay(R, R.origin + R.direction * 1000000);
                         for (int j = 0; j < 8; j++) _lost[Params.ThreadID] += R.Energy[j];
                         goto Do_Scattered;
                     }
@@ -346,6 +348,7 @@ namespace Pachyderm_Acoustic
                             OR.Ray_ID = Rnd.Next();
                             if (!Params.Room.shoot(OR, out u, out v, out OR.Surf_ID, out Start, out leg, out code))
                             {
+                                RecMain.CheckRay(OR, OR.origin + OR.direction * 1000000);
                                 _lost[Params.ThreadID] += OR.Intensity;
                                 goto Do_Scattered;
                             }
@@ -383,6 +386,7 @@ namespace Pachyderm_Acoustic
                             OR.Ray_ID = Rnd.Next();
                             if (!Params.Room.shoot(OR, out u, out v, out OR.Surf_ID, out Start, out leg, out code))
                             {
+                                RecMain.CheckRay(OR, OR.origin + OR.direction * 1000000);
                                 _lost[OR.ThreadID] += OR.Intensity;
                                 goto Do_Scattered;
                             }
@@ -462,13 +466,17 @@ namespace Pachyderm_Acoustic
             else
             {
                 foreach (Convergence_Check c in check)
-                {                   
-                    if (c != null && c.Check())
-                    {
-                        this.Abort_Calculation();
-                        return "Concluding Simulation...";
-                    }
+                {
+                    //ConvergenceProgress.Instance.reset_IR();
+                    if (c == null) continue;
+                    if (!c.Check(this._currentRay.Sum())) continue;
+                    this.Abort_Calculation();
+                    Convergence_Progress_WinForms.Instance.Hide();
+                    return "Concluding Simulation...";
                 }
+
+                Convergence_Progress_WinForms.Instance.Refresh();
+
                 int Ray_CT = 0;
                 for (int i = 0; i < _processorCt; i++)
                 {
@@ -512,14 +520,16 @@ namespace Pachyderm_Acoustic
         {
             protected double[] RunningSim;
             protected int oct;
-            
-            public Convergence_Check(Receiver_Bank R, int id, int _oct)
+            public int check_no;
+
+            public Convergence_Check(Receiver_Bank R, int id, int _oct, int check_id)
             {
                 oct = _oct;
                 RunningSim = R.Rec_List[id].Recs.Energy[oct];
+                check_no = check_id;
             }
 
-            public abstract bool Check();
+            public abstract bool Check(int No_of_Rays);
         }
 
         public class Detailed_Convergence_Check: Convergence_Check
@@ -529,17 +539,22 @@ namespace Pachyderm_Acoustic
             int step;
             int binct;
             int count = 0;
+            int RayNo = 0;
 
-            public Detailed_Convergence_Check(Receiver_Bank R, int id, int _oct)
-                : base(R, id, _oct)
+            public Detailed_Convergence_Check(Receiver_Bank R, int id, int _oct, int check_id)
+                : base(R, id, _oct, check_id)
             {
                 step = (R.SampleRate / 1000);
                 binct = RunningSim.Length / step;
                 Snapshot = new double[binct];
             }
 
-            public override bool Check()
+            public override bool Check(int No_of_Rays)
             {
+                double delta_rays = No_of_Rays - RayNo;
+                if (delta_rays < 100) return false;
+                RayNo = No_of_Rays;
+
                 double[] sn = new double[Snapshot.Length];
                 for (int i = 0; i < Snapshot.Length; i++)
                 {
@@ -549,19 +564,34 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                for (int i = 0; i < sn.Length; i++)
+                double[] SI = Pachyderm_Acoustic.Utilities.AcousticalMath.Schroeder_Integral(sn);
+                double inf60 = SI[0] * 1E-6;
+
+                int stop = SI.Length - 1;
+                while( sn[stop] < inf60 ) stop--;
+                double conv = 0;
+
+                double[] diff = new double[sn.Length];
+
+                for (int i = 0; i < stop; i++)
                 {
-                    if (sn[i] == 0) continue;
-                    double d = (sn[i] - Snapshot[i]) / Snapshot[i];
-                    if (d > 0.1)
-                    {
-                        Snapshot = sn;
-                        count = 0;
-                        return false;
-                    }
+                    if (sn[i] == 0 || Snapshot[i] == 0) continue;
+                    double d = Math.Abs(sn[i] - Snapshot[i]) / Snapshot[i];
+                    diff[i] = d;
+                    conv = Math.Max(conv, d);
                 }
                 Snapshot = sn;
+
+                if (conv == 0) return false;
+
+                if (conv > 0.1)
+                {
+                    count = 0;
+                }
                 count++;
+
+                if (Convergence_Progress_WinForms.Instance.Populate(diff, conv, 1000, count, check_no)) return true;
+
                 if (count > 10) return true;
                 return false;
             }
@@ -572,9 +602,10 @@ namespace Pachyderm_Acoustic
             double snapshot50, snapshot80, snapshotinf;
             int SampleStart, Sample50, Sample80, SampleInf;
             int count = 0;
+            int RayNo = 0;
 
-            public Minimum_Convergence_Check(Source S, Scene Sc, Receiver_Bank R, int id, int _oct)
-                :base(R, id, _oct)
+            public Minimum_Convergence_Check(Source S, Scene Sc, Receiver_Bank R, int id, int _oct, int check_id)
+                :base(R, id, _oct, check_id)
             {
                 SampleStart =(int)Math.Floor((S.H_Origin() - R.Origin(id)).Length() / Sc.Sound_speed(R.Origin(id)) * R.SampleRate);
                 Sample50 = (int)Math.Floor(50.0 * R.SampleRate / 1000) + SampleStart;
@@ -582,8 +613,13 @@ namespace Pachyderm_Acoustic
                 SampleInf = R.SampleCT;
             }
 
-            public override bool Check()
+            public override bool Check(int No_of_Rays)
             {
+                double delta_rays = No_of_Rays - RayNo;
+                if (delta_rays < 50) return false;
+                RayNo = No_of_Rays;
+                delta_rays /= 50;
+
                 double sn50 = 0;
                 double sn80 = 0;
                 double sninf = 0;
@@ -601,24 +637,28 @@ namespace Pachyderm_Acoustic
                     sninf += RunningSim[i];
                 }
 
+                double conv1 = Math.Abs(sn50 - snapshot50) / (snapshot50 * delta_rays) , conv2 = Math.Abs(sn80 - snapshot80) / (snapshot80 * delta_rays), convinf = Math.Abs(sninf - snapshotinf) / (snapshotinf * delta_rays);
+
                 if (sn50 == 0
-                    || sn50 / snapshot50 > 1.02
+                    || conv1 > 0.02
                     || sn80 == 0
-                    || sn80 / snapshot80 > 1.02
+                    || conv2 > 0.02
                     || sninf == 0
-                    || sninf / snapshotinf > 1.1)
+                    || convinf > 0.1)
                 {
-                    snapshot50 = sn50;
-                    snapshot80 = sn80;
-                    snapshotinf = sninf;
                     count = 0;
-                    return false;
+                }
+                else
+                {
+                    count++;
                 }
 
                 snapshot50 = sn50;
                 snapshot80 = sn80;
                 snapshotinf = sninf;
-                count++;
+
+                if (Convergence_Progress_WinForms.Instance.Populate(conv1, conv2, convinf, check_no)) return true;
+
                 if (count > 10) return true;
                 return false;
             }

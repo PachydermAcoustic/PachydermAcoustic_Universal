@@ -77,25 +77,6 @@ namespace Pachyderm_Acoustic
             return true;
         }
 
-
-        //public bool check_isclear(Hare.Geometry.Vector cr1, Hare.Geometry.Vector cr2, Hare.Geometry.Vector cr3)
-        //{
-        //    for (int l = 0; l < Vertices.Length; l++)
-        //    {
-        //        double d1 = Hare.Geometry.Hare_math.Dot(cr1, Vertices[l]);
-        //        double d2 = Hare.Geometry.Hare_math.Dot(cr2, Vertices[l]);
-        //        if ((d1 >= 0) ^ (d2 < 0))
-        //        {
-        //            double d3 = Hare.Geometry.Hare_math.Dot(cr3, Vertices[l]);
-        //            if ((d3 >= 0) ^ (d2 < 0))
-        //            {
-        //                return false;
-        //            }
-        //        }
-        //    }
-        //    return true;
-        //}
-
         public void CircumCircleRadius(Hare.Geometry.Point a, Hare.Geometry.Point b, Hare.Geometry.Point c, out double radius, out Hare.Geometry.Point ctr)
         {
             Hare.Geometry.Point acmid = (a + c) / 2;
@@ -110,10 +91,6 @@ namespace Pachyderm_Acoustic
             radius = (Pab.x * acmid.y - Pab.x * abmid.y + Pab.y * abmid.x - Pab.y * acmid.x) / (Pac.x * Pab.y - Pab.x * Pac.y);
             ctr = acmid + Pac * radius;
             radius = (ctr - a).Length();
-            //double ca = (ctr - a).Length();
-            //double Cb = (ctr - b).Length();
-            //double Cc = (ctr - c).Length();
-            //return;
         }
 
         public Hare.Geometry.Topology Output(IEnumerable<double> magnitude, double Min, double Max, double Diameter)

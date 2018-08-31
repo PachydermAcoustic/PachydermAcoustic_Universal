@@ -17,7 +17,6 @@
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
 
 using System;
-using Pachyderm_Acoustic.Utilities;
 using System.Collections.Generic;
 using System.Numerics;
 using FFTWSharp;
@@ -1022,7 +1021,6 @@ namespace Pachyderm_Acoustic
 
                 System.Numerics.Complex[] freq1 = FFT_General(SignalBuffer, threadid);
                 System.Numerics.Complex[] freq2 = FFT_General(Filter, threadid);
-                
                 System.Numerics.Complex[] freq3 = new System.Numerics.Complex[W];
 
                 for (int i = 0; i < freq1.Length; i++) freq3[i] = freq1[i] * freq2[i];
@@ -1080,6 +1078,52 @@ namespace Pachyderm_Acoustic
                 maxsig++;
                 maxfilt++;
                 return output;
+            }
+
+            /// <summary>
+            /// Frequency domain deconvolution.
+            /// </summary>
+            /// <param name="Recording">the recorded signal</param>
+            /// <param name="Signal">the signal used to excite the space.</param>
+            /// <returns>the deconvolved IR (hopefully).</returns>
+            public static double[] FFT_Deconvolution(double[] Recording, double[] Signal)
+            {
+                if (Recording == null) return null;
+                int minlength = Recording.Length > Signal.Length ? Recording.Length : Signal.Length;
+
+                int W = (int)Math.Pow(2, Math.Ceiling(Math.Log(minlength, 2)));
+
+                if (Recording.Length < W) Array.Resize(ref Recording, W);
+                if (Signal.Length < W) Array.Resize(ref Signal, W);
+
+                System.Numerics.Complex[] Recording_FD = FFT_General(Recording, 0);
+                System.Numerics.Complex[] Signal_FD = FFT_General(Signal, 0);
+
+                Complex[] Quotient = new Complex[W];
+
+                for (int f = 0; f < W; f++)
+                {
+                    Quotient[f] = Recording_FD[f] / Signal_FD[f];
+                }
+
+                double[] Complete = IFFT_Real_General(Quotient, 0);
+
+                double[] signalout = new double[W];
+
+                double maxsignal = Complete.Max();
+
+                for (int q = 0; q < Recording.Length; q++) signalout[q] = (float)(Complete[q] * ((0.75) / maxsignal));
+
+                //crop zeros from final signal 
+                for (int q = signalout.Length - 1; q > 0; q--)
+                {
+                    if (signalout[q] != 0)
+                    {
+                        Array.Resize(ref signalout, q + 2);
+                        break;
+                    }
+                }
+                return signalout;
             }
 
             public static double[] Filter_Interpolation(double[] SWL, double[][] ETC, int SampleRate_IN, int SampleRate_Out, double Rho_C)
