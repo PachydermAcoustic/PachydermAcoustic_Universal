@@ -247,6 +247,29 @@ namespace Pachyderm_Acoustic
                 return schroed;
             }
 
+            public static double[] Schroeder_Integral(double[] etc, double T_Limit)
+            {
+                double sum_energy = 0;
+
+                if (T_Limit > etc.Length) T_Limit = etc.Length;
+
+                double[] build_up = new double[etc.Length];
+                for (int index = 0; index < T_Limit; index++)
+                {
+                    build_up[index] = sum_energy += etc[index];
+                }
+
+                double[] schroed = new double[etc.Length];
+                if (sum_energy == 0) return schroed;
+                for (int index = 0; index < T_Limit; index++)
+                {
+                    schroed[index] = 1 - (build_up[index] / sum_energy);
+                }
+
+                return schroed;
+            }
+
+
             /// <summary>
             /// Gets the logarithmic value of the signal.
             /// </summary>

@@ -25,6 +25,9 @@ namespace Pachyderm_Acoustic
                     double Signal_Length = 1.1;
                     public double[][] IR;
                     double Gain_out = 1;
+                    public double[][] SNR;
+                    public int[] Direct_Sample;
+                    public bool Running = false;
 
                     public IO_Tester()
                     {
@@ -37,6 +40,8 @@ namespace Pachyderm_Acoustic
                         if (StopCalled) return;
                         StopCalled = true;
                         IR = new double[Channels_in][];
+                        Direct_Sample = new int[Channels_in];
+                        SNR = new double[Channels_in][];
                         for (int c = 0; c < Channels_in; c++)
                         {
                             double[] Recording = new double[Response[c].Count];
@@ -60,15 +65,20 @@ namespace Pachyderm_Acoustic
                             }
 
                             for (int n = 0; n < length; n++) IR[c][n] /= (double)CT_Averages;
+                            double[] ETC = new double[IR[c].Length];
+                            SNR[c] = new double[8];
+
+                            for (int oct = 0; oct < 8; oct++)
+                            {
+                                double[] octIR = Pach_SP.FIR_Bandpass(IR[c], oct, SampleFreq, 0);
+                                for (int i = 0; i < IR[c].Length; i++) ETC[i] = octIR[i] * octIR[i];
+                                Direct_Sample[c] = FindDirect(ETC);
+                                SNR[c][oct] = Signal_Noise_Ratio(ETC, Direct_Sample[c]);
+                            }
                         }
                         StopCalled = false;
+                        Running = false;
                     }
-
-                    //void WO_PlaybackStopped(object sender, EventArgs e)
-                    //{
-                    //    System.Threading.Thread.Sleep(100);
-                    //    WI.StopRecording();
-                    //}
 
                     void WI_DataAvailable(object sender, NAudio.Wave.WaveInEventArgs e)
                     {
@@ -80,22 +90,49 @@ namespace Pachyderm_Acoustic
                             for (int c = 0; c < Channels_in; c++)
                             {
                                 short sample = (short)(BitConverter.ToInt16(e.Buffer, n + 2 * c) * g);
-                                //Response.Add(sample);
                                 Response[c].Add(sample);
                                 sum += sample;
                             }
                         }
                     }
 
+                    public static double Signal_Noise_Ratio(double[] etc, int d_sound)
+                    {
+                        int noise_blk = 128;
+                        double sum = 0;
+                        for (int i = 0; i < noise_blk; i++)
+                        {
+                            sum += etc[etc.Length - noise_blk + i];
+                        }
+                        double mean = sum / noise_blk;
+                        return 10 * Math.Log10(etc[d_sound] / mean);
+                    }
+
+                    public static int FindDirect(double[] etc)
+                    {
+                        double deltaEMax = 0;
+                        int D_Sound = 0;
+                        for (int i = 1; i < etc.Length; i++)
+                        {
+                            double deltaE = (etc[i] - etc[i - 1]);
+                            if (deltaE > deltaEMax)
+                            {
+                                deltaEMax = deltaE;
+                                D_Sound = i;
+                            }
+                        }
+                        return D_Sound;
+                    }
+
                     public void Acquire(int input_device, Signal_Type ST, int output_device)
                     {
+                        Running = true;
                         Channels_in = NAudio.Wave.WaveIn.GetCapabilities(input_device).Channels;
                         Response = new List<short>[Channels_in];
                         block = 2 * Channels_in;
                         WI = new NAudio.Wave.WaveInEvent();
                         WI.WaveFormat = new NAudio.Wave.WaveFormat(SampleFreq, 16, Channels_in);
                         WI.DeviceNumber = input_device;
-                        //WO.PlaybackStopped += WO_PlaybackStopped;
 
                         WI.BufferMilliseconds = 100;
                         WI.NumberOfBuffers = 3;
@@ -131,10 +168,9 @@ namespace Pachyderm_Acoustic
                         WO.Init(Signal);
                         WI.StartRecording();
                         WO.Play();
-                        System.Threading.Thread.Sleep((int)(Signal_Time_s * 3 * 1000));
+                        System.Threading.Thread.Sleep((int)(Signal_Time_s * (3 + CT_Averages) * 1000));
                         WO.Stop();
                         WI.StopRecording();
-                        //System.Threading.SpinWait.SpinUntil(() => { return IR != null; });
                         System.Threading.Thread.Sleep(100);
                         WI_RecordingStopped(this, null);
                     }

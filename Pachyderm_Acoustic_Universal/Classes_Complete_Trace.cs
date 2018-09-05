@@ -244,10 +244,6 @@ namespace Pachyderm_Acoustic
         public void Conclude_Simulation()
         {
             conclude = true;
-            //foreach (System.Threading.Thread T in _tlist)
-            //{
-            //    T.Join();
-            //}
         }
 
         /// <summary>
