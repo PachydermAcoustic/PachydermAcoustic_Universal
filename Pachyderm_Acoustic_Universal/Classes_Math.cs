@@ -364,7 +364,7 @@ namespace Pachyderm_Acoustic
             /// </summary>
             /// <param name="SPL_Curve">Spl-Time curve</param>
             /// <returns>relative spl-time curve.</returns>
-            public static double[] Normalize_Function(double[] SPL_Curve)
+            public static double[] Normalize_Function(double[] SPL_Curve, List<double> secondary = null)
             {
                 double max = 0;
                 foreach (double x in SPL_Curve)
@@ -375,6 +375,14 @@ namespace Pachyderm_Acoustic
                 for (int i = 0; i < SPL_Curve.Length; i++)
                 {
                     SPL_Curve[i] -= max;
+                }
+
+                if (secondary != null)
+                {
+                    for (int i = 0; i < secondary.Count; i++)
+                    {
+                        secondary[i] -= max;
+                    }
                 }
 
                 return SPL_Curve;
@@ -2457,16 +2465,13 @@ namespace Pachyderm_Acoustic
                     double tv = V * (1 - S * (1 - f));
                     switch (i)
                     {
-
                         // Red is the dominant color
                         case 0:
                             R = V;
                             G = tv;
                             B = pv;
                             break;
-
                         // Green is the dominant color
-
                         case 1:
                             R = qv;
                             G = V;
@@ -2477,9 +2482,7 @@ namespace Pachyderm_Acoustic
                             G = V;
                             B = tv;
                             break;
-
                         // Blue is the dominant color
-
                         case 3:
                             R = pv;
                             G = qv;
@@ -2490,17 +2493,13 @@ namespace Pachyderm_Acoustic
                             G = pv;
                             B = V;
                             break;
-
                         // Red is the dominant color
-
                         case 5:
                             R = V;
                             G = pv;
                             B = qv;
                             break;
-
-                        // Just in case we overshoot on our math by a little, we put these here. Since its a switch it won't slow us down at all to put these here.
-
+                        // Just in case we overshoot on our math by a little, we put these here. Since it's a switch it won't slow us down at all to put these here.
                         case 6:
                             R = V;
                             G = tv;
@@ -2667,7 +2666,6 @@ namespace Pachyderm_Acoustic
             public static double[] DecodeSourcePower(string code)
             {
                 string[] SWLCodes = code.Split(";".ToCharArray());
-
                 if (SWLCodes.Length < 8) return new double[] { 120, 120, 120, 120, 120, 120, 120, 120 };
                 double[] SWL = new double[SWLCodes.Length];
                 for (int i = 0; i < 8; i++)

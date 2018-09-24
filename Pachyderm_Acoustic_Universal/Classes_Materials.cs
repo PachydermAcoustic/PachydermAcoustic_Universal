@@ -887,7 +887,6 @@ namespace Pachyderm_Acoustic
             
             public override void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta)
             {
-                double roughness_chance = rand.NextDouble();
                 if (Cos_Theta > 0)
                 {
                     Normal *= -1;

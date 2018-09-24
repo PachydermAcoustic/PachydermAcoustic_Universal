@@ -1432,7 +1432,8 @@ namespace Pachyderm_Acoustic
 
         public override double[] Energy(int Octave)
         {
-            return new double[] {PathEnergy[Octave]};
+            if (Octave < 8) return new double[] { PathEnergy[Octave] };
+            else return new double[] { PathEnergy.Sum() };
         }
 
         public override double[] Dir_Energy(int Octave, int dir)
@@ -1670,7 +1671,14 @@ namespace Pachyderm_Acoustic
         public override double[] Energy(int Octave)
         {
             double[] energy = new double[PathEnergy.Length];
-            for(int i = 0; i < PathEnergy.Length; i++) energy[i] = PathEnergy[i][Octave];
+            for (int i = 0; i < PathEnergy.Length; i++)
+            {
+                if (Octave < 8) energy[i] = PathEnergy[i][Octave];
+                else
+                {
+                    for(int oct = 0; oct < 8; oct++) energy[i] += PathEnergy[i][oct];
+                }
+            }
             return energy;
         }
 
