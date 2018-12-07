@@ -420,6 +420,11 @@ namespace Pachyderm_Acoustic
                                 break;
                             }
                         }
+                        else if (false)
+                        {
+                            // Its curved!
+
+                        }
                         else
                         {
                             if (!OcclusionIntersect(path[q + 2], Images[r][q], Sequence[q], ref Trans_Mod[r], ref path[q + 1], ref Seq_Polys[q], Threadid))

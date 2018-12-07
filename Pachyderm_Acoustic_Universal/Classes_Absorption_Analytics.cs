@@ -745,7 +745,6 @@ namespace Pachyderm_Acoustic
                                                                                            //Alpha[j][i] = Absorption_Coef(Reflection_Coef(Z[j][i], rho * c_sound) * Reflection_Coef(Zr[i][j], rho * c_sound));
                     }
                 }
-
                 return Alpha;
             }
 

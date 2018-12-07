@@ -405,7 +405,6 @@ namespace Pachyderm_Acoustic
                 {
                     Reflection_Coefficient = Pachyderm_Acoustic.AbsorptionModels.Operations.Reflection_Coef(Z, Air_Density, SoundSpeed); //No defined way to build a complex finite reflection coefficient.
                     Angular_Absorption = Pachyderm_Acoustic.AbsorptionModels.Operations.Finite_Unit_Absorption_Coefficient(Zr_interp, Z, a_real, rho, 343);
-
                 }
                 else if (Zf_incorp_Choice == 1)
                 {
@@ -438,7 +437,7 @@ namespace Pachyderm_Acoustic
                     }
                     else
                     {
-                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Angular_Absorption);
+                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Angular_Absorption);
                         TI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Trans_Coefficient);
                     }
                 else if (Averaging_Choice == 1)
@@ -598,8 +597,8 @@ namespace Pachyderm_Acoustic
 
                 if (Averaging_Choice == 0)
                 {
-                    RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Angular_Absorption);
-                    TI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Trans_Coefficient);
+                    RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Angular_Absorption);
+                    TI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Trans_Coefficient);
                 }
                 else if (Averaging_Choice == 1)
                 {

@@ -29,6 +29,7 @@ namespace Pachyderm_Acoustic
                 public int no_of_Layers;
                 public int n;
                 double time_ms;
+                int threadct = System.Environment.ProcessorCount;
 
                 //PML Settings
                 int PML_LayerNo = 50;
@@ -306,33 +307,46 @@ namespace Pachyderm_Acoustic
                     MinPt -= new Point(2 * dx * no_of_Layers, 2 * dy * no_of_Layers, 0);
                     Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
 
+                    int threadct = System.Environment.ProcessorCount;
+                    List<System.Threading.Thread> T = new List<System.Threading.Thread>();
+
                     //System.Threading.Tasks.Parallel.For(0, xDim, (x) =>
-                    for (int x = 0; x < PFrame.Length; x++)
+                    //for (int x = 0; x < PFrame.Length; x++)
+                    for(int p = 0; p < threadct; p++)
                     {
-                        int mod = x % 2;
-                        PFrame[x] = new Node[(int)(Math.Floor((double)yDimt) + yDimt % 2 * mod)][];
-                        Random Rnd = new Random(x);
-                        for (int y = 0; y < PFrame[x].Length; y++)
+                        T.Add(new System.Threading.Thread(proc_id =>
                         {
-                            PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt) + yDimt % 2 * mod)];
-                            for (int z = 0; z < PFrame[x][y].Length; z++)
+                            for (int x = (int)Math.Floor((double)((int)proc_id  * PFrame.Length) / threadct); x < Math.Floor((double)(((int)proc_id + 1) * PFrame.Length) / threadct); x++)
                             {
-                                List<double> abs;
-                                List<Bound_Node.Boundary> BDir;
-                                Point Loc = Acoustic_Compact_FDTD.RDD_Location(MinPt, x, y, z, dx, dy, dz); //new Point(MinPt.x + 2 * (((double)x - 0.5) * dx), MinPt.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), MinPt.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
-                                if (!Intersect_13Pt(Loc, SD.frequency, out BDir, out abs, ref Rnd))
+                                int mod = x % 2;
+                                PFrame[x] = new Node[(int)(Math.Floor((double)yDimt) + yDimt % 2 * mod)][];
+                                Random Rnd = new Random(x);
+                                for (int y = 0; y < PFrame[x].Length; y++)
                                 {
-                                    PFrame[x][y][z] = new RDD_Node(Loc);//, rho0, dt, dx, Rm.Sound_speed, new int[] { x, y, z });
-                                }
-                                else
-                                {
-                                    PFrame[x][y][z] =
-                                        new Bound_Node_RDD(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, BDir); //abs,
-                                    Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
+                                    PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt) + yDimt % 2 * mod)];
+                                    for (int z = 0; z < PFrame[x][y].Length; z++)
+                                    {
+                                        List<double> abs;
+                                        List<Bound_Node.Boundary> BDir;
+                                        Point Loc = Acoustic_Compact_FDTD.RDD_Location(MinPt, x, y, z, dx, dy, dz); //new Point(MinPt.x + 2 * (((double)x - 0.5) * dx), MinPt.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), MinPt.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
+                                        if (!Intersect_13Pt(Loc, SD.frequency, out BDir, out abs, ref Rnd))
+                                        {
+                                            PFrame[x][y][z] = new RDD_Node(Loc);//, rho0, dt, dx, Rm.Sound_speed, new int[] { x, y, z });
+                                        }
+                                        else
+                                        {
+                                            PFrame[x][y][z] =
+                                                new Bound_Node_RDD(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, BDir); //abs,
+                                            Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
+                                        }
+                                    }
                                 }
                             }
-                        }
+                        }));
+                        T[p].Start(p);
                     }//);
+
+                    foreach (System.Threading.Thread t in T) t.Join();
 
                     //Node.Attenuation = Math.Sqrt(Math.Pow(10, -.1 * Rm.AttenuationPureTone(Bounds.Min_PT, SD.frequency) * dt));//PFrame[0][0][0].Pt, SD.frequency
 
@@ -340,16 +354,31 @@ namespace Pachyderm_Acoustic
                     //Make Mesh Templates:
                     //Build_Mesh_Sections();
                     //for (int x = 0; x < PFrame.Length; x++)
-                    System.Threading.Tasks.Parallel.For(0, xDim, (x) =>
+                    //System.Threading.Tasks.Parallel.For(0, xDim, (x) =>
+                    //{
+
+                    T = new List<System.Threading.Thread>();
+
+                    for (int p = 0; p < threadct; p++)
                     {
-                        for (int y = 0; y < PFrame[x].Length; y++)
+                        T.Add(new System.Threading.Thread(proc_id =>
                         {
-                            for (int z = 0; z < PFrame[x][y].Length; z++)
+                            for (int x = (int)Math.Floor((double)((int)proc_id * PFrame.Length) / threadct); x < Math.Floor((double)(((int)proc_id + 1) * PFrame.Length) / threadct); x++)
                             {
-                                PFrame[x][y][z].Link_Nodes(ref PFrame, x, y, z);
+                                for (int y = 0; y < PFrame[x].Length; y++)
+                                {
+                                    for (int z = 0; z < PFrame[x][y].Length; z++)
+                                    {
+                                        PFrame[x][y][z].Link_Nodes(ref PFrame, x, y, z);
+                                    }
+                                }
                             }
-                        }
-                    });
+                        }));
+
+                        T[p].Start(p);
+                    }
+
+                    foreach (System.Threading.Thread t in T) t.Join();
 
                     yDim = PFrame[0].Length;
                     zDim = PFrame[0][0].Length;
@@ -636,27 +665,46 @@ namespace Pachyderm_Acoustic
                     List<Hare.Geometry.Point> Pts = new List<Hare.Geometry.Point>();
                     List<double> Pressure = new List<double>();
 
-                    System.Threading.Tasks.Parallel.For(0, PFrame.Length, (x) =>
+                    System.Threading.Tasks.Parallel.For(0, threadct * 10, proc_id =>
+                    //for (int p = 0; p < threadct; p++)
+                    //{
                     {
-                        for (int y = 0; y < PFrame[x].Length; y++)
+                        for (int x = (int)Math.Floor((double)((int)proc_id * PFrame.Length) / (10 * threadct)); x < Math.Floor((double)(((int)proc_id + 1) * PFrame.Length) / (10 * threadct)); x++)
                         {
-                            for (int z = 0; z < PFrame[x][y].Length; z++)
+                            for (int y = 0; y < PFrame[x].Length; y++)
                             {
-                                PFrame[x][y][z].UpdateP();
+                                for (int z = 0; z < PFrame[x][y].Length; z++)
+                                {
+                                    PFrame[x][y][z].UpdateP();
+                                }
                             }
                         }
                     });
 
-                    System.Threading.Tasks.Parallel.For(0, PFrame.Length, (x) =>
-                    {
-                        for (int y = 0; y < PFrame[x].Length; y++)
+                    //for (int p = 0; p < threadct; p++)
+                    //{
+                    //inc2.Add(new System.Threading.Thread(
+                    System.Threading.Tasks.Parallel.For(0, threadct * 10, proc_id =>
                         {
-                            for (int z = 0; z < PFrame[x][y].Length; z++)
+                            for (int x = (int)Math.Floor((double)((int)proc_id * PFrame.Length) / (threadct * 10)); x < Math.Floor((double)(((int)proc_id + 1) * PFrame.Length) / (threadct * 10)); x++)
                             {
-                                PFrame[x][y][z].UpdateT();
+                                {
+                                    for (int y = 0; y < PFrame[x].Length; y++)
+                                    {
+                                        for (int z = 0; z < PFrame[x][y].Length; z++)
+                                        {
+                                            PFrame[x][y][z].UpdateT();
+                                        }
+                                    }
+                                }
                             }
                         }
-                    });
+                    );
+
+                    //for (int i = 0; i < threadct; i++) inc1[i].Start(i);
+                    //foreach (System.Threading.Thread i in inc1) i.Join();
+                    //for (int i = 0; i < threadct; i++) inc2[i].Start(i);
+                    //foreach (System.Threading.Thread i in inc2) i.Join();
 
                     Layers.Attenuate();
 
@@ -1546,13 +1594,13 @@ namespace Pachyderm_Acoustic
                     Y = new int[Loc.Length];
                     Z = new int[Loc.Length];
 
-                    dx = dy / Math.Sqrt(2);
+                    //dx = dy / Math.Sqrt(2);
 
                     for (int i = 0; i < Loc.Length; i++)
                     {
-                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (2 * dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dy));// + no_of_Layers / 2;
-                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dz));// + no_of_Layers / 2;
+                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
                         SrcNode[i] = Frame[X[i]][Y[i]][Z[i]];
                     }
 
@@ -1758,7 +1806,7 @@ namespace Pachyderm_Acoustic
                     int j = 0;
                     for (int i = 0; i < Loc.Length; i++)
                     {
-                        int x = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (2 * dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        int x = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
                         int y = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
                         int z = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddPoint(Utilities.PachTools.HPttoRPt(Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, X, Y, Z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)));
