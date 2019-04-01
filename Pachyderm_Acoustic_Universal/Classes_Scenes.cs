@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2018, Arthur van der Harten 
+//'Copyright (c) 2008-2019, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -49,8 +49,6 @@ namespace Pachyderm_Acoustic
             public bool Custom_Method;
             public bool Complete = true;
             public bool Partitioned = false;
-            public bool Standard_Normals = false;
-//            protected List<BrepEdge> EdgeList = new List<BrepEdge>();
             public List<Edge> Edge_Nodes = new List<Edge>();
             public bool IsHomogeneous = true;
             public bool hasnulllayers = false;
@@ -88,8 +86,6 @@ namespace Pachyderm_Acoustic
                 //6.1121 * Math.Exp((18.678 - T / 234.5) * TC / (257.14 + T))
                 double h = hr * (Psat / Pa);
 
-                //C_Sound = Utilities.AcousticalMath.SoundSpeed(Temp);
-
                 Env_Prop = new Uniform_Medium(Air_Choice, Pa, TK, hr, EdgeCorrection);
 
                 // Saturation water vapor pressure:
@@ -107,14 +103,6 @@ namespace Pachyderm_Acoustic
 
                 //// Density of air:
                 //rho = 3.48349 * 1e-3 * Atmospheric_Pressure / (Z * (Temp + 273.15)) * (1 - 0.3780 * xw);
-
-                //Get_Edges();
-            }
-
-            public virtual void Standardize_Normals()
-            {
-                Standard_Normals = true;
-                if (!Partitioned) throw new Exception("Normals can not be standardized until the model has been partitioned.");
             }
 
             public int EdgeCount
@@ -249,7 +237,6 @@ namespace Pachyderm_Acoustic
             public abstract void EdgeFrame_Tangents(Hare.Geometry.Point Origin, Hare.Geometry.Vector Normal, int[] SrfIDs, ref List<double> dist2, List<Vector> Dir, List<int> IDs);
             public abstract void Register_Edges(IEnumerable<Hare.Geometry.Point> S, IEnumerable<Hare.Geometry.Point> R);
             
-
             public void Register_Edges(IEnumerable<Source> S, Receiver_Bank R)
             {
                 List<Hare.Geometry.Point> HS = new List<Hare.Geometry.Point>();
@@ -417,8 +404,8 @@ namespace Pachyderm_Acoustic
             protected Hare.Geometry.Topology[] Topo;
             private Hare.Geometry.Spatial_Partition SP;
             //Data kept to identify polygons as being part of larger planar entities...//
-            private List<Vector[]> PDir = new List<Vector[]>();
-            private List<double[]> Kurvatures = new List<double[]>();
+            //private List<Vector[]> PDir = new List<Vector[]>();
+            //private List<double[]> Kurvatures = new List<double[]>();
             /// <summary>
             /// List of polygons with plane ids they are attributed.
             /// </summary>
@@ -428,8 +415,12 @@ namespace Pachyderm_Acoustic
             /// </summary>
             //private List<List<int>> Plane_Members = new List<List<int>>();
             public double[] Plane_Area;
-            //private List<int> Brep_ids;
             private double[][] PolyPlaneFract;
+            private int[][] Object_Members;
+            private List<int> Object_ID;
+            private double[][][] kurvature;
+            private Vector[][][] frame_axes;
+            private bool[] iscurved; 
             ////////////////////////////////////////////////////////////////////
             
             public Polygon_Scene(double Temp, double hr, double Pa, int Air_Choice, bool EdgeCorrection, bool IsAcoustic)
@@ -437,9 +428,29 @@ namespace Pachyderm_Acoustic
             {
             }
 
-            public void Construct(Point[][][] Model, List<Material> Mat, List<Scattering> Scat, List<double[]> Trans)
+            public void Construct(Point[][][] Model, List<Material> Mat, List<Scattering> Scat, List<double[]> Trans, bool[] IsCurved = null, double[][][] Kurvatures = null, Vector[][][] Frame_Axes = null)
             {
-                if (Mat.Count != Model.Length && Scat.Count != Model.Length) throw new Exception("The number of magterial codes must match the numer of objects in the model...");
+                if (Mat.Count != Model.Length && Scat.Count != Model.Length) throw new Exception("The number of material codes must match the numer of objects in the model...");
+                if (iscurved == null || Kurvatures == null || Frame_Axes == null)
+                {
+                    iscurved = new bool[Model.Length];
+                    Kurvatures = new double[Model.Length][][];
+                    Frame_Axes = new Vector[Model.Length][][];
+                    for (int i = 0; i < Model.Length; i++)
+                    {
+                        Kurvatures[i] = new double[Model[i].Length][];
+                        Frame_Axes[i] = new Vector[Model[i].Length][];
+                        for (int j = 0; j < Model[i].Length; j++)
+                        {
+                            Kurvatures[i][j] = new double[2];
+                            Frame_Axes[i][j] = new Vector[2] { new Vector(), new Vector() };
+                        }
+                    }
+                }
+
+                kurvature = Kurvatures;
+                frame_axes = Frame_Axes;
+                iscurved = IsCurved;
 
                 List<Point[]> PTS = new List<Point[]>();
 
@@ -474,6 +485,20 @@ namespace Pachyderm_Acoustic
                 Topo[0] = new Topology(PTS.ToArray());// Utilities.Pach_Tools.RPttoHPt(Box.Min), Utilities.PachTools.RPttoHPt(Box.Max));
                 ////////////////////////////////////////
 
+                int done = 0;
+                Object_ID = new List<int>();
+                Object_Members = new int[Model.Length][];
+                for(int i = 0; i < Model.Length; i++)
+                {
+                    Object_Members[i] = new int[Model[i].Length];
+                    for(int j = 0; j < Model[i].Length; j++)
+                    {
+                        Object_Members[i][j] = done+j;
+                        Object_ID.Add(i);
+                    }
+                    done += Model[i].Length;
+                }
+
                 //Set up a system to find random points on planes.//
                 Plane_Area = new double[Topo[0].Plane_Members.Count];
                 PolyPlaneFract = new double[Topo[0].Plane_Members.Count][];
@@ -485,15 +510,6 @@ namespace Pachyderm_Acoustic
                         Plane_Area[q] += Topo[0].Polygon_Area(t);
                     }
                 }
-
-                //////////////////////////
-                //for (int i = 0; i < topo[0].planelist.count; i++)
-                //    for (int j = 0; j < topo[0].plane_members[i].count; j++)
-                //    {
-                //        point pt = topo[0].polygon_centroid(topo[0].plane_members[i][j]);
-                //        string n = topo[0].polys[topo[0].plane_members[i][j]].plane_id.tostring();
-                //    }
-                //////////////////////////
 
                 for (int q = 0; q < Topo[0].Plane_Members.Count; q++)
                 {
@@ -575,11 +591,8 @@ namespace Pachyderm_Acoustic
             {
                 //Mirror the point along the plane of the polygon...
                 double Dist = Topo[0].DistToPlane(Point, q);
-                Hare.Geometry.Point PX = Point - 2 * Topo[Top_Id].Normal(q) * Dist; //Point + 2 * (P - Point);
-
-                //Rhino.RhinoDoc.ActiveDoc.Objects.Add(new Rhino.Geometry.LineCurve(Utilities.PachTools.HPttoRPt(PX), Utilities.PachTools.HPttoRPt(Topo[0].Polygon_Centroid(q))));
-
-                return PX;//Point + 2 * (P - Point);
+                Hare.Geometry.Point PX = Point - 2 * Topo[Top_Id].Normal(q) * Dist;
+                return PX;
             }
 
             /// <summary>
@@ -591,15 +604,15 @@ namespace Pachyderm_Acoustic
             /// <param name="Rnd2">random number 2</param>
             /// <param name="Rnd3">random number 3</param>
             /// <returns>the random point</returns>
-            public Hare.Geometry.Point RandomPoint(int Plane_ID, double Polygon, double Rnd1, double Rnd2, double Rnd3)
-            {
-                int i = 0;
-                for (i = 0; i < PolyPlaneFract[Plane_ID].Length; i++)
-                {
-                    if (PolyPlaneFract[Plane_ID][i] > Polygon) break;
-                }
-                return Topo[0].Polys[Topo[0].Plane_Members[Plane_ID][i]].GetRandomPoint(Rnd1, Rnd2, Rnd3);
-            }
+            //public Hare.Geometry.Point RandomPoint(int Plane_ID, double Polygon, double Rnd1, double Rnd2, double Rnd3)
+            //{
+            //    int i = 0;
+            //    for (i = 0; i < PolyPlaneFract[Plane_ID].Length; i++)
+            //    {
+            //        if (PolyPlaneFract[Plane_ID][i] > Polygon) break;
+            //    }
+            //    return Topo[0].Polys[Topo[0].Plane_Members[Plane_ID][i]].GetRandomPoint(Rnd1, Rnd2, Rnd3);
+            //}
 
             public override void partition()
             {
@@ -773,9 +786,19 @@ namespace Pachyderm_Acoustic
                 return Topo[0].Polygon_Count;
             }
 
-            public override bool IsPlanar(int q)
+            public override bool IsPlanar(int object_id)
             {
-                return true;
+                return !iscurved[object_id];
+            }
+
+            public double[] Kurvature(int object_id, int polyid)
+            {
+                return kurvature[object_id][polyid];
+            }
+
+            public Vector[] Frame_Axes(int object_id, int polyid)
+            {
+                return frame_axes[object_id][polyid];
             }
 
             public override double SurfaceArea(int x)
@@ -849,6 +872,17 @@ namespace Pachyderm_Acoustic
             }
 
             /// <summary>
+            /// returns the number of objects. (not polygons)
+            /// </summary>
+            public int ObjectCount
+            {
+                get
+                {
+                    return this.Object_Members.Length;
+                }
+            }
+
+            /// <summary>
             /// gets the list of plane ids by polygon index.
             /// </summary>
             public int PlaneID(int i)
@@ -856,10 +890,13 @@ namespace Pachyderm_Acoustic
                    return Topo[0].Polys[i].Plane_ID;
             }
 
-            //public int BrepID(int i)
-            //{
-            //    return Brep_ids[i];
-            //}
+            /// <summary>
+            /// gets the list of plane ids by polygon index.
+            /// </summary>
+            public int ObjectID(int i)
+            {
+                return Object_ID[i];
+            }
 
             public bool Box_Intersect(AABB box, out double abs, out Vector V)//, out int[] PolyIds, out double[] Abs, out double[] Trans, out double[] Scat)
             {
@@ -900,6 +937,17 @@ namespace Pachyderm_Acoustic
                 get
                 {
                     return Topo[0].Plane_Members;
+                }
+            }
+
+            /// <summary>
+            /// gets the list of polygons on each object.
+            /// </summary>
+            public int[][] ObjectMembers
+            {
+                get
+                {
+                    return this.Object_Members;
                 }
             }
 
