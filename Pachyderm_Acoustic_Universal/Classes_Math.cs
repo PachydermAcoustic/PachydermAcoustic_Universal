@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2018, Arthur van der Harten 
+//'Copyright (c) 2008-2019, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -988,28 +988,31 @@ namespace Pachyderm_Acoustic
                 {
                     //Get Power...
                     double power = 0;
+                    double delay = 0;
                     if (Direct.ElementAt<Direct_Sound>(0) != null)
                     {
                         power = Pachyderm_Acoustic.Utilities.AcousticalMath.Intensity_SPL(Direct[Src_ID].SWL[Octave]);
+                        delay = Direct[Src_ID].Delay_ms;
                     }
                     else if (RTData.ElementAt<Receiver_Bank>(0) != null && RTData[0] is PachMapReceiver)
                     {
                         power = Pachyderm_Acoustic.Utilities.AcousticalMath.Intensity_SPL((RTData[Src_ID] as PachMapReceiver).SWL[Octave]);
+                        delay = (RTData[Src_ID] as PachMapReceiver).delay_ms;
                     }
 
                     if (RTData[Src_ID] != null)
                     {
-                        Histogram = RTData[Src_ID].GetEnergyHistogram(Octave, Direct[Src_ID].Delay_ms, Rec_ID);
+                        Histogram = RTData[Src_ID].GetEnergyHistogram(Octave, delay, Rec_ID);
                     }
                     else
                     {
-                        Histogram = new double[(int)((CO_Time_ms + (int)Direct[Src_ID].Delay_ms) * 0.001 * Sampling_Frequency)];
+                        Histogram = new double[(int)((CO_Time_ms + (int)delay) * 0.001 * Sampling_Frequency)];
                     }
 
                     if (Direct[Src_ID] != null && Direct[Src_ID].IsOccluded(Rec_ID))
                     {
                         int D_Start = 0;
-                        if (!Start_at_Zero) D_Start = (int)Math.Ceiling(((double)Direct[Src_ID].Delay_ms * 0.001 + Direct[Src_ID].Time(Rec_ID)) * Sampling_Frequency);
+                        if (!Start_at_Zero) D_Start = (int)Math.Ceiling(((double)delay * 0.001 + Direct[Src_ID].Time(Rec_ID)) * Sampling_Frequency);
                         for (int i = 0; i < Direct[Src_ID].Io[Rec_ID][0].Length; i++)
                         {
                             double DirectValue = 0;
@@ -2370,6 +2373,29 @@ namespace Pachyderm_Acoustic
                 }
             }
 
+            public static bool check_circumsphere(Hare.Geometry.Point ctr, Hare.Geometry.Point Vertex, double r2)
+            {
+                Hare.Geometry.Vector vd = Vertex - ctr;
+                if (vd.x * vd.x + vd.y * vd.y + vd.z * vd.z < r2) return false;
+                return true;
+            }
+
+            public static void CircumCircleRadius(Hare.Geometry.Point a, Hare.Geometry.Point b, Hare.Geometry.Point c, out double radius, out Hare.Geometry.Point ctr)
+            {
+                Hare.Geometry.Point acmid = (a + c) / 2;
+                Hare.Geometry.Point abmid = (a + b) / 2;
+                Hare.Geometry.Vector ac = c - a;
+                Hare.Geometry.Vector ab = a - b;
+                Hare.Geometry.Vector abXac = Hare.Geometry.Hare_math.Cross(ab, ac);
+                Hare.Geometry.Vector Pab = Hare.Geometry.Hare_math.Cross(abXac, ab);
+                Hare.Geometry.Vector Pac = Hare.Geometry.Hare_math.Cross(abXac, ac);
+
+                // this is the vector from a TO the circumsphere center
+                radius = (Pab.x * acmid.y - Pab.x * abmid.y + Pab.y * abmid.x - Pab.y * acmid.x) / (Pac.x * Pab.y - Pab.x * Pac.y);
+                ctr = acmid + Pac * radius;
+                radius = (ctr - a).Length();
+            }
+
             public static Hare.Geometry.Vector Rotate_Vector(Hare.Geometry.Vector V, double azi, double alt, bool degrees)
             {
                 double yaw, pitch;
@@ -2394,6 +2420,26 @@ namespace Pachyderm_Acoustic
                 double[] r2 = new double[3] { right.x, right.y, right.z };
 
                 return (new Hare.Geometry.Vector(r1[0] * V.x + r1[1] * V.y + r1[2] * V.z, r2[0] * V.x + r2[1] * V.y + r2[2] * V.z, r3[0] * V.x + r3[1] * V.y + r3[2] * V.z));
+            }
+
+            public static void Euler_Pitch_Yaw(Hare.Geometry.Vector V1, Hare.Geometry.Vector V2, out double yaw, out double pitch)
+            {
+                Hare.Geometry.Vector V = V2 - V1;
+                yaw = Math.Atan2(V.x, V.z);
+                double padj = Math.Sqrt(V.x * V.x + V.z * V.z);
+                pitch = Math.Atan2(padj, V.y);
+            }
+
+            public static void RotateMatrix(double phi_radians, ref MathNet.Numerics.LinearAlgebra.Matrix<double> matrix)
+            {
+                if (matrix.ColumnCount != 2 || matrix.RowCount != 2) throw new Exception("Matrix Rotation was designed for 2x2 gaussian curvature matrices...");
+                double sinphi = Math.Sin(phi_radians), cosphi = Math.Cos(phi_radians);
+                double m00 = matrix[0, 0], m01 = matrix[0, 1], m10 = matrix[1, 0], m11 = matrix[1, 1];
+                double n00 = m00 * cosphi - m10 * sinphi, n01 = m01 * cosphi - m11 * sinphi, n10 = m00 * sinphi + m10 * cosphi, n11 = m01 * sinphi + m11 * cosphi;
+                matrix[0, 0] = n00 * cosphi - n01 * sinphi;
+                matrix[0, 1] = n00 * sinphi + n01 * cosphi;
+                matrix[1, 0] = n10 * cosphi - n11 * sinphi;
+                matrix[1, 1] = n10 * sinphi + n11 * cosphi;
             }
 
             /// <summary>

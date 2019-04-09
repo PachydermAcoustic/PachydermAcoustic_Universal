@@ -39,13 +39,34 @@ namespace Pachyderm_Acoustic
                 {
                     Freefield,
                     ScatteringLab,
-                    TransparencyLab
+                    TransparencyLab,
+                    Terrain
                 }
 
                 public static Hare.Geometry.Point RDD_Location(Hare.Geometry.Point MinPt, int x, int y, int z, double dx, double dy, double dz)
                 {
                     int mod = x % 2;
+                    //return new Point(MinPt.x + (((double)x - 0.5) * dx), MinPt.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), MinPt.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
                     return new Point(MinPt.x + (((double)x - 0.5) * dx), MinPt.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), MinPt.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
+                }
+
+                public int[] RDD_Location(Hare.Geometry.Point p)
+                {
+                    int[] loc = new int[3];
+
+                    loc[0] = (int)Math.Floor((p.x - Bounds.Min_PT.x) / (dx));
+                    loc[1] = (int)Math.Floor((p.y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));
+                    loc[2] = (int)Math.Floor((p.z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));
+
+                    //p -= Bounds.Min_PT;
+                    //p.x -= 05 * dx;
+                    //loc[0] = (int)Math.Round(p.x / dx);
+                    //int mod = loc[0] % 2;
+                    //p.y -= (0.5 - 0.5 * mod) * 2 * dy;
+                    //loc[1] =  (int)Math.Round(p.y / (2 * dy));
+                    //p.z -= (0.5 - 0.5 * mod) * 2 * dz;
+                    //loc[2] = (int)Math.Round(p.z / (2 * dz));
+                    return loc;
                 }
 
                 public Hare.Geometry.Point RDD_Location(int x, int y, int z)
@@ -78,6 +99,13 @@ namespace Pachyderm_Acoustic
                     {
                         //TODO: Build a custom lab with freefield condition at bottom boundary...
                         Build_TransparencyLaboratory_FVM13(ref xDim, ref yDim, ref zDim, true, SampleOrigin, mindimx, mindimy, mindimz);
+                        SD.Connect_Grid_Laboratory(PFrame, Bounds, dx, dy, dz, tmax, dt, no_of_Layers);
+                        Mic.Connect_Grid_UniqueOnly_Laboratory(PFrame, Bounds, dx, tmax, dt, no_of_Layers);
+                    }
+                    else if (GT == GridType.Terrain)
+                    {
+                        Hare.Geometry.Point origin = (Rm_in.Max() + Rm.Min()) / 2;
+                        Build_ScatteringLaboratory_FVM13(ref xDim, ref yDim, ref zDim, true, origin, mindimx, mindimy, mindimz);
                         SD.Connect_Grid_Laboratory(PFrame, Bounds, dx, dy, dz, tmax, dt, no_of_Layers);
                         Mic.Connect_Grid_UniqueOnly_Laboratory(PFrame, Bounds, dx, tmax, dt, no_of_Layers);
                     }
@@ -228,9 +256,9 @@ namespace Pachyderm_Acoustic
                     double rt3 = Math.Sqrt(3);
 
                     double dydz = Rm.Sound_speed(0) / fmax * .1;
-                    dx = dydz / Math.Sqrt(2);
+                    dx = 2 * dydz / Math.Sqrt(2);
 
-                    Bounds = new AABB(Rm.Min() - new Point(.05 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.05 * dx, .05 * dydz, .05 * dydz));
+                    Bounds = new AABB(Rm.Min() - new Point(.025 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.025 * dx, .05 * dydz, .05 * dydz));
 
                     no_of_Layers = 0;
                     double max_Layer = 0;
@@ -241,37 +269,43 @@ namespace Pachyderm_Acoustic
                         max_Layer = PML_MaxAtten;
                     }
 
-                    //double x_length = Bounds.X_Length(), y_length = Bounds.Y_Length(), z_length = Bounds.Z_Length();
-                    double x_length, y_length, z_length;
+                    double x_length = Bounds.X_Length(), y_length = Bounds.Y_Length(), z_length = Bounds.Z_Length();
                     Point MinPt = new Hare.Geometry.Point(SampleOrigin.x, SampleOrigin.y, 0);
-                    //if (x_length < xmin)
-                    //{
+                    if (x_length < xmin)
+                    {
                         x_length = xmin;
-                        MinPt.x -= x_length / 2;
-                    //}
-                    //if (y_length < ymin)
-                    //{
+                    }
+                    if (y_length < ymin)
+                    {
                         y_length = ymin;
-                        MinPt.y -= y_length / 2;
-                    //}
-                    //if (z_length < zmin)
-                    //{
+                    }
+                    if (z_length < zmin)
+                    {
                         z_length = zmin;
-                    //MinPt.z -= z_length / 2;
-                    //}
+                    }
 
-                    x_length += (no_of_Layers * 4 + 1) * dx;
-                    y_length += (no_of_Layers * 4 + 1) * dydz;
-                    z_length += (no_of_Layers * 2 + 1) * dydz;
+                    //MinPt.x -= (x_length / 4);// + no_of_Layers / 2 * dx);
+                    //MinPt.y -= (y_length / 2);// + no_of_Layers / 2 * dydz);
 
-                    //estimated distance between nodes
-                    xDim = (int)Math.Ceiling(x_length / (dx));                                //set number of nodes in x direction
+                    List<Bound_Node_RDD> Bound = new List<Bound_Node_RDD>();
+
+                    xDim = (int)Math.Ceiling(x_length / dx);                                //set number of nodes in x direction
                     dx = x_length / xDim;                                                   //refined distance between nodes
                     yDim = (int)Math.Ceiling(y_length / dydz);                                //set number of nodes in y direction
                     dy = y_length / yDim;
                     zDim = (int)Math.Ceiling(z_length / dydz);                                //set number of nodes in z direction
                     dz = z_length / zDim;
 
+                    //MinPt -= new Point(dx * no_of_Layers + 1, dy * no_of_Layers + 1, 0);
+                    x_length += (no_of_Layers * 2) * dx;
+                    y_length += (no_of_Layers * 2 * rt2) * dy;
+                    z_length += (no_of_Layers * rt2) * dz;
+
+                    xDim = (int)Math.Ceiling(x_length / dx);                                //set number of nodes in x direction
+                    yDim = (int)Math.Ceiling(y_length / dy);                                //set number of nodes in y direction
+                    zDim = (int)Math.Ceiling(z_length / dz);                                //set number of nodes in z direction
+
+                    //estimated distance between nodes
                     dt = dy * rt2 / (Rm.Sound_speed(0));                           //set time step small enough to satisfy courrant condition
                     dxrt2 = dx * rt2;
                     dxrt3 = dx * rt3;
@@ -296,23 +330,22 @@ namespace Pachyderm_Acoustic
 
                     foreach (Vector V in Dir) V.Normalize();
 
-                    PFrame = new Node[xDim][][];// yDim, zDim];                               //pressure scalar field initialisation
-
-                    List<Bound_Node_RDD> Bound = new List<Bound_Node_RDD>();
-
                     int xDimt = xDim;
-                    int yDimt = yDim;
-                    int zDimt = zDim;
+                    int yDimt = yDim / 2;
+                    int zDimt = zDim / 2;
 
-                    MinPt -= new Point(2 * dx * no_of_Layers, 2 * dy * no_of_Layers, 0);
-                    Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
+                    PFrame = new Node[xDimt][][];// yDim, zDim];                               //pressure scalar field initialisation
 
                     int threadct = System.Environment.ProcessorCount;
                     List<System.Threading.Thread> T = new List<System.Threading.Thread>();
 
+                    MinPt -= new Point(x_length / 2, y_length / 2, 0);
+                    MinPt.z = 0;
+                    Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
+
                     //System.Threading.Tasks.Parallel.For(0, xDim, (x) =>
                     //for (int x = 0; x < PFrame.Length; x++)
-                    for(int p = 0; p < threadct; p++)
+                    for (int p = 0; p < threadct; p++)
                     {
                         T.Add(new System.Threading.Thread(proc_id =>
                         {
@@ -374,7 +407,6 @@ namespace Pachyderm_Acoustic
                                 }
                             }
                         }));
-
                         T[p].Start(p);
                     }
 
@@ -1556,11 +1588,12 @@ namespace Pachyderm_Acoustic
 
             public class Signal_Driver_Compact
             {
-                Acoustic_Compact_FDTD.Node[] SrcNode;
+                List<Acoustic_Compact_FDTD.Node> SrcNode;
                 public int[] X, Y, Z;
-                double[] signal;
+                double[][] signal;
                 double f;
-                Hare.Geometry.Point[] Loc;
+                List<Hare.Geometry.Point> Loc;
+                List<double[]> SWL;
                 Signal_Type S;
                 double w;
                 double tmax;
@@ -1573,15 +1606,30 @@ namespace Pachyderm_Acoustic
                     Gaussian_Pulse,
                     Sine_Pulse,
                     SteadyState_Noise,
-                    SS_Noise_Pulse
+                    SS_Noise_Pulse,
+                    Spectrum
                 }
 
-                public Signal_Driver_Compact(Signal_Type S_in, double freq, double w_in, Hare.Geometry.Point[] Loc_in)
+                public Signal_Driver_Compact(Signal_Type S_in, double freq, double w_in, Source[] Loc_in)
                 {
+                    Loc = new List<Point>();
+                    SWL = new List<double[]>();
                     S = S_in;
                     f = freq;
-                    Loc = Loc_in;
                     w = w_in;
+                    for (int i = 0; i < Loc_in.Length; i++)
+                    {
+                        if (Loc_in[i].Type() == "Line Source")
+                        {
+                            Loc.AddRange((Loc_in[i] as LineSource).Samples);
+                            for (int j = 0; j < (Loc_in[i] as LineSource).Samples.Length; j++) SWL.Add((Loc_in[i] as LineSource).Power);
+                        }
+                        else
+                        { 
+                            Loc.Add(Loc_in[i].H_Origin());
+                            SWL.Add(Loc_in[i].SoundPower);
+                        }
+                    }
                 }
 
                 public void Connect_Grid_Freefield(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double dy, double dz, double _tmax, double _dt, int no_of_Layers)
@@ -1589,19 +1637,29 @@ namespace Pachyderm_Acoustic
                     tmax = _tmax / 1000;
                     dt = _dt;
 
-                    SrcNode = new Acoustic_Compact_FDTD.Node[Loc.Length];
-                    X = new int[Loc.Length];
-                    Y = new int[Loc.Length];
-                    Z = new int[Loc.Length];
+                    SrcNode = new List<Acoustic_Compact_FDTD.Node>();
+                    X = new int[Loc.Count];
+                    Y = new int[Loc.Count];
+                    Z = new int[Loc.Count];
+
+                    List<Point> TempLOC = Loc;
+                    List<double[]> TempSWL = SWL;
+                    Loc = new List<Point>();
+                    SWL = new List<double[]>();
 
                     //dx = dy / Math.Sqrt(2);
 
-                    for (int i = 0; i < Loc.Length; i++)
+                    for (int i = 0; i < TempLOC.Count; i++)
                     {
-                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        SrcNode[i] = Frame[X[i]][Y[i]][Z[i]];
+                        X[i] = (int)Math.Floor((TempLOC[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        if (X[i] >= Frame.Length || X[i] < 0) continue;
+                        Y[i] = (int)Math.Floor((TempLOC[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        if (Y[i] >= Frame[X[i]].Length || Y[i] < 0) continue;
+                        Z[i] = (int)Math.Floor((TempLOC[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        if (Z[i] >= Frame[X[i]][Y[i]].Length || Z[i] < 0) continue;
+                        SrcNode.Add(Frame[X[i]][Y[i]][Z[i]]);
+                        Loc.Add(TempLOC[i]);
+                        SWL.Add(TempSWL[i]);
                     }
 
                     Generate_Signal();
@@ -1612,17 +1670,27 @@ namespace Pachyderm_Acoustic
                     tmax = _tmax / 1000;
                     dt = _dt;
 
-                    SrcNode = new Acoustic_Compact_FDTD.Node[Loc.Length];
-                    X = new int[Loc.Length];
-                    Y = new int[Loc.Length];
-                    Z = new int[Loc.Length];
+                    SrcNode = new List<Acoustic_Compact_FDTD.Node>();
+                    X = new int[Loc.Count];
+                    Y = new int[Loc.Count];
+                    Z = new int[Loc.Count];
 
-                    for (int i = 0; i < Loc.Length; i++)
+                    List<Point> TempLOC = Loc;
+                    List<double[]> TempSWL = SWL;
+                    Loc = new List<Point>();
+                    SWL = new List<double[]>();
+
+                    for (int i = 0; i < TempLOC.Count; i++)
                     {
-                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (2 * dy));// + no_of_Layers / 2;
-                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (2 * dz));// + no_of_Layers / 2;
-                        SrcNode[i] = Frame[X[i]][Y[i]][Z[i]];
+                        X[i] = (int)Math.Floor((TempLOC[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        if (X[i] >= Frame.Length || X[i] < 0) continue;
+                        Y[i] = (int)Math.Floor((TempLOC[i].y - Bounds.Min_PT.y) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        if (Y[i] >= Frame[X[i]].Length || Y[i] < 0) continue;
+                        Z[i] = (int)Math.Floor((TempLOC[i].z - Bounds.Min_PT.z) / (2 * dx / Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        if (Z[i] >= Frame[X[i]][Y[i]].Length || Z[i] < 0) continue;
+                        SrcNode.Add(Frame[X[i]][Y[i]][Z[i]]);
+                        Loc.Add(TempLOC[i]);
+                        SWL.Add(TempSWL[i]);
                     }
 
                     Generate_Signal();
@@ -1637,72 +1705,92 @@ namespace Pachyderm_Acoustic
 
                 private void Generate_Signal()
                 {
-                    signal = new double[(int)Math.Ceiling(tmax / dt)];
-
-                    double f2pi = f * 2 * Math.PI;
+                    signal = new double[Loc.Count][];
                     Random R = new Random((int)System.DateTime.Now.Ticks);
+                    double[] noise = new double[(int)Math.Ceiling(tmax / dt)];
+                    for (int n = 0; n < tmax / dt; n++) noise[n] = R.NextDouble();
+                    
+                    double f2pi = f * 2 * Math.PI;
 
-                    switch (S)
+                    for (int i = 0; i < Loc.Count; i++)
                     {
-                        case Signal_Type.Dirac_Pulse:
-                            signal[1] = 1;
-                            break;
-                        case Signal_Type.Sine_Tone:
-                            double sum_e = 0;
-                            for (int n = 0; n < tmax / dt; n++)
-                            {
-                                double ph = f2pi * n * dt;
-                                signal[n] = Math.Sin(ph);
-                                sum_e += signal[n] * signal[n];
-                            }
-                            for (int i = 0; i < signal.Length; i++) signal[i] *= tmax * 20 / Math.Sqrt(sum_e);
-                            break;
-                        case Signal_Type.Gaussian_Pulse:
-                            double sum = 0;
-                            for (int n = 0; n < tmax / dt; n++)
-                            {
-                                signal[n] = Math.Exp(-.5 * Math.Pow((double)n / w, 2));
-                                sum += signal[n];
-                            }
-                            for (int n = 0; n < tmax / dt; n++)
-                            {
-                                signal[n] /= sum;
-                            }
-                            break;
-                        case Signal_Type.Sine_Pulse:
-                            //for (int n = 0; n < tmax / dt; n++) signal[n] = Math.Exp(-.5 * Math.Pow((double)n / 1, 2)) * Math.Sin(f2pi * n * dt);
-                            double kk = Math.PI / 60 / 343 / dt;
-                            double offset = Math.PI / kk / 343;
-                            signal = new double[60];
-                            double param = 2 * (0.371 * 60 - 8.1);
-                            double sumsig = 0;
-                            for (int n = 0; n < 60; n++)
-                            {
-                                double t = n * dt;
-                                signal[n] = (t - offset / 2) * Math.Pow(Math.Sin(kk * 343 * t), param);
-                                sumsig += signal[n] * signal[n];
-                            }
-                            for (int i = 0; i < signal.Length; i++) signal[i] = Math.Sqrt(signal[i] * signal[i] / sumsig) * ((signal[i] < 0) ? -1 : 1);
+                        R = new Random((int)System.DateTime.Now.Ticks);
+                        signal[i] = new double[(int)Math.Ceiling(tmax / dt)];
 
-                            break;
-                        case Signal_Type.SteadyState_Noise:
-                            for (int n = 0; n < tmax / dt; n++) signal[n] = R.NextDouble();
-                            break;
-                        case Signal_Type.SS_Noise_Pulse:
-                            for (int n = 0; n < tmax / dt; n++) signal[n] = Math.Exp(-.5 * Math.Pow((double)n / w, 2) * R.NextDouble());
-                            break;
+                        switch (S)
+                        {
+                            case Signal_Type.Dirac_Pulse:
+                                signal[i][1] = 1;
+                                break;
+                            case Signal_Type.Sine_Tone:
+                                double sum_e = 0;
+                                for (int n = 0; n < tmax / dt; n++)
+                                {
+                                    double ph = f2pi * n * dt;
+                                    signal[i][n] = Math.Sin(ph);
+                                    sum_e += signal[i][n] * signal[i][n];
+                                }
+                                for (int j = 0; j < signal[i].Length; j++) signal[i][j] *= tmax * 20 / Math.Sqrt(sum_e);
+                                break;
+                            case Signal_Type.Gaussian_Pulse:
+                                double sum = 0;
+                                for (int n = 0; n < tmax / dt; n++)
+                                {
+                                    signal[i][n] = Math.Exp(-.5 * Math.Pow((double)n / w, 2));
+                                    sum += signal[i][n];
+                                }
+                                for (int n = 0; n < tmax / dt; n++)
+                                {
+                                    signal[i][n] /= sum;
+                                }
+                                break;
+                            case Signal_Type.Sine_Pulse:
+                                //for (int n = 0; n < tmax / dt; n++) signal[n] = Math.Exp(-.5 * Math.Pow((double)n / 1, 2)) * Math.Sin(f2pi * n * dt);
+                                double kk = Math.PI / 60 / 343 / dt;
+                                double offset = Math.PI / kk / 343;
+                                signal[i] = new double[60];
+                                double param = 2 * (0.371 * 60 - 8.1);
+                                double sumsig = 0;
+                                for (int n = 0; n < 60; n++)
+                                {
+                                    double t = n * dt;
+                                    signal[i][n] = (t - offset / 2) * Math.Pow(Math.Sin(kk * 343 * t), param);
+                                    sumsig += signal[i][n] * signal[i][n];
+                                }
+                                for (int j = 0; j < signal[i].Length; i++) signal[i][j] = Math.Sqrt(signal[i][j] * signal[i][j] / sumsig) * ((signal[i][j] < 0) ? -1 : 1);
+                                break;
+                            case Signal_Type.SteadyState_Noise:
+                                for (int n = 0; n < tmax / dt; n++) signal[i][n] = R.NextDouble();
+                                break;
+                            case Signal_Type.SS_Noise_Pulse:
+                                for (int n = 0; n < tmax / dt; n++) signal[i][n] = Math.Exp(-.5 * Math.Pow((double)n / w, 2) * R.NextDouble());
+                                break;
+                            case Signal_Type.Spectrum:
+                                signal[i] = Pachyderm_Acoustic.Audio.Pach_SP.Filter2Signal(noise, SWL[i], (int)(1.0 / dt), 0);
+                                double[][] filt = new double[8][];
+                                for(int o = 0; o < 8; o++)
+                                {
+                                    filt[o] = Pachyderm_Acoustic.Audio.Pach_SP.FIR_Bandpass(signal[i], o, (int)(1.0 / dt), 0);
+                                    double p = 0;
+                                    for (int j = 0; j < filt[o].Length; j++) p += Math.Abs(filt[o][j]);
+
+                                    p =Pachyderm_Acoustic.Utilities.AcousticalMath.SPL_Pressure(p);
+                                }
+
+                                break;
+                        }
                     }
                 }
 
                 public void Drive(int t)
                 {
-                    foreach (Acoustic_Compact_FDTD.Node n in SrcNode)
+                    for (int i = 0; i < SrcNode.Count; i++)
                     {
-                        if (t < signal.Length)
+                        if (t < signal[i].Length)
                         {
-                            n.Pn = signal[t];
+                            SrcNode[i].Pn = signal[i][t];
                         }
-                        else n.Pn = 0;
+                        else SrcNode[i].Pn = 0;
                     }
                 }
 
@@ -1978,6 +2066,11 @@ namespace Pachyderm_Acoustic
                 public List<double[][]> Recordings()
                 {
                     return storage;
+                }
+
+                public double[][] Recordings_Current()
+                {
+                    return recording;
                 }
 
                 public double[] Recordings(int mic_id, int omit = 0, int storage_id = 0)
