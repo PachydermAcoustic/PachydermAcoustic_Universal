@@ -1049,10 +1049,11 @@ namespace Pachyderm_Acoustic
                             default:
                                 foreach (Deterministic_Reflection value in ISData[Src_ID].Paths[Rec_ID])
                                 {
-                                    if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram.Length - 1)
+                                    int place = (int)Math.Ceiling(Sampling_Frequency * (value.TravelTime + (double)Direct[Src_ID].Delay_ms * 0.001));
+                                    if (place < Histogram.Length - 1 && place > 0)
                                     {
                                         double[] e = value.Energy(Octave);
-                                        for (int t = 0; t < e.Length; t++) Histogram[(int)Math.Ceiling(Sampling_Frequency * (value.TravelTime + (double)Direct[Src_ID].Delay_ms * 0.001)) + t] += e[t];
+                                        for (int t = 0; t < e.Length; t++) if (place + t < Histogram.Length-1)  Histogram[place + t] += e[t];
                                     }
                                 }
                                 break;

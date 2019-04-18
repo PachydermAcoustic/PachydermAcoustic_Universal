@@ -216,8 +216,8 @@ namespace Pachyderm_Acoustic
                 double ctr = 62.5 * Math.Pow(2, octave_index);
                 double freq_l = ctr / Utilities.Numerics.rt2;
                 double freq_u = ctr * Utilities.Numerics.rt2;
-                int idl = (int)Math.Round((h.Length * freq_l) / (44100));
-                int idu = (int)Math.Round((h.Length * freq_u) / (44100));
+                int idl = (int)Math.Round((h.Length * freq_l) / (Sample_Freq));
+                int idu = (int)Math.Round((h.Length * freq_u) / (Sample_Freq));
                 //////////////////////////////////////////
                 //Design Butterworth filters with relevant passbands...
                 //Complex[] magspec = new Complex[h.Length / 2];
@@ -250,7 +250,7 @@ namespace Pachyderm_Acoustic
                         v = 1 - .5 * (-Math.Cos(Math.PI * (idu - idl - i) / tau) + 1);
                     }
                     else v = 1;
-                    magspec[i + idl] = v;
+                    if ((i + idl) < magspec.Length) magspec[i + idl] = v;
                 }
 
                 ///////////Use Zero Phase Bandpass//////////////////////
@@ -274,7 +274,6 @@ namespace Pachyderm_Acoustic
 
             public static double[] Filter2Signal(double[] Filter_in, double[] OctaveSWL, int SampleFrequency, int threadid)
             {
-
                 double[] octave_Pressure = new double[8];
                 for (int i = 0; i < 8; i++) octave_Pressure[i] = Math.Pow(10, (OctaveSWL[i]) / 20); //Math.Pow(10,(SWL[5] - SWL[i])/20);
 
@@ -495,6 +494,7 @@ namespace Pachyderm_Acoustic
                 mod = Octave_pressure[oct] * Octave_pressure[oct] / (mod * 2);
                 for (int i = 0; i < magspec.Length; i++)
                 {
+                    if ((idl + i) >= p_i.Length) 
                     p_i[idl + i] += Math.Sqrt(magspec[i] * mod);
                 }
 
@@ -552,6 +552,7 @@ namespace Pachyderm_Acoustic
                 mod = Octave_pressure[oct] * Octave_pressure[oct] / (mod * 2);
                 for (int i = 0; i < magspec.Length; i++)
                 {
+                    if ((idl + i) > p_i.Length) break;
                     p_i[idl + i] += Math.Sqrt(magspec[i] * mod);
                 }
 
@@ -632,6 +633,7 @@ namespace Pachyderm_Acoustic
                     mod = Octave_pressure[oct] * Octave_pressure[oct] / (mod * 2);
                     for (int i = 0; i < magspec.Length; i++)
                     {
+                        if ((idl + i) >= p_i.Length) break;
                         p_i[idl + i] += Math.Sqrt(magspec[i] * mod);
                     }
                 }
