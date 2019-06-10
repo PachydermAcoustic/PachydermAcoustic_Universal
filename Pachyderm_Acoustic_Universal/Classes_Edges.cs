@@ -34,6 +34,7 @@ namespace Pachyderm_Acoustic
             double[] v;
             double[] v_4pi;
             double[] v_2pi;
+            public Hare.Geometry.Point[] Z_limits;
             public Hare.Geometry.Point Z_mid;
             public Hare.Geometry.Vector Z_Norm;
             double Z_Range;
@@ -69,6 +70,9 @@ namespace Pachyderm_Acoustic
                     Normal[0] *= -1;
                     Normal[1] *= -1;
                 }
+
+                Z_limits = new Point[2] {PtZ0, _PtZ};
+
             }
 
             public EdgeSource(int[] attr_in, Hare.Geometry.Point Z_mid_in, double Delta_Z, Vector[] _Tangents)
@@ -489,9 +493,6 @@ namespace Pachyderm_Acoustic
                     double B = Apex_Solve(Za, zs, zr, rs, rr, thetas, thetar, obtuse, out m, out l);
                     dM[0] = m;
                     dL[0] = l;
-                    //if (double.IsNaN(B))
-                    //{
-                    //}
                     return B;
                 }
                 return Gen_Solve(Za, zs, zr, rs, rr, thetas, thetar, obtuse, ref m, ref l);
@@ -520,12 +521,7 @@ namespace Pachyderm_Acoustic
                 l = Math.Sqrt((rr * rr) + (zr * zr));
                 double N = this.Aux_n(m + l, zs, zr, rs, rr, thetas, thetar);
                 double Beta = Beta_i(thetas, thetar, N, obtuse);
-                double B = -v_4pi[obtuse] * Beta / (m * l);
-
-                //if (double.IsNaN(B))
-                //{
-                //}
-
+                double B = -v_4pi[obtuse] * Beta; /// / (m * l)
                 return B;
             }
         }
