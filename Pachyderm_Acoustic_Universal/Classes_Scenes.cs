@@ -420,9 +420,10 @@ namespace Pachyderm_Acoustic
             private List<int> Object_ID;
             private double[][][] kurvature;
             private Vector[][][] frame_axes;
-            private bool[] iscurved; 
+            private Hare.Geometry.Edge[][] Object_Edges;
+            private bool[] iscurved;
             ////////////////////////////////////////////////////////////////////
-            
+
             public Polygon_Scene(double Temp, double hr, double Pa, int Air_Choice, bool EdgeCorrection, bool IsAcoustic)
                 : base(Temp, hr, Pa, Air_Choice, EdgeCorrection, IsAcoustic)
             {
@@ -484,17 +485,21 @@ namespace Pachyderm_Acoustic
                 Topo = new Hare.Geometry.Topology[1];
                 Topo[0] = new Topology(PTS.ToArray());// Utilities.Pach_Tools.RPttoHPt(Box.Min), Utilities.PachTools.RPttoHPt(Box.Max));
                 ////////////////////////////////////////
-
+                
                 int done = 0;
                 Object_ID = new List<int>();
                 Object_Members = new int[Model.Length][];
+                Object_Edges = new Hare.Geometry.Edge[Model.Length][];
                 for(int i = 0; i < Model.Length; i++)
                 {
                     Object_Members[i] = new int[Model[i].Length];
-                    for(int j = 0; j < Model[i].Length; j++)
+                    Dictionary<int, Hare.Geometry.Edge> O_Edges = new Dictionary<int, Hare.Geometry.Edge>();
+                    for (int j = 0; j < Model[i].Length; j++)
                     {
                         Object_Members[i][j] = done+j;
                         Object_ID.Add(i);
+                        foreach(Hare.Geometry.Edge e in Topo[0].Polys[i].Edges) if (!O_Edges.ContainsKey(e.GetHashCode())) O_Edges.Add(e.GetHashCode(), e);
+                        Object_Edges[j] = O_Edges.Values.ToArray();
                     }
                     done += Model[i].Length;
                 }
@@ -948,6 +953,14 @@ namespace Pachyderm_Acoustic
                 get
                 {
                     return this.Object_Members;
+                }
+            }
+
+            public Hare.Geometry.Edge[][] ObjectMeshEdges
+            {
+                get
+                {
+                    return this.Object_Edges;
                 }
             }
 
