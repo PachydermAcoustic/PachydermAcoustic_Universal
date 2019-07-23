@@ -115,7 +115,6 @@ namespace Pachyderm_Acoustic
                     return Minimum_Phase_Spectrum(Octave_Pessure, SampleFrequency, LengthStartToFinish, Threadid);
                 }
             }
-
             public class Linear_Phase_System : DSP_System
             {
                 public override double[] Signal(double[] OctavePressure, int SampleFrequency, int LengthStartToFinish, int Threadid)
@@ -408,6 +407,38 @@ namespace Pachyderm_Acoustic
                     samplep[samplep.Length - i] = Complex.Conjugate(spectrum[i]);
                 }
                 return samplep;
+            }
+
+            public static double[] Resample(double[] Input, int inputFS, int outputFS, int threadid)
+            {
+                double[] IN = Input.Clone() as double[];
+                Array.Resize(ref IN, Input.Length * 2 - 1);
+                Complex[] Spec = Pach_SP.FFT_General(IN, threadid);
+                Spec.Reverse();
+                Array.Resize(ref Spec, (int)(((double)outputFS / (double)inputFS) * IN.Length / 2));
+                Spec.Reverse();
+                Spec = Pach_SP.Mirror_Spectrum(Spec);
+                double[] s_out = Pach_SP.IFFT_Real_General(Spec, threadid);
+                double factor = Math.Sqrt(s_out.Length) * Math.Sqrt(IN.Length);
+                for (int i = 0; i < s_out.Length; i++) s_out[i] /= factor;
+                return s_out;
+            }
+
+            public static double[] Resample_Cubic(double[] Input, int inputFS, int outputFS, int threadid)
+            {
+                double[] Time = new double[Input.Length];
+                double maxtime = (double)Input.Length / inputFS;
+                int max_sample = (int)Math.Floor(outputFS * maxtime);
+                for (int i = 0; i < Input.Length; i++) Time[i] = (double)i / inputFS;
+                MathNet.Numerics.Interpolation.CubicSpline res = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(Time, Input);
+                double Factor = (double)outputFS / inputFS;
+                double[] output = new double[max_sample];
+                for (int i = 0; i < max_sample; i++)
+                {
+
+                    output[i] = res.Interpolate((double)i / outputFS) / Factor;
+                }
+                return output;
             }
 
             public static void ScaleRoot(ref Complex[] IN)

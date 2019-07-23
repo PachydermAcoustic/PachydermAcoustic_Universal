@@ -420,6 +420,9 @@ namespace Pachyderm_Acoustic
             private List<int> Object_ID;
             private double[][][] kurvature;
             private Vector[][][] frame_axes;
+            public Vector[][][] Edge_Frames;
+            public double[][][] Edge_Kurvatures;
+            public Vector[][] Edge_Normals;
             private Hare.Geometry.Edge[][] Object_Edges;
             private bool[] iscurved;
             ////////////////////////////////////////////////////////////////////
@@ -432,7 +435,7 @@ namespace Pachyderm_Acoustic
             public void Construct(Point[][][] Model, List<Material> Mat, List<Scattering> Scat, List<double[]> Trans, bool[] IsCurved = null, double[][][] Kurvatures = null, Vector[][][] Frame_Axes = null)
             {
                 if (Mat.Count != Model.Length && Scat.Count != Model.Length) throw new Exception("The number of material codes must match the numer of objects in the model...");
-                if (iscurved == null || Kurvatures == null || Frame_Axes == null)
+                if (IsCurved == null || Kurvatures == null || Frame_Axes == null)
                 {
                     iscurved = new bool[Model.Length];
                     Kurvatures = new double[Model.Length][][];
@@ -490,17 +493,61 @@ namespace Pachyderm_Acoustic
                 Object_ID = new List<int>();
                 Object_Members = new int[Model.Length][];
                 Object_Edges = new Hare.Geometry.Edge[Model.Length][];
+                Edge_Frames = new Vector[Model.Length][][];
+                Edge_Kurvatures = new double[Model.Length][][];
+                Edge_Normals = new Vector[Model.Length][];
                 for(int i = 0; i < Model.Length; i++)
                 {
                     Object_Members[i] = new int[Model[i].Length];
                     Dictionary<int, Hare.Geometry.Edge> O_Edges = new Dictionary<int, Hare.Geometry.Edge>();
+                    Dictionary<int, Vector[]> E_Frames = new Dictionary<int, Vector[]>();
+                    Dictionary<int, Vector> E_Norm = new Dictionary<int, Vector>();
+                    Dictionary<int, double[]> E_Kurvatures = new Dictionary<int, double[]>();
+                    Dictionary<int, int> e_ct = new Dictionary<int, int>();
                     for (int j = 0; j < Model[i].Length; j++)
                     {
-                        Object_Members[i][j] = done+j;
+                        Object_Members[i][j] = done + j;
                         Object_ID.Add(i);
-                        foreach(Hare.Geometry.Edge e in Topo[0].Polys[i].Edges) if (!O_Edges.ContainsKey(e.GetHashCode())) O_Edges.Add(e.GetHashCode(), e);
-                        Object_Edges[j] = O_Edges.Values.ToArray();
+
+                        foreach (Hare.Geometry.Edge e in Topo[0].Polys[done+j].Edges)
+                        {
+                            int hash = e.GetHashCode();
+                            if (!O_Edges.ContainsKey(e.GetHashCode()))
+                            {
+                                O_Edges.Add(hash, e);
+                                E_Frames.Add(hash, Frame_Axes[i][j]);
+                                E_Norm.Add(hash, Topo[0].Polys[i].Normal);
+                                E_Kurvatures.Add(hash, Kurvatures[i][j].Clone() as double[]);
+                                e_ct.Add(hash, 1);
+                            }
+                            else
+                            {
+                                E_Frames[hash][0] += Frame_Axes[i][j][0];
+                                E_Frames[hash][1] += Frame_Axes[i][j][1];
+                                E_Kurvatures[hash][0] += Kurvatures[i][j][0];
+                                E_Kurvatures[hash][1] += Kurvatures[i][j][1];
+                                e_ct[hash]++;
+                            }
+                        }
                     }
+
+                    Object_Edges[i] = O_Edges.Values.ToArray();
+                    Dictionary<int, Vector> e_norm = new Dictionary<int, Vector>();
+                    foreach (int h in E_Frames.Keys)
+                    {
+                        E_Frames[h][0] = E_Frames[h][0] / E_Frames[h][0].Length();
+                        E_Frames[h][1] = E_Frames[h][1] / E_Frames[h][1].Length();
+                        E_Kurvatures[h][0] /= e_ct[h];
+                        E_Kurvatures[h][1] /= e_ct[h];
+
+                        Vector n = Hare.Geometry.Hare_math.Cross(E_Frames[h][0], E_Frames[h][1]);
+                        e_norm.Add(h, Hare_math.Dot(n, Topo[0].Polys[i].Normal) > 0 ? n : -1 * n);
+                    }
+
+                    Edge_Frames[i] = E_Frames.Values.ToArray();
+                    Edge_Kurvatures[i] = E_Kurvatures.Values.ToArray();
+                    Edge_Normals[i] = e_norm.Values.ToArray();
+                    
                     done += Model[i].Length;
                 }
 

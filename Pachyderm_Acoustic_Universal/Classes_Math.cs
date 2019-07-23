@@ -984,19 +984,19 @@ namespace Pachyderm_Acoustic
             {
                 double[] Histogram = null;
 
-                if (Octave < 8)
-                {
+                //if (Octave < 8)
+                //{
                     //Get Power...
                     double power = 0;
                     double delay = 0;
                     if (Direct.ElementAt<Direct_Sound>(0) != null)
                     {
-                        power = Pachyderm_Acoustic.Utilities.AcousticalMath.Intensity_SPL(Direct[Src_ID].SWL[Octave]);
+                        //power = Pachyderm_Acoustic.Utilities.AcousticalMath.Intensity_SPL(Direct[Src_ID].SWL[Octave]);
                         delay = Direct[Src_ID].Delay_ms;
                     }
                     else if (RTData.ElementAt<Receiver_Bank>(0) != null && RTData[0] is PachMapReceiver)
                     {
-                        power = Pachyderm_Acoustic.Utilities.AcousticalMath.Intensity_SPL((RTData[Src_ID] as PachMapReceiver).SWL[Octave]);
+                        //power = Pachyderm_Acoustic.Utilities.AcousticalMath.Intensity_SPL((RTData[Src_ID] as PachMapReceiver).SWL[Octave]);
                         delay = (RTData[Src_ID] as PachMapReceiver).delay_ms;
                     }
 
@@ -1031,54 +1031,53 @@ namespace Pachyderm_Acoustic
 
                     if (ISData[Src_ID] != null)
                     {
-                        switch (Octave)
-                        {
-                            case 8:
-                                foreach (Deterministic_Reflection value in ISData[Src_ID].Paths[Rec_ID])
-                                {
-                                    if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram.Length - 1)
-                                    {
-                                        for (int oct = 0; oct < 8; oct++)
-                                        {
-                                            double[] e = value.Energy(oct);
-                                            for (int t = 0; t < e.Length; t++) Histogram[(int)Math.Ceiling(Sampling_Frequency * (value.TravelTime + (double)Direct[Src_ID].Delay_ms * 0.001)) + t] += e[t];
-                                        }
-                                    }
-                                }
-                                break;
-                            default:
+                        //switch (Octave)
+                        //{
+                        //    case 8:
+                        //        foreach (Deterministic_Reflection value in ISData[Src_ID].Paths[Rec_ID])
+                        //        {
+                        //            if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram.Length - 1)
+                        //            {
+                        //                for (int oct = 0; oct < 8; oct++)
+                        //                {
+                        //                    double[] e = value.Energy(oct, Sampling_Frequency);
+                        //                    for (int t = 0; t < e.Length; t++) Histogram[(int)Math.Ceiling(Sampling_Frequency * (value.TravelTime + (double)Direct[Src_ID].Delay_ms * 0.001)) + t] += e[t];
+                        //                }
+                        //            }
+                        //        }
+                        //        break;
+                        //    default:
                                 foreach (Deterministic_Reflection value in ISData[Src_ID].Paths[Rec_ID])
                                 {
                                     int place = (int)Math.Ceiling(Sampling_Frequency * (value.TravelTime + (double)Direct[Src_ID].Delay_ms * 0.001));
                                     if (place < Histogram.Length - 1 && place > 0)
                                     {
-                                        double[] e = value.Energy(Octave);
+                                        double[] e = value.Energy(Octave, Sampling_Frequency);
                                         for (int t = 0; t < e.Length; t++) if (place + t < Histogram.Length-1)  Histogram[place + t] += e[t];
                                     }
                                 }
-                                break;
-                        }
+                                //break;
+                        //}
                     }
-                    for (int i = 0; i < Histogram.Length; i++) Histogram[i] *= power;
-                }
-                else
-                {
-                    //Take Sum
-                    for (int oct = 0; oct < 8; oct++)
-                    {
-                        double[] Hist = ETCurve(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, oct, Rec_ID, Src_ID, Start_at_Zero);
-                        if (Histogram == null) Histogram = new double[Hist.Length];
-                        for (int i = 0; i < Histogram.Length; i++) Histogram[i] += Hist[i];
-                    }
-
-                }
+                    //for (int i = 0; i < Histogram.Length; i++) Histogram[i] *= power;
+                //}
+                //else
+                //{
+                //    //Take Sum
+                //    for (int oct = 0; oct < 8; oct++)
+                //    {
+                //        RTData[Src_ID].GetEnergyHistogram(8, Direct[Src_ID].Delay_ms, Rec_ID);
+                //        double[] Hist = ETCurve(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, oct, Rec_ID, Src_ID, Start_at_Zero);
+                //        if (Histogram == null) Histogram = new double[Hist.Length];
+                //        for (int i = 0; i < Histogram.Length; i++) Histogram[i] += Hist[i];
+                //    }
+                //}
 
                 return Histogram;
             }
 
             public static double[][] ETCurve_1d_Tight(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees)
             {
-
                 double[][] Histogram = new double[3][];
 
                 if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
@@ -2311,7 +2310,7 @@ namespace Pachyderm_Acoustic
                 private static Random _localInstance;
 
                 public RandomNumberGenerator()
-                :base()
+                : base()
                 {
 
                 }
@@ -2405,14 +2404,14 @@ namespace Pachyderm_Acoustic
                     yaw = Math.PI * alt / 180.0;
                     pitch = Math.PI * azi / 180.0;
                 }
-                else 
+                else
                 {
                     yaw = alt;
                     pitch = azi;
                 }
 
                 ///Implicit Sparse Rotation Matrix
-                double[] r1 = new double[3] { Math.Cos(pitch) * Math.Cos(yaw) , Math.Sin(pitch) * Math.Cos(yaw) , Math.Sin(yaw) };
+                double[] r1 = new double[3] { Math.Cos(pitch) * Math.Cos(yaw), Math.Sin(pitch) * Math.Cos(yaw), Math.Sin(yaw) };
                 Hare.Geometry.Vector fwd = new Hare.Geometry.Vector(r1[0], r1[1], r1[2]);
                 Hare.Geometry.Vector up = new Hare.Geometry.Vector(0, 0, 1) - Hare.Geometry.Hare_math.Dot(new Hare.Geometry.Vector(0, 0, 1), fwd) * fwd;
                 up.Normalize();
@@ -2421,6 +2420,96 @@ namespace Pachyderm_Acoustic
                 double[] r2 = new double[3] { right.x, right.y, right.z };
 
                 return (new Hare.Geometry.Vector(r1[0] * V.x + r1[1] * V.y + r1[2] * V.z, r2[0] * V.x + r2[1] * V.y + r2[2] * V.z, r3[0] * V.x + r3[1] * V.y + r3[2] * V.z));
+            }
+
+            public static double Polygon_Closest_Distance(Hare.Geometry.Point p, Hare.Geometry.Point a, Hare.Geometry.Point b, Hare.Geometry.Point c )
+            {
+                Hare.Geometry.Vector ab = b - a;
+                Hare.Geometry.Vector ac = c - a;
+                Hare.Geometry.Vector bc = c - b;
+                // Compute parametric position s for projection P’ of P on AB,
+                // P’ = A + s*AB, s = snom/(snom+sdenom)
+                double snom = Hare.Geometry.Hare_math.Dot(p - a, ab), sdenom = Hare.Geometry.Hare_math.Dot(p - b, a - b);
+                // Compute parametric position t for projection P’ of P on AC,
+                // P’ = A + t*AC, s = tnom/(tnom+tdenom)
+                double tnom = Hare.Geometry.Hare_math.Dot(p - a, ac), tdenom = Hare.Geometry.Hare_math.Dot(p - c, a - c);
+                if (snom <= 0.0f && tnom <= 0.0f) return (p - a).Length(); // Vertex region early out
+                // Compute parametric position u for projection P’ of P on BC,
+                // P’ = B + u*BC, u = unom/(unom+udenom)
+                double unom = Hare.Geometry.Hare_math.Dot(p - b, bc), udenom = Hare.Geometry.Hare_math.Dot(p - c, b - c);
+                if (sdenom <= 0.0f && unom <= 0.0f) return (p - b).Length(); // Vertex region early out
+                if (tdenom <= 0.0f && udenom <= 0.0f) return (p - c).Length(); // Vertex region early out
+                // P is outside (or on) AB if the triple scalar product [N PA PB] <= 0
+                Hare.Geometry.Vector n = Hare.Geometry.Hare_math.Cross(b - a, c - a);
+                double vc = Hare.Geometry.Hare_math.Dot(n, Hare.Geometry.Hare_math.Cross(a - p, b - p));
+                // If P outside AB and within feature region of AB,
+                // return projection of P onto AB
+                Hare.Geometry.Point temp;
+                if (vc <= 0.0f && snom >= 0.0f && sdenom >= 0.0f)
+                {
+                    temp = a + (snom / (snom + sdenom) * ab);
+                    return Math.Sqrt(temp.x*temp.x + temp.y * temp.y + temp.z * temp.z);
+                }
+                // P is outside (or on) BC if the triple scalar product [N PB PC] <= 0
+                double va = Hare.Geometry.Hare_math.Dot(n, Hare.Geometry.Hare_math.Cross(b - p, c - p));
+                // If P outside BC and within feature region of BC,
+                // return projection of P onto BC
+                if (va <= 0.0f && unom >= 0.0f && udenom >= 0.0f)
+                {
+                    temp = b + unom / (unom + udenom) * bc;
+                    return Math.Sqrt(temp.x * temp.x + temp.y * temp.y + temp.z * temp.z);
+                }
+                // P is outside (or on) CA if the triple scalar product [N PC PA] <= 0
+                double vb = Hare.Geometry.Hare_math.Dot(n, Hare.Geometry.Hare_math.Cross(c - p, a - p));
+                // If P outside CA and within feature region of CA,
+                // return projection of P onto CA
+                if (vb <= 0.0f && tnom >= 0.0f && tdenom >= 0.0f)
+                {
+                    temp = a + tnom / (tnom + tdenom) * ac;
+                    return Math.Sqrt(temp.x * temp.x + temp.y * temp.y + temp.z * temp.z);
+                }
+                // P must project inside face region. Compute Q using barycentric coordinates
+                double u = va / (va + vb + vc);
+                double v = vb / (va + vb + vc);
+                double w = 1.0f - u - v; // = vc / (va + vb + vc)
+                temp = (u* a + v* b + w* c);
+                return Math.Sqrt(temp.x * temp.x + temp.y * temp.y + temp.z * temp.z);
+            }
+
+            public static double[] NormalDistribution(int samplect, double sum)
+            {
+                double[] function = new double[samplect];
+                double sigma2 = samplect / 2;
+                sigma2 *= sigma2;
+
+                double k = 1 / Math.Sqrt(Utilities.Numerics.PiX2 * sigma2);
+
+                for(int i = 0; i < samplect; i++)
+                {
+                    double num = i - (double)samplect / 2;
+                    function[i] = k * Math.Exp(- num * num / (2 * sigma2));
+                }
+
+                //double max = function.Max();
+                //for (int i = 0; i < samplect; i++) function[i] *= sum / max;
+                return function;
+            }
+
+            public static double Polygon_Farthest_Distance(Hare.Geometry.Point p, Hare.Geometry.Point a, Hare.Geometry.Point b, Hare.Geometry.Point c)
+            {
+                Hare.Geometry.Vector pa = p - a, pb = p - b, pc = p - c;
+                double dpa = pa.x * pa.x + pa.y * pa.y + pa.z * pa.z;
+                double dpb = pb.x * pb.x + pb.y * pb.y + pb.z * pb.z;
+                if (dpa < dpb)
+                {
+                    double dpc = pc.x * pc.x + pc.y * pc.y + pc.z * pc.z;
+                    return dpb < dpc ? Math.Sqrt(dpc): Math.Sqrt(dpb);
+                }
+                else
+                {
+                    double dpc = pc.x * pc.x + pc.y * pc.y + pc.z * pc.z;
+                    return dpa < dpc ? Math.Sqrt(dpc) : Math.Sqrt(dpa);
+                }
             }
 
             public static void Euler_Pitch_Yaw(Hare.Geometry.Vector V1, Hare.Geometry.Vector V2, out double yaw, out double pitch)
