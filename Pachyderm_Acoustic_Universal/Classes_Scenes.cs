@@ -501,7 +501,7 @@ namespace Pachyderm_Acoustic
                     Object_Members[i] = new int[Model[i].Length];
                     Dictionary<int, Hare.Geometry.Edge> O_Edges = new Dictionary<int, Hare.Geometry.Edge>();
                     Dictionary<int, Vector[]> E_Frames = new Dictionary<int, Vector[]>();
-                    Dictionary<int, Vector> E_Norm = new Dictionary<int, Vector>();
+                    Dictionary<int, List<Vector>> E_Norm = new Dictionary<int, List<Vector>>();
                     Dictionary<int, double[]> E_Kurvatures = new Dictionary<int, double[]>();
                     Dictionary<int, int> e_ct = new Dictionary<int, int>();
                     for (int j = 0; j < Model[i].Length; j++)
@@ -516,7 +516,7 @@ namespace Pachyderm_Acoustic
                             {
                                 O_Edges.Add(hash, e);
                                 E_Frames.Add(hash, Frame_Axes[i][j]);
-                                E_Norm.Add(hash, Topo[0].Polys[i].Normal);
+                                E_Norm.Add(hash, new List<Vector> { Topo[0].Polys[i].Normal });
                                 E_Kurvatures.Add(hash, Kurvatures[i][j].Clone() as double[]);
                                 e_ct.Add(hash, 1);
                             }
@@ -526,24 +526,66 @@ namespace Pachyderm_Acoustic
                                 E_Frames[hash][1] += Frame_Axes[i][j][1];
                                 E_Kurvatures[hash][0] += Kurvatures[i][j][0];
                                 E_Kurvatures[hash][1] += Kurvatures[i][j][1];
+                                E_Norm[hash].Add(Topo[0].Polys[i].Normal);
                                 e_ct[hash]++;
                             }
                         }
                     }
 
-                    Object_Edges[i] = O_Edges.Values.ToArray();
                     Dictionary<int, Vector> e_norm = new Dictionary<int, Vector>();
+                    int dir = 1;
                     foreach (int h in E_Frames.Keys)
                     {
-                        E_Frames[h][0] = E_Frames[h][0] / E_Frames[h][0].Length();
-                        E_Frames[h][1] = E_Frames[h][1] / E_Frames[h][1].Length();
-                        E_Kurvatures[h][0] /= e_ct[h];
-                        E_Kurvatures[h][1] /= e_ct[h];
+                        //Hare.Geometry.Vector d = E_Norm[h][0] + E_Norm[h][1];
+                        //d.Normalize();
+                        if (E_Norm[h].Count > 1)
+                        {
+                            Hare.Geometry.Vector n = new Vector();
+                            for (int j = 0; j < O_Edges[h].Polys.Count; j++) n += O_Edges[h].Polys[j].Normal;//E_Norm[h][j];
+                            n.Normalize();
 
-                        Vector n = Hare.Geometry.Hare_math.Cross(E_Frames[h][0], E_Frames[h][1]);
-                        e_norm.Add(h, Hare_math.Dot(n, Topo[0].Polys[i].Normal) > 0 ? n : -1 * n);
+                            dir = (Hare.Geometry.Hare_math.Dot(E_Frames[h][0], n) < 0) ? 1 : -1;
+                            break;
+                        }
                     }
 
+                    List<int> omissions = new List<int>();
+
+                    foreach (int h in E_Frames.Keys)
+                    {
+                        Hare.Geometry.Vector n = new Vector();
+                        Hare.Geometry.Vector abis = new Vector();
+
+                        if (O_Edges[h].Polys.Count < 2 || Math.Abs(Hare.Geometry.Hare_math.Dot(O_Edges[h].Tangents[0], O_Edges[h].Tangents[1])) == 1) { omissions.Add(h); continue; } //IF not curved across edfe, omit this one...
+
+                        for (int j = 0; j < O_Edges[h].Polys.Count; j++) { n += O_Edges[h].Polys[j].Normal; abis += O_Edges[h].Tangents[j]; }//E_Norm[h][j];
+                        n.Normalize();
+                        abis.Normalize();
+                        
+                        E_Frames[h][0] = E_Frames[h][0] / E_Frames[h][0].Length();
+                        E_Frames[h][1] = E_Frames[h][1] / E_Frames[h][1].Length();
+
+                        double dot0 = Math.Abs(Hare_math.Dot(O_Edges[h].Tangents[0], E_Frames[h][0]));
+                        double dot1 = Math.Abs(Hare_math.Dot(O_Edges[h].Tangents[0], E_Frames[h][1]));
+
+                        int EFC = (dot0 < dot1) ? 1 : 0;
+
+                        dir = (Hare.Geometry.Hare_math.Dot(abis, n) < 0) ? 1 : -1;
+                        e_norm.Add(h, n * dir);
+
+                        if (E_Kurvatures[h][EFC] < 0)
+                        {
+                            E_Kurvatures[h][0] *= -1;
+                            E_Kurvatures[h][1] *= -1;
+                        }
+
+                        E_Kurvatures[h][0] /= e_ct[h];
+                        E_Kurvatures[h][1] /= e_ct[h];
+                    }
+
+                    foreach(int h in omissions) { O_Edges.Remove(h); E_Frames.Remove(h); E_Kurvatures.Remove(h); }
+
+                    Object_Edges[i] = O_Edges.Values.ToArray();
                     Edge_Frames[i] = E_Frames.Values.ToArray();
                     Edge_Kurvatures[i] = E_Kurvatures.Values.ToArray();
                     Edge_Normals[i] = e_norm.Values.ToArray();

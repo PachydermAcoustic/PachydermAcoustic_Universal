@@ -139,7 +139,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public virtual double[] DirPower(int threadid, int random, Vector Direction)
             {
-                return new double[8] {1,1,1,1,1,1,1,1};
+                return SourcePower.Clone() as double[];//new double[8] {1,1,1,1,1,1,1,1};
             }
 
             /// <summary>

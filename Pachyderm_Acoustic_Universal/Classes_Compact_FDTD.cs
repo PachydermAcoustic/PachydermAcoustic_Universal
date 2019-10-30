@@ -1567,7 +1567,7 @@ namespace Pachyderm_Acoustic
                                 for (int j = i + 1; j < PFrame[x].Length - 1; j++)
                                 {
                                     if (freefield) Layers[i].Add(PFrame[x][j][i]);
-                                    Layers[i].Add(PFrame[x][j][PFrame[x][j].Length - 1 - i]);
+                                    Layers[i].Add(PFrame[x][j][PFrame[x][j].Length - 1 - (int)Math.Round(i/Utilities.Numerics.rt2)]);
                                 }
                             }
                         }
@@ -1757,7 +1757,7 @@ namespace Pachyderm_Acoustic
                                     signal[i][n] = (t - offset / 2) * Math.Pow(Math.Sin(kk * 343 * t), param);
                                     sumsig += signal[i][n] * signal[i][n];
                                 }
-                                for (int j = 0; j < signal[i].Length; i++) signal[i][j] = Math.Sqrt(signal[i][j] * signal[i][j] / sumsig) * ((signal[i][j] < 0) ? -1 : 1);
+                                for (int j = 0; j < signal[i].Length; j++) signal[i][j] = Math.Sqrt(signal[i][j] * signal[i][j] / sumsig) * ((signal[i][j] < 0) ? -1 : 1);
                                 break;
                             case Signal_Type.SteadyState_Noise:
                                 for (int n = 0; n < tmax / dt; n++) signal[i][n] = R.NextDouble();

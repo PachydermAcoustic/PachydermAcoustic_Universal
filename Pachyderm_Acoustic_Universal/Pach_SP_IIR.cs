@@ -29,35 +29,6 @@ namespace Pachyderm_Acoustic
         {
             public class IIR_Design
             {
-                //public static Complex[] SpectrumFromIIR(Complex[] a, Complex[] b, int fs = 44100, int n = 512)
-                //{
-                //    double[] ad = new double[a.Length], bd = new double[b.Length];
-                //    for (int i = 0; i < a.Length; i++) ad[i] = a[i].Magnitude;
-                //    for (int i = 0; i < b.Length; i++) bd[i] = b[i].Magnitude;
-
-                //    return SpectrumFromIIR(ad, bd, fs, n);
-                //}
-
-                //public static Complex[] SpectrumFromIIR(double[] a, double[] b, int fs = 44100, int n = 512)
-                //{
-                //    int k = Math.Max(b.Length, a.Length);
-
-                //    double[] f = new double[n];
-                //    for (int i = 0; i < n; i++) f[i] = (double)fs * i / (2 * n);
-
-                //    int pad_sz = n * (int)Math.Ceiling((double)k / n);
-                //    Array.Resize(ref b, 2 * n);
-                //    Array.Resize(ref a, 2 * n);
-
-                //    Complex[] h = new Complex[n];
-
-                //    Complex[] pb = FFT_General(b, 0);
-                //    Complex[] pa = FFT_General(a, 0);
-
-                //    for (int i = 0; i < h.Length; i++) h[i] = pb[i] / pa[i];
-                //    return h;
-                //}
-
                 public static Complex[] AutoCorrelation_Coef(Complex[] X, int maxlag)
                 {
                     Complex[] r_l = new Complex[maxlag];

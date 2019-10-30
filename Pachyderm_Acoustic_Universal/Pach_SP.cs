@@ -92,6 +92,7 @@ namespace Pachyderm_Acoustic
                 public abstract Complex[] Spectrum(double[] Octave_Pessure, int SampleFrequency, int LengthStartToFinish, int Threadid);
             }
 
+
             public class Minimum_Phase_System : DSP_System
             {
                 public override double[] Signal(double[] OctavePressure, int SampleFrequency, int LengthStartToFinish, int Threadid)
@@ -525,8 +526,8 @@ namespace Pachyderm_Acoustic
                 mod = Octave_pressure[oct] * Octave_pressure[oct] / (mod * 2);
                 for (int i = 0; i < magspec.Length; i++)
                 {
-                    if ((idl + i) >= p_i.Length) 
-                    p_i[idl + i] += Math.Sqrt(magspec[i] * mod);
+                    if ((idl + i) >= p_i.Length)
+                        p_i[idl + i] += Math.Sqrt(magspec[i] * mod);
                 }
 
                 ///Do the top frequencies...
@@ -781,9 +782,7 @@ namespace Pachyderm_Acoustic
                 Scale(ref Signal);
 
                 double[] S2 = new double[Signal.Length];
-                //for (int i = Signal.Length / 2; i < Signal.Length - 1; i++) S2[i] = (Signal[Signal.Length / 2 - 1 - (i - Signal.Length / 2)] + Signal[Signal.Length - 1 - (i - Signal.Length / 2)]) / Math.Sqrt(2 * Signal.Length);
-                //S2[0] += Signal[0] + Signal[Signal.Length/2 - 1];
-                for (int i = 0; i < Signal.Length; i++) S2[i] = Signal[(Signal.Length + i + 1) % Signal.Length];// / Math.Sqrt(2 * Signal.Length); ;
+                for (int i = 0; i < Signal.Length; i++) S2[i] = Signal[(Signal.Length + i + 1) % Signal.Length];
                 S2 = S2.Reverse().ToArray();
 
                 return S2;
@@ -829,14 +828,10 @@ namespace Pachyderm_Acoustic
                     ymspec[i] = Complex.Exp(ymspec[i]);
                 }
 
-                double[] Signal = IFFT_Real_General(ymspec, threadid); //This is real valued hopefully... (if not there is a problem...)
+                double[] Signal = IFFT_Real_General(ymspec, threadid);
                 Scale(ref Signal);
                 double[] S2 = new double[Signal.Length];
-                //for (int i = Signal.Length / 2; i < Signal.Length - 1; i++) S2[i] = (Signal[Signal.Length / 2 - 1 - (i - Signal.Length / 2)] + Signal[Signal.Length - 1 - (i - Signal.Length / 2)]) / Math.Sqrt(2 * Signal.Length);
-                //S2[0] += Signal[0] + Signal[Signal.Length / 2 - 1];
-                //for (int i = 0; i < Signal.Length; i++) S2[i] = Signal[(Signal.Length + i + 1) % Signal.Length];
-                for (int i = 0; i < Signal.Length; i++) S2[i] = Signal[i];// / Math.Sqrt(2 * Signal.Length);
-                //S2 = S2.Reverse().ToArray();
+                for (int i = 0; i < Signal.Length; i++) S2[i] = Signal[i];
 
                 return S2;
             }
@@ -860,7 +855,7 @@ namespace Pachyderm_Acoustic
 
                 for (int i = 0; i < prefilter.Length; i++)
                 {
-                    filter[i] = prefilter[i] / scale;// prefilter[(i + hw) % prefilter.Length] / scale;
+                    filter[i] = prefilter[i] / scale;
                 }
 
                 return filter;
@@ -890,7 +885,6 @@ namespace Pachyderm_Acoustic
 
                 return filter;
             }
-
 
             public static Complex[] Linear_Phase_Spectrum(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
@@ -1198,8 +1192,236 @@ namespace Pachyderm_Acoustic
                         NewETC[oct][i] *= Total_E[oct] / NewTE[oct];
                     }
                 }
-                
+
                 return ETCToFilter(NewETC, SWL, (double)NewLength / SampleRate_Out, SampleRate_Out, SampleRate_Out, Rho_C, "Interpolating to Pressure...");
+            }
+
+            public static class Wave
+            {
+                public static double[][] ReadtoDouble(string Path, bool Normalize, out int Sample_Frequency)
+                {
+                    int[][] data = ReadtoInt(Path, out Sample_Frequency);
+                    double[][] signal = new double[data.Length][];
+
+                    for (int c = 0; c < data.Length; c++)
+                    {
+                        signal[c] = new double[data[c].Length];
+                        if (Normalize)
+                        {   
+                            int max = Math.Max(data[c].Max(), Math.Abs(data[c].Min()));
+                            for (int i = 0; i < data[c].Length; i++)
+                            {
+                                signal[c][i] = (double)data[c][i] / max;
+                            }
+                        }
+                        else
+                        {
+                            for (int i = 0; i < data[c].Length; i++)
+                            {
+                                signal[c][i] = (double)data[c][i] / int.MaxValue;
+                            }
+                        }
+                    }
+                    return signal;
+                }
+
+                public static int[][] ReadtoInt(string Path, bool Normalize, out int Sample_Frequency)
+                {
+                    int[][] data = ReadtoInt(Path, out Sample_Frequency);
+
+                    if (Normalize)
+                    {
+                        for (int c = 0; c < data.Length; c++)
+                        {
+                            double mod = (double)int.MaxValue / data[c].Max();
+                            for (int i = 0; i < data[c].Length; i++)
+                            {
+                                data[c][i] = (int)((double)data[c][i] * mod);
+                            }
+                        }
+                    }
+
+                    return data;
+                }
+
+                public static int[][] ReadtoInt(string Path, out int Sample_Frequency)
+                {
+                    //Open a stream:
+                    bool RF64 = false;
+                    System.IO.BinaryReader wav = new System.IO.BinaryReader(new System.IO.FileStream(Path, System.IO.FileMode.Open));
+                    //Read the header
+                    string Riffhdr = new string(wav.ReadChars(4));
+                    long filesize = wav.ReadUInt32();
+                    long dataChunkLength;
+                    if (Riffhdr == "RF64")
+                    {
+                        RF64 = true;
+                        if (new string(wav.ReadChars(4)) != "ds64") throw new Exception("RF64 files must have ds64 chunks. This file lacks one.");
+                        int chunklength = wav.ReadInt32();
+                        filesize = wav.ReadInt64();
+                        dataChunkLength = wav.ReadInt64();
+                        long sampleCount = wav.ReadInt64();
+                        wav.ReadBytes(chunklength - 24);
+                    }
+                    else if (Riffhdr != "RIFF") throw new Exception("Wave files other than Riff or RF64 type not supported.");
+
+                    long end = Math.Min(filesize + 8, wav.BaseStream.Length);
+                    string wave = new string(wav.ReadChars(4));
+
+                    //Read WAVE header
+                    if (wave != "WAVE") throw new FormatException("WAVE header not present.");
+
+                    List<int> chunklengths = new List<int>();
+
+                    UInt16 FormatTag;
+                    Int16 no_of_channels;
+                    Int32 BytesPerSecond;
+                    Int16 blockAlign;
+                    Int16 bitsPerSample;
+
+                    //Read in Format information
+                    if (new string(wav.ReadChars(4)) == "fmt ")
+                    {
+                        UInt32 fmt_len = wav.ReadUInt32();
+                        if (fmt_len > Int32.MaxValue || fmt_len < 16) throw new Exception("Invalid format chunk...");
+                        FormatTag = wav.ReadUInt16();
+                        no_of_channels = wav.ReadInt16();
+                        Sample_Frequency = wav.ReadInt32();
+                        BytesPerSecond = wav.ReadInt32();
+                        blockAlign = wav.ReadInt16();
+                        bitsPerSample = wav.ReadInt16();
+                        if (fmt_len > 16)
+                        {
+                            Int16 extraSize = wav.ReadInt16();
+                            if (extraSize != fmt_len - 18)
+                            {
+                                extraSize = (short)(fmt_len - 18);
+                            }
+                            if (extraSize > 0)
+                            {
+                                byte[] additionaldata = new byte[extraSize];
+                                wav.Read(additionaldata, 0, extraSize);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        throw new Exception("Invalid wave format information...");
+                    }
+
+                    int[][] data = new int[no_of_channels][];
+                    string str = new string(wav.ReadChars(4));
+
+                    //Sometimes a LIST section is included...
+                    if (str == "LIST")
+                    {
+                        UInt32 lst_len = wav.ReadUInt32();
+                        byte[] additionaldata = new byte[lst_len];
+                        wav.Read(additionaldata, 0, (int)lst_len);
+                        str = new string(wav.ReadChars(4));
+                    }
+
+                    //The data chunk should be headed with "data" but occuasionally not. Read in as normal if so. Otherwise, ask the user.
+                    if (str != "data")
+                    {
+                        System.Windows.Forms.DialogResult DR = System.Windows.Forms.MessageBox.Show("This wavefile has an unsupported structure, which may lead to misread data. Try anyway?", "Invalid DATA chunk...", System.Windows.Forms.MessageBoxButtons.YesNo);
+                        if (DR == System.Windows.Forms.DialogResult.No) return new int[1][] { new int[1] { 0 } };
+                    }
+                    long bytelength = wav.BaseStream.Length - wav.BaseStream.Position;
+                    UInt32 ch_len = wav.ReadUInt32();
+                    for (int c = 0; c < no_of_channels; c++) data[c] = new int[(bytelength / (bitsPerSample / 8)) / no_of_channels];
+                    int i = 0;
+                    while (wav.BaseStream.Position < end - 8)
+                    {
+                        i++;
+                        for (int c = 0; c < no_of_channels; c++)
+                        {
+                            byte[] temp = new byte[4];
+                            int st = 4 - bitsPerSample / 8;
+                            for (int j = st; j < 4; j++) temp[j] = (byte)wav.BaseStream.ReadByte();
+                            data[c][i] = BitConverter.ToInt32(temp, 0);
+                        }
+                    }
+                    wav.Close();
+                    return data;
+                }
+
+                public static bool Write(float[][] Unit_signal, int sample_frequency, string Path = null, int bitrate = 32)
+                {
+                    if (Path == null)
+                    {
+                        //get a path from the user.
+                        System.Windows.Forms.SaveFileDialog GetWave = new System.Windows.Forms.SaveFileDialog();
+                        GetWave.Filter = " Wave Audio (*.wav) |*.wav";
+                        if (GetWave.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                        {
+                            Path = GetWave.FileName;
+                        }
+                        else
+                        {
+                            return false;
+                        }
+                    }
+
+                    int datalength = (bitrate / 8) * Unit_signal.Length * Unit_signal[0].Length;
+
+                    //Open a stream.
+                    System.IO.BinaryWriter wav = new System.IO.BinaryWriter(new System.IO.FileStream(Path, System.IO.FileMode.Create));
+                    wav.Write("RIFF".ToCharArray());//4
+                    wav.Write((UInt32)datalength + 32);//Filesize//4
+                    wav.Write("WAVE".ToCharArray());//4
+                    wav.Write("fmt ".ToCharArray());//4
+                    wav.Write((UInt32)16);//Chunk Length//4
+                    wav.Write((UInt16)1);//Format Tag//2
+                    wav.Write((Int16)Unit_signal.Length);//Number of channels//2
+                    wav.Write((Int32)sample_frequency);//Sample Frequency//4
+                    wav.Write((Int32)(sample_frequency * (bitrate / 8) * Unit_signal.Length));// Bytes per second//4
+                    wav.Write((Int16)((bitrate / 8) * Unit_signal.Length));//Block Align//2
+                    wav.Write((Int16)bitrate);//Bits per sample//2
+                    wav.Write("data".ToCharArray());//4
+                    wav.Write((UInt32) datalength);//Length of data portion of file.//4
+
+                    switch (bitrate)
+                    {
+                        case 32:
+                            for (int i = 0; i < Unit_signal[0].Length; i++)
+                            {
+                                for (int c = 0; c < Unit_signal.Length; c++)
+                                {
+                                    wav.Write(Unit_signal[c][i]);
+                                }
+                            }
+                            break;
+                        //case 24:
+                        //    for (int i = 0; i < Unit_signal[0].Length; i++)
+                        //    {
+                        //        for (int c = 0; c < Unit_signal.Length; c++)                                                                    
+                        //        {
+                        //            var value = BitConverter.GetBytes((Int32)(Int32.MaxValue * Unit_signal[c][i] * 10000));
+                        //            byte [] sig_bts = new byte[4];
+                        //            sig_bts[0] = value[0];
+                        //            sig_bts[1] = value[1];
+                        //            sig_bts[2] = value[2];
+                        //            for (int s = 0; s < 3; s++) wav.Write(sig_bts[s]);
+                        //        }
+                        //    }
+                        //    break;
+                        //case 16:
+                        //    for (int i = 0; i < Unit_signal[0].Length; i++)
+                        //    {
+                        //        for (int c = 0; c < Unit_signal.Length; c++)
+                        //        {
+                        //            wav.Write((Int16)(Unit_signal[c][i] * 32760));
+                        //        }
+                        //    }
+                        //    break;
+                        default:
+                            wav.Close();
+                            throw new Exception("invalid bitrate");
+                    }
+                    wav.Close();
+                    return true;
+                }
             }
         }
     }

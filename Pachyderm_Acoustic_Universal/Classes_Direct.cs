@@ -331,12 +331,12 @@ namespace Pachyderm_Acoustic
             {
                 if (Room.shoot(R, out x1, out x2, out x3, out x4, out t))
                 {
-                    if (Room.IsTransmissive[x3]) 
+                    Validity[rec_id] = (t >= dist);
+                    if (!Validity[rec_id] && Room.IsTransmissive[x3]) 
                     {
                         for(int oct = 0; oct < 8; oct++) TransMod[oct] *= Room.TransmissionValue[x3][oct];
                         continue;
                     }
-                    Validity[rec_id] = (t >= dist);
                     break;
                 }
                 else
