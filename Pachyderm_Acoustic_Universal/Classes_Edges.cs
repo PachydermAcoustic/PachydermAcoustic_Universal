@@ -614,55 +614,56 @@ namespace Pachyderm_Acoustic
             Vector Z_Dir = PointA - PointB;
             double length = Z_Dir.Length();
             Z_Dir.Normalize();
-            //double MinAngle = double.PositiveInfinity;
             List<Hare.Geometry.Point> Dpt = new List<Hare.Geometry.Point>();
 
             //Find the secondary source spacing DeltaZ
             Dpt.AddRange(RPT);
             Dpt.AddRange(SPT);
 
-            //for (int j = 0; j < Dpt.Count; j++)
-            //{
-            //    double angle = Math.Abs(Hare_math.Dot(PointA - Dpt[j], Z_Dir));
-            //    if (angle < MinAngle) MinAngle = angle;
-            //    angle = Math.Abs(Hare_math.Dot(PointB - Dpt[j], Z_Dir));
-            //    if (angle < MinAngle) MinAngle = angle;
-            //}
+            //Two options.
+            //1. Use a constant step
+            double MinAngle = double.PositiveInfinity;
+            for (int j = 0; j < Dpt.Count; j++)
+            {
+                double angle = Math.Abs(Hare_math.Dot(PointA - Dpt[j], Z_Dir));
+                if (angle < MinAngle) MinAngle = angle;
+                angle = Math.Abs(Hare_math.Dot(PointB - Dpt[j], Z_Dir));
+                if (angle < MinAngle) MinAngle = angle;
+            }
             double fs = 176400; //Hz.
-            //double DeltaZ = Att_Props.Sound_Speed(this.PointA) / (fs * MinAngle);//TODO: Adjust depending on distance from source to receiver... (nearest, farthest?)
+            double DeltaZ = Att_Props.Sound_Speed(this.PointA) / (fs * MinAngle);//TODO: Adjust depending on distance from source to receiver... (nearest, farthest?)
 
-            //double El_Ct = Math.Ceiling(length / DeltaZ);
-            //DeltaZ = length / El_Ct;
+            double El_Ct = Math.Ceiling(length / DeltaZ);
 
             Random r = new Random();
 
             Hare.Geometry.Point Pt1 = new Hare.Geometry.Point(PointA.x, PointA.y, PointA.z);
 
-            //TODO - Modify DeltaZ per change in velocity.
-            //for (int i = 1; i < El_Ct; i++)
-            //{
-            //    Hare.Geometry.Point Pt2 = PointA - i * Z_Dir * DeltaZ;
-            //    Sources.Add(new EdgeSource(Edge.Rigid, Pt1, Pt2, HTangents));
-            //    //HTangents[1]*= -1;
-            //    //Sources.Add(new EdgeSource(Edge.Rigid, Pt1, Pt2, HTangents));
-            //    Pt1 = Pt2;
-            //}
-            Point pt1 = PointA;
-            double DeltaZ = 0;
-            //for (int i = 1; i < El_Ct; i++)
-            for(double i = 0; i < length; i += DeltaZ)
+            for (int i = 1; i < El_Ct; i++)
             {
-                double MinAngle = double.PositiveInfinity;
-                foreach (Point pt in Dpt)
-                {
-                    double angle = Math.Abs(Hare_math.Dot(PointA - pt, Z_Dir));
-                    if (angle < MinAngle) MinAngle = angle;
-                }
-                DeltaZ = Att_Props.Sound_Speed(pt1) / (fs * MinAngle);
-                Hare.Geometry.Point Pt2 = PointA - Z_Dir * i;
-                Sources.Add(new EdgeSource(Edge.Rigid, Pt1, Pt2, new Vector[2] { new Vector(TangentA[0].Interpolate(i), TangentA[1].Interpolate(i), TangentA[2].Interpolate(i)), new Vector(TangentB[0].Interpolate(i), TangentB[1].Interpolate(i), TangentB[2].Interpolate(i)) }));
+                Hare.Geometry.Point Pt2 = PointA - i * Z_Dir * DeltaZ;
+                Vector[] HTangents = new Vector[2] { new Vector(TangentA[0].Interpolate(i), TangentA[1].Interpolate(i), TangentA[2].Interpolate(i)), new Vector(TangentB[0].Interpolate(i), TangentB[1].Interpolate(i), TangentB[2].Interpolate(i)) };
+                Sources.Add(new EdgeSource(Edge.Rigid, Pt1, Pt2, HTangents));
                 Pt1 = Pt2;
             }
+
+            //2. Modify DeltaZ per change in velocity.
+            //Point pt1 = PointA;
+            //double DeltaZ = 0;
+            ////for (int i = 1; i < El_Ct; i++)
+            //for(double i = 0; i < length; i += DeltaZ)
+            //{
+            //    double MinAngle = double.PositiveInfinity;
+            //    foreach (Point pt in Dpt)
+            //    {
+            //        double angle = Math.Abs(Hare_math.Dot(PointA - pt, Z_Dir));
+            //        if (angle < MinAngle) MinAngle = angle;
+            //    }
+            //    DeltaZ = Att_Props.Sound_Speed(pt1) / (fs * MinAngle);
+            //    Hare.Geometry.Point Pt2 = PointA - Z_Dir * i;
+            //    Sources.Add(new EdgeSource(Edge.Rigid, Pt1, Pt2, new Vector[2] { new Vector(TangentA[0].Interpolate(i), TangentA[1].Interpolate(i), TangentA[2].Interpolate(i)), new Vector(TangentB[0].Interpolate(i), TangentB[1].Interpolate(i), TangentB[2].Interpolate(i)) }));
+            //    Pt1 = Pt2;
+            //}
         }
     }
 

@@ -1374,6 +1374,18 @@ namespace Pachyderm_Acoustic
         }
 
         /// <summary>
+        /// The direct sound outputs a power mod factor. This takes that function's place, since there is no direct sound for this simulation type.
+        /// </summary>
+        /// <param name="new_SWL"></param>
+        /// <returns></returns>
+        public double[] PowerModFactor(double[] new_SWL)
+        {
+            double[] factor = new double[8];
+            for (int i = 0; i < 8; i++) factor[i] = Utilities.AcousticalMath.Intensity_SPL(new_SWL[i]) / Utilities.AcousticalMath.Intensity_SPL(this.SWL[i]);
+            return factor;
+        }
+
+        /// <summary>
         /// Specialized spherical receiver.
         /// </summary>
         [Serializable]
@@ -1500,7 +1512,7 @@ namespace Pachyderm_Acoustic
                     Recs.Add(raydist - Direct_Time, R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * raydist) * SizeMod, R.direction * -1, Rho_C, R.Octave);// / (1.33333333333333 * Math.PI * Min_Radius2 * Min_Radius), EndPt - R.origin, R.Octave);//R.Scat_Mod * 
                 }
             }
-
+        
             //public void Create_Pressure(double[] SWL, int ThreadID)
             //{
             //    Recs.P = Audio.Pach_SP.Filter_Interpolation(SWL, Recs.Energy, 1000, 44100, this.Rho_C);

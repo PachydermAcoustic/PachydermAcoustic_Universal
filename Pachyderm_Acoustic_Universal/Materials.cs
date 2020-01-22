@@ -23,8 +23,11 @@ namespace Pachyderm_Acoustic
     /// <summary>
     /// A class to contain the acoustic materials library.
     /// </summary>
-    public class Acoustics_Library : List<Material>
+    public class Acoustics_Library
     {
+        public List<Material> Abs_List = new List<Material>();
+        public List<Material> TL_List = new List<Material>();
+
         public Acoustics_Library()
             : base()
         {
@@ -37,71 +40,103 @@ namespace Pachyderm_Acoustic
         /// </summary>
         public void Load_Library()
         {
-            this.Clear();
-            System.IO.StreamReader Reader;
+            Abs_List.Clear();
+            TL_List.Clear();
+            System.IO.StreamReader ML_Reader;
             try
             {
                 string MLPath = Pach_Properties.Instance.Lib_Path();
                 MLPath += "\\Pach_Materials_Library.txt";
-                Reader = new System.IO.StreamReader(MLPath);
+                ML_Reader = new System.IO.StreamReader(MLPath);
+                do
+                {
+                    try
+                    {
+                        string Material = ML_Reader.ReadLine();
+                        string[] D_Mat = Material.Split(new char[] { ':' });
+                        string Name = D_Mat[0].Trim();
+                        string Abs_Code = D_Mat[1].Trim();
+                        Abs_Code += "0000000000000000";
+                        double[] Abs = new double[8];
+                        double[] Sct = new double[8];
+                        double[] Trns = new double[8];
+                        Utilities.PachTools.DecodeAcoustics(Abs_Code, ref Abs, ref Sct, ref Trns);
+                        this.Add_Unique_Abs(Name, Abs);
+                    }
+                    catch (System.Exception)
+                    { continue; }
+                } while (!ML_Reader.EndOfStream);
+                ML_Reader.Close();
             }
             catch (System.Exception)
             {
-                return;
             }
-            do
+
+            System.IO.StreamReader IL_Reader;
+            try
             {
-                try
+                string ILPath = Pach_Properties.Instance.Lib_Path();
+                ILPath += "\\Pach_Isolation_Library.txt";
+                IL_Reader = new System.IO.StreamReader(ILPath);
+                do
                 {
-                    string Material = Reader.ReadLine();
-                    string[] D_Mat = Material.Split(new char[] { ':' });
-                    string Name = D_Mat[0].Trim();
-                    string Abs_Code = D_Mat[1].Trim();
-                    Abs_Code += "0000000000000000";
-                    double[] Abs = new double[8];
-                    double[] Sct = new double[8];
-                    double[] Trns = new double[8];
-                    Utilities.PachTools.DecodeAcoustics(Abs_Code, ref Abs, ref Sct, ref Trns);
-                    this.Add_Unique(Name, Abs);
-                }
-                catch (System.Exception)
-                { continue; }
-            } while (!Reader.EndOfStream);
-            Reader.Close();
-        }
-
-        public void Add_Unique(string Name, double[] Abs)
-        {
-            for (int i = 0; i < Count; i++)
-            {
-                if (!string.Equals(this[i].Name, Name, System.StringComparison.OrdinalIgnoreCase)) continue;
-                this.RemoveAt(i);
-                break;
+                    try
+                    {
+                        string Material = IL_Reader.ReadLine();
+                        string[] D_Mat = Material.Split(new char[] { ':' });
+                        string Name = D_Mat[0].Trim();
+                        string TL_Code = D_Mat[1].Trim();
+                        TL_Code += "0;0;0;0;0;0;0;0";
+                        double[] TL = Utilities.PachTools.DecodeTransmissionLoss(TL_Code);
+                        this.Add_Unique_TL(Name, TL);
+                    }
+                    catch (System.Exception)
+                    { continue; }
+                } while (!IL_Reader.EndOfStream);
+                IL_Reader.Close();
             }
-
-            this.Add(new Material(Name, Abs));
-        }
-
-        public void Delete (string Name)
-        {
-            for (int i = 0; i < Count; i++)
+            catch (System.Exception)
             {
-                if (!string.Equals(this[i].Name, Name, System.StringComparison.OrdinalIgnoreCase)) continue;
-                this.RemoveAt(i);
-                break;
             }
         }
 
-        public Material byKey(string Selection)
+        public void Add_Unique_Abs(string Name, double[] Abs)
         {
-            foreach (Material Mat in this) if (Mat.Name == Selection) return Mat;
+            for (int i = 0; i < Abs_List.Count; i++)
+            {
+                if (!string.Equals(Abs_List[i].Name, Name, System.StringComparison.OrdinalIgnoreCase)) continue;
+                Abs_List.RemoveAt(i);
+                break;
+            }
+
+            Abs_List.Add(new Material(Name, Abs));
+        }
+
+        public void Delete_Abs(string Name)
+        {
+            for (int i = 0; i < Abs_List.Count; i++)
+            {
+                if (!string.Equals(Abs_List[i].Name, Name, System.StringComparison.OrdinalIgnoreCase)) continue;
+                Abs_List.RemoveAt(i);
+                break;
+            }
+        }
+
+        public void Delete_Abs(int index)
+        {
+            Abs_List.RemoveAt(index);
+        }
+
+        public Material Abs_byKey(string Selection)
+        {
+            foreach (Material Mat in Abs_List) if (Mat.Name == Selection) return Mat;
             throw new System.Exception();
         }
 
         /// <summary>
         /// Saves the user defined materials library.
         /// </summary>
-        public void Save_Library()
+        public void Save_Abs_Library()
         {
             //Enter an external file saver here... 
             string MLPath = Pach_Properties.Instance.Lib_Path();
@@ -110,15 +145,15 @@ namespace Pachyderm_Acoustic
             System.IO.StreamWriter Writer;
             Writer = new System.IO.StreamWriter(MLPath);
 
-            for (int i = 0; i < this.Count; i++)
+            for (int i = 0; i < Abs_List.Count; i++)
             {
-                string Entry = this[i].Name + ':';
+                string Entry = Abs_List[i].Name + ':';
                 int[] sct = new int[8];
                 int[] abs = new int[8];
                 int[] trns = new int[1];
                 for (int oct = 0; oct < 8; oct++)
                 {
-                    abs[oct] = (int)(this[i].Absorption[oct] * 100.0);
+                    abs[oct] = (int)(Abs_List[i].Values[oct] * 100.0);
                 }
                 string Abs_Code = Utilities.PachTools.EncodeAcoustics(abs, sct, trns);
                 Entry += Abs_Code.Substring(0, 16);
@@ -131,23 +166,96 @@ namespace Pachyderm_Acoustic
         /// Returns the names of all user defined materials for display in an interface component.
         /// </summary>
         /// <returns></returns>
-        public List<string> Names()
+        public List<string> Names_Abs()
         {
             List<string> Catalog = new List<string>();
-            foreach (Material obj in this)
+            foreach (Material obj in Abs_List)
+            {
+                Catalog.Add(obj.Name);
+            }
+            return Catalog;
+        }
+
+        public void Add_Unique_TL(string Name, double[] TL)
+        {
+            for (int i = 0; i < TL_List.Count; i++)
+            {
+                if (!string.Equals(TL_List[i].Name, Name, System.StringComparison.OrdinalIgnoreCase)) continue;
+                TL_List.RemoveAt(i);
+                break;
+            }
+
+            TL_List.Add(new Material(Name, TL));
+        }
+
+        public void Delete_TL(string Name)
+        {
+            for (int i = 0; i < TL_List.Count; i++)
+            {
+                if (!string.Equals(TL_List[i].Name, Name, System.StringComparison.OrdinalIgnoreCase)) continue;
+                TL_List.RemoveAt(i);
+                break;
+            }
+        }
+
+        public void Delete_TL(int index)
+        {
+            TL_List.RemoveAt(index);
+        }
+
+        public Material TL_byKey(string Selection)
+        {
+            foreach (Material Mat in TL_List) if (Mat.Name == Selection) return Mat;
+            throw new Sy+*stem.Exception();
+        }
+
+        /// <summary>
+        /// Saves the user defined materials library.
+        /// </summary>
+        public void Save_TL_Library()
+        {
+            //Enter an external file saver here... 
+            string MLPath = Pach_Properties.Instance.Lib_Path();
+            MLPath += "\\Pach_Isolation_Library.txt";
+
+            System.IO.StreamWriter Writer;
+            Writer = new System.IO.StreamWriter(MLPath);
+
+            for (int i = 0; i < TL_List.Count; i++)
+            {
+                string Entry = TL_List[i].Name + ':';
+                double[] TL = new double[8];
+                for (int oct = 0; oct < 8; oct++)
+                {
+                    TL[oct] = (double)(TL_List[i].Values[oct]);
+                }
+                string TL_Code = Utilities.PachTools.EncodeTransmissionLoss(TL);
+                Entry += TL_Code;
+                Writer.WriteLine(Entry);
+            }
+            Writer.Close();
+        }
+
+        /// <summary>
+        /// Returns the names of all user defined materials for display in an interface component.
+        /// </summary>
+        /// <returns></returns>
+        public List<string> Names_TL()
+        {
+            List<string> Catalog = new List<string>();
+            foreach (Material obj in TL_List)
             {
                 Catalog.Add(obj.Name);
             }
             return Catalog;
         }
     }
-
     /// <summary>
     /// a structure defining a material.
     /// </summary>
     public struct Material
     {
-        public double[] Absorption;
+        public double[] Values;
         public string Name;
 
         /// <summary>
@@ -155,10 +263,11 @@ namespace Pachyderm_Acoustic
         /// </summary>
         /// <param name="nym">the name of the material</param>
         /// <param name="Abs">the absorption coefficients, from 62.5 Hz.[0] to 8 khz.[7]</param>
-        public Material(string nym, double[] Abs)
+        public Material(string nym, double[] vals)
         {
+            if (vals.Length != 8) throw new System.Exception("Material properties must be specified for all octave bands form 63 to 8k.");
             Name = nym;
-            Absorption = Abs;
+            Values = vals;
         }
     }
 }

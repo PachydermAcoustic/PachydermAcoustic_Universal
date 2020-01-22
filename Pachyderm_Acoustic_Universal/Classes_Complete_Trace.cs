@@ -321,7 +321,10 @@ namespace Pachyderm_Acoustic
                     //// b. Modify E (E * 1 - Transmission).
                     foreach (int oct in _octaves)
                     {
-                        if (Params.Room.TransmissionValue[R.Surf_ID][oct] > 0.0) Rays.Enqueue(R.SplitRay(oct, Params.Room.TransmissionValue[R.Surf_ID][oct]));
+                        if (Params.Room.TransmissionValue[R.Surf_ID][oct] > 0.0)
+                        {
+                            Rays.Enqueue(R.SplitRay(oct, Params.Room.TransmissionValue[R.Surf_ID][oct]));
+                        }
                     }
                     //3. Apply Scattering
                     Room.Scatter_Early(ref R, ref Rays, ref Rnd, cos_theta, u, v);

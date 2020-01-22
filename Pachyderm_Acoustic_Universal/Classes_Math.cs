@@ -175,6 +175,23 @@ namespace Pachyderm_Acoustic
                     return SPLTCurve_Intensity(ArrDirect, ArrIS, ArrRT, CO_Time, samplerate, Octave, Rec_ID, 0, StartAtZero);
                 }
 
+            //Sound Pressure Level at 1 m. of several kinds of people.
+            public static double[][] Females = new double[][] { new double[] { 20, 36, 48, 49, 42, 39, 35, 35 }, new double[] { 20, 37, 51, 53, 49, 44, 42, 37 }, new double[] { 20, 35, 56, 59, 57, 53, 48, 43 }, new double[] { 20, 34, 58, 64, 66, 63, 56, 51 }, new double[] { 20, 30, 56, 69, 76, 75, 69, 58 } };
+            public static double[][] Males = new double[][] { new double[] { 20, 45, 49, 50, 42, 41, 38, 35 }, new double[] { 20, 51, 56, 57, 50, 47, 43, 36 }, new double[] { 20, 53, 59, 64, 58, 54, 49, 43 }, new double[] { 20, 56, 64, 72, 70, 66, 60, 50 }, new double[] { 20, 45, 70, 80, 84, 80, 72, 63 } };
+            public static double[][] Children = new double[][] { new double[] { 20, 27, 48, 52, 44, 41, 38, 38 }, new double[] { 20, 30, 53, 56, 50, 45, 43, 42 }, new double[] { 20, 31, 56, 60, 60, 55, 51, 46 }, new double[] { 20, 30, 56, 63, 66, 65, 57, 51 }, new double[] { 20, 45, 55, 69, 75, 72, 70, 58 } };
+
+            public static double Sound_Pressure_Level_A (double[] unweighted_SPL)
+            {
+                double[] AFactors = new double[8] { Math.Pow(10, (-26.2 / 10)), Math.Pow(10, (-16.1 / 10)), Math.Pow(10, (-8.6 / 10)), Math.Pow(10, (-3.2 / 10)), 1, Math.Pow(10, (1.2 / 10)), Math.Pow(10, (1 / 10)), Math.Pow(10, (-1.1 / 10)) };
+                double SW = 0;
+                for (int f = 0; f < unweighted_SPL.Length; f++)
+                {
+                    double s = Pachyderm_Acoustic.Utilities.AcousticalMath.Intensity_SPL(unweighted_SPL[f]);
+                    SW += s * AFactors[f];
+                }
+                return Pachyderm_Acoustic.Utilities.AcousticalMath.SPL_Intensity(SW);
+            }
+
             ///<summary>
             /// Sabine Reverberation Time : T60 = 0.161V/A
             ///</summary>
@@ -194,6 +211,22 @@ namespace Pachyderm_Acoustic
                 }
             }
 
+            ///<summary>
+            /// Total Absorption A for a given scene object.
+            ///</summary>
+            public static void Absorption_Total(Environment.Scene Room, out double[] Alpha)
+            {
+                Alpha = new double[8];
+                if (Room == null) return;
+                for (int t = 0; t <= 7; t++)
+                {
+                    for (int q = 0; q <= Room.Count() - 1; q++)
+                    {
+                        Alpha[t] += (Room.SurfaceArea(q) * Room.AbsorptionValue[q].Coefficient_A_Broad(t));
+                    }
+                }
+            }
+            
             ///<summary>
             /// Sabine Reverberation Time : T60 = 0.161V/ln(1-a)S
             ///</summary>
@@ -2809,6 +2842,28 @@ namespace Pachyderm_Acoustic
                     SWL[i] = double.Parse(SWLCodes[i]);
                 }
                 return SWL;
+            }
+
+            public static double[] DecodeTransmissionLoss(string code)
+            {
+                string[] TLCodes = code.Split(";".ToCharArray());
+                if (TLCodes.Length < 8) return new double[] { 120, 120, 120, 120, 120, 120, 120, 120 };
+                double[] TL = new double[TLCodes.Length];
+                for (int i = 0; i < 8; i++)
+                {
+                    TL[i] = double.Parse(TLCodes[i]);
+                }
+                return TL;
+            }
+
+            public static string EncodeTransmissionLoss(double[] TL)
+            {
+                string code = "";
+                for (int i = 0; i < TL.Length; i++)
+                {
+                    code += TL[i].ToString() + ";";
+                }
+                return code;
             }
         }
     }

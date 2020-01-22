@@ -585,6 +585,11 @@ namespace Pachyderm_Acoustic
                 return Rec_List[rec_id].Filter3Axis();
             }
 
+            public virtual void Set_Power(double[] factor)
+            {
+                for (int i = 0; i < Rec_List.Length; i++) Rec_List[i].Set_Power(factor);
+            }
+
             public void Scale(int Ray_CT)
             {
                 for (int i = 0; i < Rec_List.Length; i++) Rec_List[i].Scale(Ray_CT);
@@ -908,6 +913,11 @@ namespace Pachyderm_Acoustic
                 else return null;
             }
 
+            public virtual void Set_Power(double[] factor)
+            {
+                Recs.Set_Power(factor);
+            }
+
             public void Scale(int ray_ct)
             {
                 Recs.Scale(ray_ct);
@@ -1012,6 +1022,11 @@ namespace Pachyderm_Acoustic
                 public virtual void Scale(int ray_ct)
                 {
                     for (int oct = 0; oct < Energy.Length; oct++) for (int i = 0; i < Energy[oct].Length; i++) Energy[oct][i] /= ray_ct;
+                }
+
+                public virtual void Set_Power(double[] factor)
+                {
+                    for (int i = 0; i < Energy.Length; i++) for(int j = 0; j < Energy[i].Length; j++) Energy[i][j] *= factor[i];
                 }
 
                 /// <summary>
@@ -1427,6 +1442,16 @@ namespace Pachyderm_Acoustic
                 public override double[][] GetFilter3Axis(int rec_id)
                 {
                     return Fdir;
+                }
+
+                public override void Set_Power(double[] factor)
+                {
+                    base.Set_Power(factor);
+                    for(int i = 0; i < Dir_Rec_Pos.Length; i++) for(int j = 0; j < Dir_Rec_Pos[i].Length; j++) for(int k = 0; k < Dir_Rec_Pos[i][j][k]; k++)
+                            {
+                                Dir_Rec_Pos[i][j][k] *= factor[j];
+                                Dir_Rec_Neg[i][j][k] *= factor[j];
+                            }
                 }
             }
         }

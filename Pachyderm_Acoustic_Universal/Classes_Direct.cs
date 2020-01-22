@@ -794,12 +794,28 @@ namespace Pachyderm_Acoustic
             return D;
         }
 
-        public void Set_Power(double[] swl)
+        /// <summary>
+        /// Adjusts the power of the source for an existing simulation.
+        /// </summary>
+        /// <param name="swl">The new Sound Power Level</param>
+        /// <returns>A factor that can be used to adjust any other simulation types.</returns>
+        public double[] Set_Power(double[] swl)
         {
             SWL = swl;
-            Src.SoundPower = swl;
-        }
+            double[] factor = new double[8];
+            for(int i = 0; i < 8; i++) factor[i] = Utilities.AcousticalMath.Intensity_SPL(swl[i]) / Src.SoundPower[i];
+            for (int i = 0; i < 8; i++) Src.SoundPower[i] = Utilities.AcousticalMath.Intensity_SPL(swl[i]);
+            for (int i = 0; i < this.Io.Length; i++) for (int j = 0; j < this.Io[i].Length; j++) for (int k = 0; k < this.Io[i][j].Length; k++) this.Io[i][j][k] *= factor[j];
 
+            for (int i = 0; i < Dir_Rec_Pos.Length; i++) for (int j = 0; j < Dir_Rec_Pos[i].Length; j++) for (int k = 0; k < Dir_Rec_Pos[i][j].Length; k++) for (int l = 0; l < Dir_Rec_Pos[i][j][k].Length; l++)
+                        {
+                            Dir_Rec_Pos[i][j][k][l] *= (float)factor[j];
+                            Dir_Rec_Neg[i][j][k][l] *= (float)factor[j];
+                        }
+            Create_Filter();
+            return factor;
+        }
+        
         public double[][] Get_Filter(int Rec_ID, int Sampling_Frequency)
         {
             if (Sampling_Frequency != 44100)
