@@ -284,6 +284,7 @@ namespace Pachyderm_Acoustic
                 do
                 {
                     R.Ray_ID = Rnd.Next();
+
                     if (!Params.Room.shoot(R, out u, out v, out R.Surf_ID, out Start, out leg, out code))
                     {
                         //Ray is lost... move on...
@@ -383,6 +384,7 @@ namespace Pachyderm_Acoustic
                         do
                         {
                             OR.Ray_ID = Rnd.Next();
+
                             if (!Params.Room.shoot(OR, out u, out v, out OR.Surf_ID, out Start, out leg, out code))
                             {
                                 RecMain.CheckRay(OR, OR.origin + OR.direction * 1000000);

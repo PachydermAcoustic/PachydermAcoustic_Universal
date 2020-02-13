@@ -86,7 +86,7 @@ namespace Pachyderm_Acoustic
                         string[] D_Mat = Material.Split(new char[] { ':' });
                         string Name = D_Mat[0].Trim();
                         string TL_Code = D_Mat[1].Trim();
-                        TL_Code += "0;0;0;0;0;0;0;0";
+                        //TL_Code += "0;0;0;0;0;0;0;0";
                         double[] TL = Utilities.PachTools.DecodeTransmissionLoss(TL_Code);
                         this.Add_Unique_TL(Name, TL);
                     }
@@ -206,7 +206,7 @@ namespace Pachyderm_Acoustic
         public Material TL_byKey(string Selection)
         {
             foreach (Material Mat in TL_List) if (Mat.Name == Selection) return Mat;
-            throw new Sy+*stem.Exception();
+            throw new System.Exception();
         }
 
         /// <summary>

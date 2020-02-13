@@ -486,7 +486,7 @@ namespace Pachyderm_Acoustic
                 }
                 ////////////////////////////////////////
                 Topo = new Hare.Geometry.Topology[1];
-                Topo[0] = new Topology(PTS.ToArray());// Utilities.Pach_Tools.RPttoHPt(Box.Min), Utilities.PachTools.RPttoHPt(Box.Max));
+                Topo[0] = new Topology(PTS.ToArray(), 2);// Utilities.Pach_Tools.RPttoHPt(Box.Min), Utilities.PachTools.RPttoHPt(Box.Max));
                 ////////////////////////////////////////
                 
                 int done = 0;

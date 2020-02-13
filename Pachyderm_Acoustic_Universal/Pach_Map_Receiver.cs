@@ -1063,13 +1063,13 @@ namespace Pachyderm_Acoustic
             // R.ThreadID = this.Get_shotID();
             int X, Y, Z, Xend, Yend, Zend;
             //Identify whether the Origin is inside the voxel grid...
-            double Sumlength = R.t_sum;
+            //double Sumlength = R.t_sum;
 
             if (!OBox.IsPointInBox(R.origin))
             {
                 double t0 = 0;
                 if (!OBox.Intersect(R, ref t0, ref R.origin)) return;
-                Sumlength += t0;
+                //Sumlength += t0;
             }
 
             //Identify where the ray enters the voxel grid...
@@ -1080,6 +1080,7 @@ namespace Pachyderm_Acoustic
             Xend = (int)Math.Floor((EndPt.x - OBox.Min_PT.x) / VoxelDims.x);
             Yend = (int)Math.Floor((EndPt.y - OBox.Min_PT.y) / VoxelDims.y);
             Zend = (int)Math.Floor((EndPt.z - OBox.Min_PT.z) / VoxelDims.z);
+
 
             double tDeltaX, tDeltaY, tDeltaZ;
             double tMaxX = 0, tMaxY = 0, tMaxZ = 0;
@@ -1092,6 +1093,12 @@ namespace Pachyderm_Acoustic
             if (Y >= VoxelCtY) Y = VoxelCtY - 1;
             if (Z < 0) Z = 0;
             if (Z >= VoxelCtZ) Z = VoxelCtZ - 1;
+
+            ///
+            if ((R.direction.x < 0 && X < Xend) || (R.direction.x >= 0 && X > Xend)) return;
+            if ((R.direction.y < 0 && Y < Yend) || (R.direction.y >= 0 && Y > Yend)) return;
+            if ((R.direction.z < 0 && Z < Zend) || (R.direction.z >= 0 && Z > Zend)) return;
+            ///
 
             if (R.direction.x < 0)
             {
@@ -1223,6 +1230,12 @@ namespace Pachyderm_Acoustic
             if (Z < 0) Z = 0;
             if (Z >= VoxelCtZ) Z = VoxelCtZ - 1;
 
+            ///
+            if ((R.direction.x < 0 && X < Xend) || (R.direction.x >= 0 && X > Xend)) return;
+            if ((R.direction.y < 0 && Y < Yend) || (R.direction.y >= 0 && Y > Yend)) return;
+            if ((R.direction.z < 0 && Z < Zend) || (R.direction.z >= 0 && Z > Zend)) return;
+            ///
+
             if (R.direction.x < 0)
             {
                 OutX = -1;
@@ -1308,7 +1321,8 @@ namespace Pachyderm_Acoustic
                         tMaxZ = tMaxZ + tDeltaZ;
                     }
                 }
-            } while (X != Xend && Y != Yend && Z != Zend);
+            //} while (X != Xend && Y != Yend && Z != Zend);
+            } while (X != Xend || Y != Yend || Z != Zend);
         }
 
         /// <summary>

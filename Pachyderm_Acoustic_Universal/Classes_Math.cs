@@ -2859,10 +2859,11 @@ namespace Pachyderm_Acoustic
             public static string EncodeTransmissionLoss(double[] TL)
             {
                 string code = "";
-                for (int i = 0; i < TL.Length; i++)
+                for (int i = 0; i < TL.Length - 1; i++)
                 {
                     code += TL[i].ToString() + ";";
                 }
+                code += TL[7].ToString();
                 return code;
             }
         }
