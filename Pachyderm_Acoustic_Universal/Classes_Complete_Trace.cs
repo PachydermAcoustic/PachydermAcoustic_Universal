@@ -202,7 +202,7 @@ namespace Pachyderm_Acoustic
             _v = new double[_processorCt];
             _tlist = new System.Threading.Thread[_processorCt];
 
-            System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
+            //System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
 
             for (int P_I = 0; P_I < _processorCt; P_I++)
             {
@@ -273,11 +273,11 @@ namespace Pachyderm_Acoustic
                 R = Source.Directions(_currentRay[Params.ThreadID] + Params.StartIndex, Params.ThreadID, ref Rnd, _octaves);
                 //for (int oct = 0; oct < 8; oct++) R.Energy[oct] /= Raycount;
                 for (int j = 0; j < 8; j++) _eInit[Params.ThreadID] += R.Energy[j];
-                Threshold_Power_1 = R.Energy[h_oct] * 1E-3;
+                Threshold_Power_1 = R.Energy[h_oct] * 1E-2; //1E-3
                 foreach (int o in _octaves)
                 {
-                    Threshold_Power_2[o] = R.Energy[o] * 1E-6;//Cease splitting at 0.0001 sound intensity, or 40 dB down.
-                    Threshold_Power_3[o] = R.Energy[o] * 1E-14;//Finish 8 digits (more than generous) under 60 dB of decay. Full double Precision would be 15 digits.
+                    Threshold_Power_2[o] = R.Energy[o] * 1E-4;//1E-6//Cease splitting at 0.0001 sound intensity, or 40 dB down.
+                    Threshold_Power_3[o] = R.Energy[o] * 1E-10;//1E-14//Finish 8 digits (more than generous) under 60 dB of decay. Full double Precision would be 15 digits.
                 }
                 order = 0;
                 double u = 0, v = 0;
@@ -468,9 +468,8 @@ namespace Pachyderm_Acoustic
             {
                 foreach (Convergence_Check c in check)
                 {
-                    //ConvergenceProgress.Instance.reset_IR();
                     if (c == null) continue;
-                    if (!c.Check(this._currentRay.Sum())) continue;
+                    if (!c.Check(this._currentRay.Sum())||conclude) continue;
                     this.Abort_Calculation();
                     Convergence_Progress_WinForms.Instance.Hide();
                     return "Concluding Simulation...";
@@ -631,7 +630,7 @@ namespace Pachyderm_Acoustic
                 sn80 += sn50;
                 for (int i = Sample50; i < Sample80; i++)
                 {
-                    sn80 += RunningSim[i];
+                    if (i < RunningSim.Length) sn80 += RunningSim[i];
                 }
                 for (int i = Sample80; i < SampleInf; i++)
                 {

@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2019, Arthur van der Harten 
+//'Copyright (c) 2008-2020, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -866,7 +866,7 @@ namespace Pachyderm_Acoustic
                 Scattering_Coefficient = new double[8, 3];
                 for (int oct = 0; oct < 8; oct++)
                 {
-                    double Mod = ((Scattering[oct] < (1 - Scattering[oct])) ? (Scattering[oct] * SplitRatio / 2) : ((1 - Scattering[oct]) * SplitRatio / 2));
+                    double Mod = Math.Abs(Scattering[oct] - 0.5); //((Scattering[oct] < (1 - Scattering[oct])) ? (Scattering[oct] * SplitRatio / 2) : ((1 - Scattering[oct]) * SplitRatio / 2));
                     Scattering_Coefficient[oct, 1] = Scattering[oct];
                     Scattering_Coefficient[oct, 0] = Scattering_Coefficient[oct, 1] - Mod;
                     Scattering_Coefficient[oct, 2] = Scattering_Coefficient[oct, 1] + Mod;

@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2019, Arthur van der Harten 
+//'Copyright (c) 2008-2020, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -615,6 +615,22 @@ namespace Pachyderm_Acoustic
                     }
                 }
                 Valid = true;
+            }
+
+            public Hare.Geometry.Edge[] Raw_Edge
+            {
+                get
+                {
+                    return Topo[0].planeEdges;
+                }
+            }
+
+            public Hare.Geometry.Topology Hare_Data
+            {
+                get
+                {
+                    return Topo[0];
+                }
             }
 
             public override void Absorb(ref OctaveRay Ray, out double cos_theta, double u, double v)

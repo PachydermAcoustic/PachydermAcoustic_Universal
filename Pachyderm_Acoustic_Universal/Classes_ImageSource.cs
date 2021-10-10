@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2019, Arthur van der Harten 
+//'Copyright (c) 2008-2020, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -48,6 +48,7 @@ namespace Pachyderm_Acoustic
         public int SrcNo;
         public int[] Oct_choice;
         public bool Diffraction = false;
+        public bool Screencalc = false;
         public bool IncludeEdges = false;
 
         private ImageSourceData()
@@ -439,8 +440,8 @@ namespace Pachyderm_Acoustic
                 if (PathVertices.Count > 1) ThreadPaths[rec_id, Threadid].Add(new Compound_Path(Room, PathVertices.ToArray(), Sequence, Src, Trans_Mod, H_all[0], new double[][] { H_all[1], H_all[2], H_all[3], H_all[4], H_all[5], H_all[6] }, mintime, ref Direct_Time[rec_id], Threadid));
                 else
                 {
-                    double[] En = new double[8];
-                    for (int oct = 0; oct < 8; oct++) En[oct] *= H_all[0][0] * H_all[0][0] * Trans_Mod[0][oct];
+                    //double[] En = new double[8];
+                    //for (int oct = 0; oct < 8; oct++) En[oct] *= H_all[0][0] * H_all[0][0];
                     ThreadPaths[rec_id, Threadid].Add(new Specular_Path(PathVertices[0], Sequence, Seq_Polys, Room, Src, c_sound, H_all[0], Trans_Mod[0], ref Direct_Time[rec_id], Threadid, Rnd[Threadid].Next()));
                 }
             }
@@ -665,7 +666,6 @@ namespace Pachyderm_Acoustic
                 }
                 else if (K0 < 0 || K1 < 0)
                 {
-
                     if (dist == null) dist = new double[Room.ObjectMeshEdges[Sequence[order]][pathid].Polys.Count];
 
                     for (int i = 0; i < Room.ObjectMeshEdges[Sequence[order]][pathid].Polys.Count; i++)
@@ -1808,6 +1808,18 @@ namespace Pachyderm_Acoustic
         public abstract double[] Create_Filter(double[] SWL, int SampleFrequency, int length, int dim, int threadid);
         public abstract double[][] Create_Filter(double[] SWL, int SampleFrequency, int length, int threadid);
         //public abstract void Create_Pressure(double[] SWL, int SampleFrequecny, int length, int threadid);
+    }
+
+    /// <summary>
+    /// Class written to store screen paths (a simplified occulsion/diffraction calculation).
+    /// </summary>
+    public class Screen_Path: Specular_Path
+    {
+        public Screen_Path(Hare.Geometry.Point[] Path, int[] Sequence_polys, int[] Sequence_planes, Scene Room, Source Src, double C_Sound, double[] H, double[] Trans_Mod, ref double Direct_Time, int threadid, int Rnd)
+        :base(Path, Sequence_polys, Sequence_planes, Room, Src, C_Sound , H, Trans_Mod, ref Direct_Time, threadid, Rnd)
+        {
+            base.Identifier = "Screen- " + base.Identifier;
+        }
     }
 
     /// <summary>

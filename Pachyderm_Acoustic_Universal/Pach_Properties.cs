@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2019, Arthur van der Harten 
+//'Copyright (c) 2008-2020, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -45,6 +45,8 @@ namespace Pachyderm_Acoustic
             Thread_Spec.Value = System.Environment.ProcessorCount;
 
             SettingsPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData) + "\\Pachyderm";
+            if (!System.IO.Directory.Exists(SettingsPath)) System.IO.Directory.CreateDirectory(SettingsPath);
+
             SettingsPath += "\\Pach_Settings.pset";
 
             FileStream S = new FileStream(SettingsPath, FileMode.OpenOrCreate);
