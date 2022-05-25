@@ -299,33 +299,91 @@ namespace Pachyderm_Acoustic
         /// <summary>
         /// Adds Screen attenuation to this calculation (for line source elements).
         /// </summary>
-        private double[] Process_Screen_Attenuation(Point SrcPt, int rec_id, ref Hare.Geometry.Point[] path)
+        private double[] Process_Screen_Attenuation(Point SrcPt, int rec_id, ref Hare.Geometry.Point[] path, ref double dist)
         {
             List<Hare.Geometry.Point[]> Paths = new List<Hare.Geometry.Point[]>();
             List<double> d_ex = new List<double>();
+            List<double[]> D_TransMod = new List<double[]>();
+
+            List<Hare.Geometry.Point> Deygout_Paths = new List<Point>();
+            List<double> Deygout_ex = new List<double>();
+            List<Vector> Deygout_norm = new List<Vector>();
+            List<double> Deygout_t = new List<double>();
+            List<double> Deygout_z = new List<double>();
+            List<double[]> Deygout_trans = new List<double[]>();
+
             double[] f = new double[8] { 62.5, 125, 250, 500, 1000, 2000, 4000, 8000 };
-            double d_length = (Receiver[rec_id] - SrcPt).Length();
+            double d_length = (SrcPt - Receiver[rec_id]).Length();
             Random Rnd = new Random();
 
             object LOCKED = new object();
+            object LOCKED2 = new object();
+            
+            Vector dir = (Receiver[rec_id] - SrcPt);
+            dir.Normalize();
 
             //No screen contribution needed if receiver is visible.
             //if (!OcclusionCheck(Src.H_Origin(), Receiver[rec_id], 0, ref Rnd)) return false;
             //for (int edge = 0; edge < (Room as Polygon_Scene).Raw_Edge.Length; edge++)
             System.Threading.Tasks.Parallel.For(0, (Room as Polygon_Scene).Raw_Edge.Length, (edge) =>
             {
-
                 //Search every edge for a view of both the source and receiver.
+
+                //Omite edges that are not part of an opaque member
+                bool omit = true;
+                double[] trans = new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
+                for (int i = 0; i < (Room as Polygon_Scene).Raw_Edge[edge].Polys.Count; i++)
+                {
+                    bool istran = Room.IsTransmissive[(Room as Polygon_Scene).Raw_Edge[edge].Polys[i].Poly_ID];
+                    omit &= istran;
+                    double[] newtrans = (Room as Polygon_Scene).TransmissionValue[(Room as Polygon_Scene).Raw_Edge[edge].Polys[i].Poly_ID];
+                    if (istran && newtrans[0] > trans[0]) trans = newtrans;
+                }
+                if (omit) return;
+
                 Hare.Geometry.Point pt;
                 if (ClosestPtSegmentSegment(SrcPt, Receiver[rec_id], (Room as Polygon_Scene).Raw_Edge[edge], out pt))
                 {
-                    if (!(OcclusionCheck(SrcPt, pt, 0, ref Rnd) && OcclusionCheck(pt, Receiver[rec_id], 0, ref Rnd)))
+                    ///Cull conditions that are outside of the range of an obstruction
+                    Vector test1 = pt - SrcPt;
+                    double tl1 = test1.Length();
+                    test1 /= tl1;
+                    if (Hare_math.Dot(test1, dir) > 0)
                     {
-                        // Edge point is unoccluded. Register as a reflection.
-                        lock (LOCKED)
+                        Vector test2 = pt - Receiver[rec_id];
+                        double tl2 = test2.Length();
+                        test2 /= tl2;
+                        if (Hare_math.Dot(test2, dir) < 0)
                         {
-                            d_ex.Add((SrcPt - pt).Length() + (Receiver[rec_id] - pt).Length());
-                            Paths.Add(new Point[3] { SrcPt, pt, Receiver[rec_id] });
+                            if (!(OcclusionCheck(SrcPt, pt, 0, ref Rnd) || OcclusionCheck(pt, Receiver[rec_id], 0, ref Rnd)))
+                            {
+                                // Edge point is unoccluded. Register as a reflection.
+                                lock (LOCKED)
+                                {
+                                    D_TransMod.Add(new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 });
+                                    d_ex.Add((SrcPt - pt).Length() + (Receiver[rec_id] - pt).Length());
+                                    Paths.Add(new Point[3] { SrcPt, pt, Receiver[rec_id] });
+                                }
+                            }
+                            else
+                            {
+                                //Deygout qualification
+                                if (Paths.Count() == 0)
+                                {
+                                    lock (LOCKED2)
+                                    {
+                                        Vector d = Hare_math.Cross(test1, test2);
+                                        d.Normalize();
+                                        Deygout_norm.Add(d);
+                                        Deygout_ex.Add(tl1 + tl2);
+                                        Deygout_Paths.Add(pt);
+                                        double t = Hare_math.Dot(dir, test1 * tl1);
+                                        Deygout_t.Add(t);
+                                        Deygout_z.Add(Math.Sqrt(tl1 * tl1 - t * t));
+                                        Deygout_trans.Add(trans);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -335,21 +393,153 @@ namespace Pachyderm_Acoustic
 
             if (Paths.Count == 0)
             {
-                for (int oct = 0; oct < 8; oct++) ScreenAtten[oct] = double.Epsilon;
-                return ScreenAtten;
+                //Check for ways to include more complex paths...
+                ///Deygout approach
+                ///Bundle paths into like normals
+                List<List<Point>> ClusterPath = new List<List<Point>>();
+                List<List<double>> ClusterEx = new List<List<double>>();
+                List<List<double>> Cluster_t = new List<List<double>>();
+                List<List<double>> Cluster_z = new List<List<double>>();
+                List<List<double[]>> Cluster_trans = new List<List<double[]>>();
+                do
+                {
+                    Vector refnorm = Deygout_norm[0];
+
+                    List<Point> selectedpath = new List<Point>();
+                    List<double> selectedex = new List<double>();
+                    List<double> selected_t = new List<double>();
+                    List<double> selected_z = new List<double>();
+                    List<double[]> selected_trans = new List<double[]>();
+
+                    List<Point> remainpath = new List<Point>();
+                    List<double> remainex = new List<double>();
+                    List<Vector> remainnorm = new List<Vector>();
+                    List<double> remain_t = new List<double>();
+                    List<double> remain_z = new List<double>();
+                    List<double[]> remain_trans = new List<double[]>();
+
+                    selectedpath.Add(Deygout_Paths[0]);
+                    selectedex.Add(Deygout_ex[0]);
+                    selected_t.Add(Deygout_t[0]);
+                    selected_z.Add(Deygout_z[0]);
+                    selected_trans.Add(Deygout_trans[0]);
+
+                    for (int i = 1; i < Deygout_Paths.Count(); i++)
+                    {
+                        double test = Hare_math.Dot(refnorm, Deygout_norm[i]);
+                        if (test > 0.8)
+                        {
+                            selectedpath.Add(Deygout_Paths[i]);
+                            selectedex.Add(Deygout_ex[i]);
+                            selected_t.Add(Deygout_t[i]);
+                            selected_z.Add(Deygout_z[i]);
+                            selected_trans.Add(Deygout_trans[i]);
+                        }
+                        else
+                        {
+                            remainpath.Add(Deygout_Paths[i]);
+                            remainex.Add(Deygout_ex[i]);
+                            remainnorm.Add(Deygout_norm[i]);
+                            remain_t.Add(Deygout_t[i]);
+                            remain_z.Add(Deygout_z[i]);
+                            remain_trans.Add(Deygout_trans[i]);
+                        }
+                    }
+                    ClusterPath.Add(selectedpath);
+                    ClusterEx.Add(selectedex);
+                    Cluster_t.Add(selected_t);
+                    Cluster_z.Add(selected_z);
+                    Cluster_trans.Add(selected_trans);
+                    Deygout_Paths = remainpath;
+                    Deygout_ex = remainex;
+                    Deygout_norm = remainnorm;
+                    Deygout_t = remain_t;
+                    Deygout_z = remain_z;
+                    Deygout_trans = remain_trans;
+                } while (Deygout_Paths.Count() > 0);
+
+                for (int i = 0; i < Cluster_t.Count; i++)
+                {
+                    double[] ct = Cluster_t[i].ToArray();
+                    Point[] cpath = ClusterPath[i].ToArray();
+                    double[] cz = Cluster_z[i].ToArray();
+                    double[][] ctr = Cluster_trans[i].ToArray();
+                    Array.Sort(ct, cz);
+                    Array.Sort(Cluster_t[i].ToArray(), cpath);
+                    Array.Sort(Cluster_t[i].ToArray(), ctr);
+
+                    Queue<Point> Start = new Queue<Point>();
+                    Stack<Point> End = new Stack<Point>();
+                    //int indexMax = cz.Any() ? -1 : cz.Select((value, index) => new { Value = value, Index = index }).Aggregate((a, b) => (a.Value > b.Value) ? a : b).Index;
+                    int indexMax = Array.IndexOf(cz, cz.Min());
+                    double[] TransMod = new double[] { 1, 1, 1, 1, 1, 1, 1, 1 };
+
+                    Start.Enqueue(cpath[indexMax]);
+                    double slopecompare = cz[indexMax] / ct[indexMax];
+                    if (ctr[indexMax][0] > 0) for (int oct = 0; oct < 8; oct++) TransMod[oct] *= ctr[indexMax][oct];
+
+                    //Find the upward slope of the drape...
+                    for (int id = indexMax-1; id >-1; id--)
+                    {
+                        double newslope = cz[id] / ct[id];
+                        if (newslope > slopecompare)
+                        {
+                            if (ctr[id][0] > 0) for (int oct = 0; oct < 8; oct++) TransMod[oct] *= ctr[id][oct];
+                            Start.Enqueue(cpath[id]);
+                            slopecompare = newslope;
+                        }
+                    }
+                    //find the downward slope of the drape...
+                    int ref_id = (int)indexMax;
+                    slopecompare = cz[indexMax] / (d_length - ct[indexMax]);
+                    for (int id = cz.Length-1; id > indexMax; id--)
+                    {
+                        double newslope = (cz[id]) / (ct[id] - ct[indexMax]);
+                        if (newslope > slopecompare)
+                        {
+                            if (ctr[id][0] > 0) for (int oct = 0; oct < 8; oct++) TransMod[oct] *= ctr[id][oct];
+                            End.Push(cpath[id]);
+                            slopecompare = newslope;
+                            ref_id = id;
+                        }
+                    }
+
+                    List<Point> pat = new List<Point>();
+                    pat.Add(SrcPt);
+                    pat.AddRange(Start.Reverse());
+                    pat.AddRange(End.Reverse());
+                    pat.Add(Receiver[rec_id]);
+                    Paths.Add(pat.ToArray());
+
+                    double length = 0;
+                    for(int k = 0; k < pat.Count() - 1; k++)
+                    {
+                        length += (pat[k] - pat[k + 1]).Length();
+                    }
+
+                    d_ex.Add(length);
+                    D_TransMod.Add(TransMod);
+                }
+
+                //for (int oct = 0; oct < 8; oct++) ScreenAtten[oct] = double.Epsilon;
+                //return ScreenAtten;
             }
             double d_exmin = d_ex.Min();
             int minid = d_ex.IndexOf(d_exmin);
             path = Paths[minid];
-            double sigma2pi_170 = 2 * Math.PI * (d_exmin - d_length) / 170.0;
+            //double sigma2pi_170 = 2 * Math.PI * (d_exmin - d_length) / 170.0;
+            double Nf = Math.Sqrt(2 * Math.PI * 31.5 * 2 * (d_exmin - d_length) / C_Sound);
             for (int oct = 0; oct < 8; oct++)
             {
-                ScreenAtten[oct] = 1.0 / (sigma2pi_170 * f[oct] * 3.162278 / Math.Pow(Math.Tanh(Math.Sqrt(sigma2pi_170 * f[oct])), 2));
-                if (double.IsNaN(ScreenAtten[oct]))
-                {
-                    continue;
-                }
+                Nf *= Math.Sqrt(2);
+                //ScreenAtten[oct] = 1.0 / (sigma2pi_170 * f[oct] * 3.162278 / Math.Pow(Math.Tanh(Math.Sqrt(sigma2pi_170 * f[oct])), 2));
+                ScreenAtten[oct] = 1.0 / (Nf * 3.162278 / Math.Tanh(Nf)) * D_TransMod[minid][oct];
+                //if (ScreenAtten[oct] <=0 || double.IsNaN(ScreenAtten[oct]) || double.IsInfinity(ScreenAtten[oct]))
+                //{
+                //    continue;
+                //}
             }
+            dist = d_exmin;
             return ScreenAtten;
         }
 
@@ -371,6 +561,10 @@ namespace Pachyderm_Acoustic
             System.Threading.Tasks.Parallel.For(0, (Room as Polygon_Scene).Raw_Edge.Length, (edge) =>
             {
                 //Search every edge for a view of both the source and receiver.
+                bool omit = true;
+                for (int i = 0; i < (Room as Polygon_Scene).Raw_Edge[edge].Polys.Count; i++) omit &= Room.IsTransmissive[(Room as Polygon_Scene).Raw_Edge[edge].Polys[i].Poly_ID];
+                if (omit) return;
+
                 Hare.Geometry.Point pt;
                 if (ClosestPtSegmentSegment(Src.H_Origin(), Receiver[rec_id], (Room as Polygon_Scene).Raw_Edge[edge], out pt))
                 {
@@ -1222,6 +1416,9 @@ namespace Pachyderm_Acoustic
             return F_out;
         }
 
+
+
+
         private void Record_Line_Segment(ref List<double> t, ref List<double[]> I, ref List<Vector> d, int rec_id)
         {
             if (SPL_Only)
@@ -1380,6 +1577,8 @@ namespace Pachyderm_Acoustic
             d = new List<Vector>();
         }
 
+        
+
         private bool Line_Calculation()
         {
             Random RndGen = new Random();
@@ -1392,8 +1591,8 @@ namespace Pachyderm_Acoustic
             //double dx = 1;// 5 * Math.Acos(d / (d + dmod)); //1
             trib = (trib / C_Sound) * SampleFreq;
 
-            //for (int i = 0; i < Receiver.Count; i++)
-            System.Threading.Tasks.Parallel.For(0, Receiver.Count, i =>
+            for (int i = 0; i < Receiver.Count; i++)
+            //System.Threading.Tasks.Parallel.For(0, Receiver.Count, i =>
             {
                 Random RAND = new Random(rnd[i]);
                 double mintime = double.PositiveInfinity, maxtime = double.NegativeInfinity;
@@ -1443,6 +1642,8 @@ namespace Pachyderm_Acoustic
                 List<double[]> I = new List<double[]>();
                 List<Vector> I_d = new List<Vector>();
 
+                object LOCKED = new object();
+
                 for (int j = 0; j < Samples.Count(); j++)//foreach (Hare.Geometry.Point p in Samples)
                 //System.Threading.Tasks.Parallel.For(0, Samples.Length, j =>
                 {
@@ -1483,9 +1684,12 @@ namespace Pachyderm_Acoustic
                         {
                             //Clear connection.
                             for (int oct = 0; oct < 8; oct++) W_temp[oct] *= Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist * trib);
-                            I_d.Add(dir);
-                            I.Add(W_temp);
-                            time.Add(tdbl);
+                            lock (LOCKED)
+                            {
+                                I_d.Add(dir);
+                                I.Add(W_temp);
+                                time.Add(tdbl);
+                            }
                             break;
                         }
                         else if (Room.IsTransmissive[x3])
@@ -1501,15 +1705,22 @@ namespace Pachyderm_Acoustic
                             if (Screen_atten)
                             {
                                 Hare.Geometry.Point[] path = new Point[0];
-                                double[] Power = Process_Screen_Attenuation(Samples[j], i, ref path);
+                                double[] Power = Process_Screen_Attenuation(Samples[j], i, ref path, ref dist);
                                 for (int oct = 0; oct < 8; oct++)
                                 {
                                     W_temp[oct] *= Power[oct];
                                     W_temp[oct] *= Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist * trib);
+                                    if (W_temp[oct] <= 0 || double.IsNaN(W_temp[oct]))
+                                    {
+                                        continue;
+                                    }
                                 }
-                                I_d.Add(dir);
-                                I.Add(W_temp);
-                                time.Add(tdbl);
+                                lock (LOCKED)
+                                {
+                                    I_d.Add(dir);
+                                    I.Add(W_temp);
+                                    time.Add(tdbl);
+                                }
                                 break;
                                 ///TODO: Set W_Temp to zero, and devise means of storing screen atten for later addition to power.
                             }
@@ -1519,7 +1730,7 @@ namespace Pachyderm_Acoustic
                         }
                     }
                     while (true);
-                }
+                }//);
 
                 if (time.Count > 0) Record_Line_Segment(ref time, ref I, ref I_d, i);
 
@@ -1560,7 +1771,7 @@ namespace Pachyderm_Acoustic
                 {
                     Validity[i] = (Io[i][0][0] != 0);
                 }
-            });
+            }//);
 
             return true;
         }

@@ -404,7 +404,7 @@ namespace Pachyderm_Acoustic
                 if (Zf_incorp_Choice == 0)
                 {
                     Reflection_Coefficient = Pachyderm_Acoustic.AbsorptionModels.Operations.Reflection_Coef(Z, Air_Density, SoundSpeed); //No defined way to build a complex finite reflection coefficient.
-                    Angular_Absorption = Pachyderm_Acoustic.AbsorptionModels.Operations.Finite_Unit_Absorption_Coefficient(Zr_interp, Z, a_real, rho, 343);
+                    Angular_Absorption = Pachyderm_Acoustic.AbsorptionModels.Operations.Finite_Absorption_Coefficient(Zr_interp, Z, a_real, rho, 343);
                 }
                 else if (Zf_incorp_Choice == 1)
                 {
@@ -432,7 +432,8 @@ namespace Pachyderm_Acoustic
                 if (Averaging_Choice == 0)
                     if (Zf_incorp_Choice == 0)
                     {
-                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Angular_Absorption, Zr_interp, SoundSpeed * Air_Density);
+                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Angular_Absorption);
+                        //RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Angular_Absorption, Zr_interp, SoundSpeed * Air_Density);
                         TI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Trans_Coefficient, Zr_interp, SoundSpeed * Air_Density);
                     }
                     else
@@ -974,7 +975,7 @@ namespace Pachyderm_Acoustic
                     // random zenith (elevation)
                     x = Math.Cos(u1) * Math.Sin(u2);
                     y = Math.Sin(u1) * Math.Sin(u2);
-                    z = Math.Cos(u2);
+                    z = Scat_Mod; //Math.Cos(u2);
 
                     vect = (diffx * x) + (diffy * y) + (diffz * z);
                     vect.Normalize();

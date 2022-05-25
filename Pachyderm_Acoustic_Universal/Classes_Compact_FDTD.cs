@@ -75,7 +75,7 @@ namespace Pachyderm_Acoustic
                     return new Point(Bounds.Min_PT.x + (((double)x - 0.5) * dx), Bounds.Min_PT.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), Bounds.Min_PT.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
                 }
 
-                public Acoustic_Compact_FDTD(Scene Rm_in, ref Signal_Driver_Compact S_in, ref Microphone_Compact M_in, double fmax_in, double tmax_ms_in, GridType GT, Point SampleOrigin, double mindimx, double mindimy, double mindimz)
+                public Acoustic_Compact_FDTD(Scene Rm_in, ref Signal_Driver_Compact S_in, ref Microphone_Compact M_in, double fmax_in, double tmax_ms_in, GridType GT, Point SampleOrigin, double mindimx, double mindimy, double mindimz, bool PML = true)
                 {
                     Rm = Rm_in;
                     SD = S_in;
@@ -85,27 +85,27 @@ namespace Pachyderm_Acoustic
                     Rm.partition(5);
                     if (GT == GridType.Freefield)
                     {
-                        Build_Freefield_FVM13(ref xDim, ref yDim, ref zDim, true, mindimx, mindimy, mindimz);
+                        Build_Freefield_FVM13(ref xDim, ref yDim, ref zDim, PML, mindimx, mindimy, mindimz);
                         SD.Connect_Grid_Freefield(PFrame, Bounds, dx, dy, dz, tmax, dt, no_of_Layers);
                         Mic.Connect_Grid_UniqueOnly_Freefield(PFrame, Bounds, dx, tmax, dt, no_of_Layers);
                     }
                     else if (GT == GridType.ScatteringLab)
                     {
-                        Build_ScatteringLaboratory_FVM13(ref xDim, ref yDim, ref zDim, true, SampleOrigin, mindimx, mindimy, mindimz);
+                        Build_ScatteringLaboratory_FVM13(ref xDim, ref yDim, ref zDim, PML, SampleOrigin, mindimx, mindimy, mindimz);
                         SD.Connect_Grid_Laboratory(PFrame, Bounds, dx, dy, dz, tmax, dt, no_of_Layers);
                         Mic.Connect_Grid_Hemisphere_Laboratory(PFrame, Bounds, new Point(), 1, dx, tmax, dt, no_of_Layers);
                     }
                     else if (GT == GridType.TransparencyLab)
                     {
                         //TODO: Build a custom lab with freefield condition at bottom boundary...
-                        Build_TransparencyLaboratory_FVM13(ref xDim, ref yDim, ref zDim, true, SampleOrigin, mindimx, mindimy, mindimz);
+                        Build_TransparencyLaboratory_FVM13(ref xDim, ref yDim, ref zDim, PML, SampleOrigin, mindimx, mindimy, mindimz);
                         SD.Connect_Grid_Laboratory(PFrame, Bounds, dx, dy, dz, tmax, dt, no_of_Layers);
                         Mic.Connect_Grid_UniqueOnly_Laboratory(PFrame, Bounds, dx, tmax, dt, no_of_Layers);
                     }
                     else if (GT == GridType.Terrain)
                     {
                         Hare.Geometry.Point origin = (Rm_in.Max() + Rm.Min()) / 2;
-                        Build_ScatteringLaboratory_FVM13(ref xDim, ref yDim, ref zDim, true, origin, mindimx, mindimy, mindimz);
+                        Build_ScatteringLaboratory_FVM13(ref xDim, ref yDim, ref zDim, PML, origin, mindimx, mindimy, mindimz);
                         SD.Connect_Grid_Laboratory(PFrame, Bounds, dx, dy, dz, tmax, dt, no_of_Layers);
                         Mic.Connect_Grid_UniqueOnly_Laboratory(PFrame, Bounds, dx, tmax, dt, no_of_Layers);
                     }

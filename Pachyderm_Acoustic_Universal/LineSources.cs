@@ -46,7 +46,7 @@ namespace Pachyderm_Acoustic
             /// <summary>
             /// number of samples per meter.
             /// </summary>
-            int samplespermeter = 16;
+            double samplespermeter = 16;
             /// <summary>
             /// Private member controlling the directional characteristics of the line source.
             /// </summary>
@@ -64,7 +64,7 @@ namespace Pachyderm_Acoustic
             /// <param name="el_m"></param>
             /// <param name="SrcID"></param>
             /// <param name="ph"></param>
-            public LineSource(Hare.Geometry.Point[] samples, double length, string Code, int el_m, int SrcID)
+            public LineSource(Hare.Geometry.Point[] samples, double length, string Code, double el_m, int SrcID)
                 : base(new double[8] { 60, 49, 41, 35, 31, 28, 26, 24 }, new Point(0, 0, 0), SrcID)
             {
                 samplespermeter = el_m;

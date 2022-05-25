@@ -276,8 +276,8 @@ namespace Pachyderm_Acoustic
                 Threshold_Power_1 = R.Energy[h_oct] * 1E-2; //1E-3
                 foreach (int o in _octaves)
                 {
-                    Threshold_Power_2[o] = R.Energy[o] * 1E-4;//1E-6//Cease splitting at 0.0001 sound intensity, or 40 dB down.
-                    Threshold_Power_3[o] = R.Energy[o] * 1E-10;//1E-14//Finish 8 digits (more than generous) under 60 dB of decay. Full double Precision would be 15 digits.
+                    Threshold_Power_2[o] = R.Energy[o] * 1E-4;//Cease splitting at 0.0001 sound intensity, or 40 dB down.
+                    Threshold_Power_3[o] = R.Energy[o] * 1E-10;//Finish 8 digits (more than generous) under 60 dB of decay. Full double Precision would be 15 digits.
                 }
                 order = 0;
                 double u = 0, v = 0;

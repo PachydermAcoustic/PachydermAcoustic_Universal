@@ -2834,6 +2834,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public static double[] DecodeSourcePower(string code)
             {
+                if (code == null) return new double[] { 120, 120, 120, 120, 120, 120, 120, 120 };
                 string[] SWLCodes = code.Split(";".ToCharArray());
                 if (SWLCodes.Length < 8) return new double[] { 120, 120, 120, 120, 120, 120, 120, 120 };
                 double[] SWL = new double[SWLCodes.Length];
@@ -2846,8 +2847,9 @@ namespace Pachyderm_Acoustic
 
             public static double[] DecodeTransmissionLoss(string code)
             {
+                if (string.IsNullOrEmpty(code)) return new double[] { 0, 0, 0, 0, 0, 0, 0, 0 };
                 string[] TLCodes = code.Split(";".ToCharArray());
-                if (TLCodes.Length < 8) return new double[] { 120, 120, 120, 120, 120, 120, 120, 120 };
+                if (TLCodes.Length < 8) return new double[] { 0, 0, 0, 0, 0, 0, 0, 0 };
                 double[] TL = new double[TLCodes.Length];
                 for (int i = 0; i < 8; i++)
                 {

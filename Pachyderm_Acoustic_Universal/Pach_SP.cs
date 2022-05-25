@@ -1363,6 +1363,8 @@ namespace Pachyderm_Acoustic
                         }
                     }
 
+                    //bitrate /= 2;
+
                     int datalength = (bitrate / 8) * Unit_signal.Length * Unit_signal[0].Length;
 
                     //Open a stream.
@@ -1371,16 +1373,20 @@ namespace Pachyderm_Acoustic
                     wav.Write((UInt32)datalength + 32);//Filesize//4
                     wav.Write("WAVE".ToCharArray());//4
                     wav.Write("fmt ".ToCharArray());//4
-                    wav.Write((UInt32)16);//Chunk Length//4
-                    wav.Write((UInt16)1);//Format Tag//2
+                    wav.Write(bitrate==32?(UInt32)18:(UInt32)16);//Chunk Length//4
+                    wav.Write(bitrate==32?(UInt16)3:(UInt16)1);//Format Tag//2
                     wav.Write((Int16)Unit_signal.Length);//Number of channels//2
                     wav.Write((Int32)sample_frequency);//Sample Frequency//4
                     wav.Write((Int32)(sample_frequency * (bitrate / 8) * Unit_signal.Length));// Bytes per second//4
                     wav.Write((Int16)((bitrate / 8) * Unit_signal.Length));//Block Align//2
                     wav.Write((Int16)bitrate);//Bits per sample//2
+                    if (bitrate ==32) wav.Write((Int16)0); //cbSize//2
+                    //wav.Write("fact");
+                    //wav.Write((Int32)4);//ChunkSize//4
+                    //wav.Write((Int32)Unit_signal.Length * Unit_signal[0].Length);//No_of_channles * No_of_Samples//4
                     wav.Write("data".ToCharArray());//4
                     wav.Write((UInt32) datalength);//Length of data portion of file.//4
-
+                    
                     switch (bitrate)
                     {
                         case 32:
@@ -1392,29 +1398,29 @@ namespace Pachyderm_Acoustic
                                 }
                             }
                             break;
-                        //case 24:
-                        //    for (int i = 0; i < Unit_signal[0].Length; i++)
-                        //    {
-                        //        for (int c = 0; c < Unit_signal.Length; c++)                                                                    
-                        //        {
-                        //            var value = BitConverter.GetBytes((Int32)(Int32.MaxValue * Unit_signal[c][i] * 10000));
-                        //            byte [] sig_bts = new byte[4];
-                        //            sig_bts[0] = value[0];
-                        //            sig_bts[1] = value[1];
-                        //            sig_bts[2] = value[2];
-                        //            for (int s = 0; s < 3; s++) wav.Write(sig_bts[s]);
-                        //        }
-                        //    }
-                        //    break;
-                        //case 16:
-                        //    for (int i = 0; i < Unit_signal[0].Length; i++)
-                        //    {
-                        //        for (int c = 0; c < Unit_signal.Length; c++)
-                        //        {
-                        //            wav.Write((Int16)(Unit_signal[c][i] * 32760));
-                        //        }
-                        //    }
-                        //    break;
+                        case 24:
+                            for (int i = 0; i < Unit_signal[0].Length; i++)
+                            {
+                                for (int c = 0; c < Unit_signal.Length; c++)
+                                {
+                                    var value = BitConverter.GetBytes((Int32)(Unit_signal[c][i] * Math.Pow(2,22)));
+                                    byte[] sig_bts = new byte[4];
+                                    sig_bts[0] = value[0];
+                                    sig_bts[1] = value[1];
+                                    sig_bts[2] = value[2];
+                                    for (int s = 0; s < 3; s++) wav.Write(sig_bts[s]);
+                                }
+                            }
+                            break;
+                        case 16:
+                            for (int i = 0; i < Unit_signal[0].Length; i++)
+                            {
+                                for (int c = 0; c < Unit_signal.Length; c++)
+                                {
+                                    wav.Write((Int16)(Unit_signal[c][i] * Math.Pow(2,14)));
+                                }
+                            }
+                            break;
                         default:
                             wav.Close();
                             throw new Exception("invalid bitrate");
