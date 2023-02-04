@@ -803,7 +803,8 @@ namespace Pachyderm_Acoustic
                     anglesdeg[0] = -87.5;
                     for (int i = 1; i < anglesdeg.Length; i++) anglesdeg[i] = anglesdeg[i-1] + 5;
 
-                    System.Numerics.Complex[][] Zr = AbsorptionModels.Operations.Finite_Radiation_Impedance_Atalla_Rect(Xdim, Ydim, freq.ToArray(), anglesdeg, c_sound, air_density);
+                    //System.Numerics.Complex[][] Zr = AbsorptionModels.Operations.Finite_Radiation_Impedance_Atalla_Rect(Xdim, Ydim, freq.ToArray(), anglesdeg, c_sound, air_density);
+                    System.Numerics.Complex[][] Zr = AbsorptionModels.Operations.Finite_Radiation_Impedance_Rect_Longhand(Xdim, Ydim, freq.ToArray(), anglesdeg, c_sound);
 
                     Zr_Curves_R = new MathNet.Numerics.Interpolation.CubicSpline[Zr[0].Length];
                     Zr_Curves_I = new MathNet.Numerics.Interpolation.CubicSpline[Zr[0].Length];

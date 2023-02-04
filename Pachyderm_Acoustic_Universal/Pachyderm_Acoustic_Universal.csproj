@@ -94,6 +94,11 @@
       <DependentUpon>Convergence_Progress_WinForms.cs</DependentUpon>
     </Compile>
     <Compile Include="Pach_SP_Measurement.cs" />
+    <Compile Include="Resource1.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resource1.resx</DependentUpon>
+    </Compile>
     <Compile Include="Sphere_Arbitrary.cs" />
     <Compile Include="Pach_Absorption_Designer.cs">
       <SubType>Form</SubType>
@@ -164,6 +169,10 @@
     <EmbeddedResource Include="Pach_Absorption_Designer.resx">
       <DependentUpon>Pach_Absorption_Designer.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="Resource1.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resource1.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
     <EmbeddedResource Include="SourcePowerMod.resx">
       <DependentUpon>SourcePowerMod.cs</DependentUpon>
     </EmbeddedResource>
@@ -182,6 +191,15 @@
       <Project>{681e37f0-fdb7-4d4d-b5dc-b6f5065170ff}</Project>
       <Name>Hare</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\libfftw3-3.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\Pach_Materials_Library.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\CLF_Read.dll" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

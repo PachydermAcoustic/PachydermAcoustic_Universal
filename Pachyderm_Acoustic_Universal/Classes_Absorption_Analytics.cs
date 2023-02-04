@@ -302,7 +302,7 @@ namespace Pachyderm_Acoustic
                                                                   //denominator += d_mod;
                     for (int f = 0; f < absorption_Coefficient[a].Length; f++)
                     {
-                        numerator[f] += Math.Abs(absorption_Coefficient[a][f] * d_mod);
+                        numerator[f] += Math.Abs(absorption_Coefficient[a][f]) * d_mod;
                     }
                 }
                 //for (int f = 0; f < absorption_Coefficient[0].Length; f++)
@@ -789,7 +789,7 @@ namespace Pachyderm_Acoustic
                         Complex Za = Z[j][i] / (rho * c_sound);
                         Complex Zrn = Zr[i][j] / (rho * c_sound);
                         double a_denom = (Za + Zrn).Magnitude;//Math.Cos(theta);
-                        Alpha[j][i] = 8 * Za.Real * Math.Sin(theta) / (a_denom * a_denom);// * Math.Abs(Math.Sin(theta));
+                        Alpha[j][i] = 4 * Za.Real / (a_denom * a_denom);// * Math.Abs(Math.Sin(theta));
                                                                         //Alpha[j][i] = 4 * Za.Real / (a_denom * a_denom);                        
                                                                         //Alpha[j][i] = Absorption_Coef(Reflection_Coef(Za + Zrn, rho * c_sound));
                                                                         //Alpha[j][i] = Absorption_Coef(Reflection_Coef(Z[j][i], rho * c_sound) * Reflection_Coef(Zr[i][j], rho * c_sound));

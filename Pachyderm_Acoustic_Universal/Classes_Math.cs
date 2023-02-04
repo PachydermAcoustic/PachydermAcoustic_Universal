@@ -890,7 +890,10 @@ namespace Pachyderm_Acoustic
             {
                 double sumPT=0, sumT=0;
                 double BW = 1 / (double)sample_f;
-                for(int i = 0; i < etc.Length; i++)
+
+                int start = (int)Math.Floor(Direct_time * sample_f);
+
+                for(int i = start; i < etc.Length; i++)
                 {
                     sumPT += etc[i] * (i*BW - Direct_time);
                     sumT += etc[i]; 

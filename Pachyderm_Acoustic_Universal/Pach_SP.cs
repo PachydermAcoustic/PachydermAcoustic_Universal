@@ -204,6 +204,37 @@ namespace Pachyderm_Acoustic
                 for (int i = 0; i < h.Length; i++) h[i] *= factor;
             }
 
+            public static double[] MaximumLengthSequence(int length)
+            {
+                bool[] MLS = new bool[length];
+                double[] output = new double[length];
+                MLS[0] = true; MLS[1] = true; MLS[2] = false;
+                for(int n = 3; n < length; n++)
+                {
+                    MLS[n] = MLS[n - 3] ^ MLS[n - 1];
+                }
+                for(int n = 0; n < length; n++)
+                {
+                    output[n] = MLS[n] ? -1 : 1;
+                }
+                return output;
+            }
+            public static double[] MLS_Reverb(double length_s, double[] RT, int sampling_frequency, double[] magnitude)
+            {
+                double[] MLS = MaximumLengthSequence((int)(length_s * sampling_frequency));
+                double[] signal = new double[MLS.Length];
+                double[] output = new double[MLS.Length];
+                for (int oct = 0; oct < 8; oct++)
+                {
+                    signal = FIR_Bandpass(MLS, oct, sampling_frequency, 0);
+                    for(int i = 0; i < signal.Length; i++)
+                    {
+                         output[i] = magnitude[oct] * signal[i] * Math.Pow(10, 120d - (60d / (RT[oct] * sampling_frequency/10)));
+                    }
+                }
+                return output;
+            }
+
             public static double[] FIR_Bandpass(double[] h, int octave_index, int Sample_Freq, int thread)
             {
                 int length = h.Length;

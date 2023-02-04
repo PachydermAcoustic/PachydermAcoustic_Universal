@@ -251,7 +251,7 @@ namespace Pachyderm_Acoustic
                     }
                     else
                     {
-                        double[][] acoef = AbsorptionModels.Operations.  Absorption_Coef(sm.Reflection_Coefficient); //(sm.Z, sm.frequency);
+                        double[][] acoef = AbsorptionModels.Operations.Absorption_Coef(sm.Reflection_Coefficient); //(sm.Z, sm.frequency);
                         for (int i = 0; i < sm.frequency.Length; i++) Alpha_Normal.Series[0].Points.AddXY(sm.frequency[i], acoef[Direction_choice.SelectedIndex + 17][i]); //sm.NI_Coef[i]);
                     }
 

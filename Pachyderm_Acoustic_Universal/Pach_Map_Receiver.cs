@@ -22,6 +22,7 @@ using Hare.Geometry;
 using Pachyderm_Acoustic.Environment;
 using Pachyderm_Acoustic.Utilities;
 using System.Linq;
+using System.CodeDom.Compiler;
 
 namespace Pachyderm_Acoustic
 {
@@ -258,7 +259,6 @@ namespace Pachyderm_Acoustic
         /// <param name="Z">The current voxel index 'Z'</param>
         private void CheckReceivers_Broadband(BroadRay R, Hare.Geometry.Point EndPt, int X, int Y, int Z)
         {
-            //PachTools.AddBox(Voxels[X, Y, 0].Min(), Voxels[X, Y, 0].Max());//Debug tool...
             for (int i = 0; i < Voxel_Inv[X, Y, Z].Count; i++)
             {
                 if (!(Rec_List[Voxel_Inv[X, Y, Z][i]].Ray_ID[R.ThreadID] == R.Ray_ID))
@@ -1065,17 +1065,17 @@ namespace Pachyderm_Acoustic
             //Identify whether the Origin is inside the voxel grid...
             //double Sumlength = R.t_sum;
 
+            Point temp_origin = new Point(R.origin.x, R.origin.y, R.origin.z);
             if (!OBox.IsPointInBox(R.origin))
             {
                 double t0 = 0;
-                if (!OBox.Intersect(R, ref t0, ref R.origin)) return;
-                //Sumlength += t0;
+                if (!OBox.Intersect(R, ref t0, ref temp_origin)) return;
             }
 
             //Identify where the ray enters the voxel grid...
-            X = (int)Math.Floor((R.origin.x - OBox.Min_PT.x) / VoxelDims.x);
-            Y = (int)Math.Floor((R.origin.y - OBox.Min_PT.y) / VoxelDims.y);
-            Z = (int)Math.Floor((R.origin.z - OBox.Min_PT.z) / VoxelDims.z);
+            X = (int)Math.Floor((temp_origin.x - OBox.Min_PT.x) / VoxelDims.x);
+            Y = (int)Math.Floor((temp_origin.y - OBox.Min_PT.y) / VoxelDims.y);
+            Z = (int)Math.Floor((temp_origin.z - OBox.Min_PT.z) / VoxelDims.z);
 
             Xend = (int)Math.Floor((EndPt.x - OBox.Min_PT.x) / VoxelDims.x);
             Yend = (int)Math.Floor((EndPt.y - OBox.Min_PT.y) / VoxelDims.y);
@@ -1104,14 +1104,14 @@ namespace Pachyderm_Acoustic
             {
                 OutX = -1;
                 stepX = -1;
-                tMaxX = (Voxels[X, Y, Z].Min_PT.x - R.origin.x) / R.direction.x;
+                tMaxX = (Voxels[X, Y, Z].Min_PT.x - temp_origin.x) / R.direction.x;
                 tDeltaX = VoxelDims.x / R.direction.x * stepX;
             }
             else
             {
                 OutX = VoxelCtX;
                 stepX = 1;
-                tMaxX = (Voxels[X, Y, Z].Max_PT.x - R.origin.x) / R.direction.x;
+                tMaxX = (Voxels[X, Y, Z].Max_PT.x - temp_origin.x) / R.direction.x;
                 tDeltaX = VoxelDims.x / R.direction.x * stepX;
             }
 
@@ -1119,14 +1119,14 @@ namespace Pachyderm_Acoustic
             {
                 OutY = -1;
                 stepY = -1;
-                tMaxY = (Voxels[X, Y, Z].Min_PT.y - R.origin.y) / R.direction.y;
+                tMaxY = (Voxels[X, Y, Z].Min_PT.y - temp_origin.y) / R.direction.y;
                 tDeltaY = VoxelDims.y / R.direction.y * stepY;
             }
             else
             {
                 OutY = VoxelCtY;
                 stepY = 1;
-                tMaxY = (Voxels[X, Y, Z].Max_PT.y - R.origin.y) / R.direction.y;
+                tMaxY = (Voxels[X, Y, Z].Max_PT.y - temp_origin.y) / R.direction.y;
                 tDeltaY = VoxelDims.y / R.direction.y * stepY;
             }
 
@@ -1134,14 +1134,14 @@ namespace Pachyderm_Acoustic
             {
                 OutZ = -1;
                 stepZ = -1;
-                tMaxZ = (Voxels[X, Y, Z].Min_PT.z - R.origin.z) / R.direction.z;
+                tMaxZ = (Voxels[X, Y, Z].Min_PT.z - temp_origin.z) / R.direction.z;
                 tDeltaZ = VoxelDims.z / R.direction.z * stepZ;
             }
             else
             {
                 OutZ = VoxelCtZ;
                 stepZ = 1;
-                tMaxZ = (Voxels[X, Y, Z].Max_PT.z - R.origin.z) / R.direction.z;
+                tMaxZ = (Voxels[X, Y, Z].Max_PT.z - temp_origin.z) / R.direction.z;
                 tDeltaZ = VoxelDims.z / R.direction.z * stepZ;
             }
 
@@ -1200,19 +1200,20 @@ namespace Pachyderm_Acoustic
             //Identify whether the Origin is inside the voxel grid...
             //double Sumlength = R.t_sum;
 
+            Point temp_origin = new Point(R.origin.x, R.origin.y, R.origin.z);
+
             if (!OBox.IsPointInBox(R.origin))
             {
                 double t0 = 0;
-                if (!OBox.Intersect(R, ref t0, ref R.origin)) return;
-                //Sumlength += t0;
+                if (!OBox.Intersect(R, ref t0, ref temp_origin)) return;
             }
 
             //Identify which voxel the Origin point is located in...
 
             //Identify where the ray enters the voxel grid...
-            X = (int)Math.Floor((R.origin.x - OBox.Min_PT.x) / VoxelDims.x);
-            Y = (int)Math.Floor((R.origin.y - OBox.Min_PT.y) / VoxelDims.y);
-            Z = (int)Math.Floor((R.origin.z - OBox.Min_PT.z) / VoxelDims.z);
+            X = (int)Math.Floor((temp_origin.x - OBox.Min_PT.x) / VoxelDims.x);
+            Y = (int)Math.Floor((temp_origin.y - OBox.Min_PT.y) / VoxelDims.y);
+            Z = (int)Math.Floor((temp_origin.z - OBox.Min_PT.z) / VoxelDims.z);
 
             Xend = (int)Math.Floor((EndPt.x - OBox.Min_PT.x) / VoxelDims.x);
             Yend = (int)Math.Floor((EndPt.y - OBox.Min_PT.y) / VoxelDims.y);
@@ -1240,14 +1241,14 @@ namespace Pachyderm_Acoustic
             {
                 OutX = -1;
                 stepX = -1;
-                tMaxX = (Voxels[X, Y, Z].Min_PT.x - R.origin.x) / R.direction.x;
+                tMaxX = (Voxels[X, Y, Z].Min_PT.x - temp_origin.x) / R.direction.x;
                 tDeltaX = VoxelDims.x / R.direction.x * stepX;
             }
             else
             {
                 OutX = VoxelCtX;
                 stepX = 1;
-                tMaxX = (Voxels[X, Y, Z].Max_PT.x - R.origin.x) / R.direction.x;
+                tMaxX = (Voxels[X, Y, Z].Max_PT.x - temp_origin.x) / R.direction.x;
                 tDeltaX = VoxelDims.x / R.direction.x * stepX;
             }
 
@@ -1255,14 +1256,14 @@ namespace Pachyderm_Acoustic
             {
                 OutY = -1;
                 stepY = -1;
-                tMaxY = (Voxels[X, Y, Z].Min_PT.y - R.origin.y) / R.direction.y;
+                tMaxY = (Voxels[X, Y, Z].Min_PT.y - temp_origin.y) / R.direction.y;
                 tDeltaY = VoxelDims.y / R.direction.y * stepY;
             }
             else
             {
                 OutY = VoxelCtY;
                 stepY = 1;
-                tMaxY = (Voxels[X, Y, Z].Max_PT.y - R.origin.y) / R.direction.y;
+                tMaxY = (Voxels[X, Y, Z].Max_PT.y - temp_origin.y) / R.direction.y;
                 tDeltaY = VoxelDims.y / R.direction.y * stepY;
             }
 
@@ -1270,14 +1271,14 @@ namespace Pachyderm_Acoustic
             {
                 OutZ = -1;
                 stepZ = -1;
-                tMaxZ = (Voxels[X, Y, Z].Min_PT.z - R.origin.z) / R.direction.z;
+                tMaxZ = (Voxels[X, Y, Z].Min_PT.z - temp_origin.z) / R.direction.z;
                 tDeltaZ = VoxelDims.z / R.direction.z * stepZ;
             }
             else
             {
                 OutZ = VoxelCtZ;
                 stepZ = 1;
-                tMaxZ = (Voxels[X, Y, Z].Max_PT.z - R.origin.z) / R.direction.z;
+                tMaxZ = (Voxels[X, Y, Z].Max_PT.z - temp_origin.z) / R.direction.z;
                 tDeltaZ = VoxelDims.z / R.direction.z * stepZ;
             }
 
@@ -1522,8 +1523,8 @@ namespace Pachyderm_Acoustic
                 double t = (t1 + t2) / 2;
                 if (t > 0 && t * t < SqDistance(endPt, R.origin))
                 {
-                    double raydist = t / C_Sound + R.t_sum;
-                    Recs.Add(raydist - Direct_Time, R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * raydist) * SizeMod, R.direction * -1, Rho_C, R.Octave);// / (1.33333333333333 * Math.PI * Min_Radius2 * Min_Radius), EndPt - R.origin, R.Octave);//R.Scat_Mod * 
+                    double raydist = t / C_Sound + R.t_sum - Direct_Time;
+                    Recs.Add(raydist, R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * raydist) * SizeMod, R.direction * -1, Rho_C, R.Octave);// / (1.33333333333333 * Math.PI * Min_Radius2 * Min_Radius), EndPt - R.origin, R.Octave);//R.Scat_Mod * // - Direct_Time
                 }
             }
         

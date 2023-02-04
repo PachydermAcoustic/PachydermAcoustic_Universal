@@ -539,6 +539,7 @@ namespace Pachyderm_Acoustic
                 //    continue;
                 //}
             }
+
             dist = d_exmin;
             return ScreenAtten;
         }
@@ -1416,9 +1417,6 @@ namespace Pachyderm_Acoustic
             return F_out;
         }
 
-
-
-
         private void Record_Line_Segment(ref List<double> t, ref List<double[]> I, ref List<Vector> d, int rec_id)
         {
             if (SPL_Only)
@@ -1560,7 +1558,7 @@ namespace Pachyderm_Acoustic
                     {
                         double tdbl = (double)tau * dt;
                         double spl = I_Spline[oct].Interpolate(tdbl);
-                        Io[rec_id][oct][tau] += Math.Pow(10, spl);
+                        Io[rec_id][oct][tau] += Math.Pow(10, spl) * mod;
 
                         this.Dir_Rec_Pos[rec_id][oct][tau][0] += (float)(Math.Pow(10, xp_Spline[oct].Interpolate(tdbl)) * mod);
                         this.Dir_Rec_Neg[rec_id][oct][tau][0] += (float)(Math.Pow(10, xn_Spline[oct].Interpolate(tdbl)) * mod);
@@ -1576,8 +1574,6 @@ namespace Pachyderm_Acoustic
             I = new List<double[]>();
             d = new List<Vector>();
         }
-
-        
 
         private bool Line_Calculation()
         {
@@ -1649,14 +1645,26 @@ namespace Pachyderm_Acoustic
                 {
                     Vector dir = Receiver[i] - Samples[j];
                     double dist = dir.Length();
+
                     double tdbl = dist / C_Sound;
+
+                    if (dist > 300)
+                    {
+                        lock (LOCKED)
+                        {
+                            I_d.Add(dir);
+                            I.Add(new double[8]);
+                            time.Add(tdbl);
+                        }
+                        continue;
+                    }
 
                     double tau = tdbl * SampleFreq;
                     mintime = Math.Min(tdbl, mintime);
                     maxtime = Math.Max(tdbl, maxtime);
 
                     dir.Normalize();
-                    double[] W_temp = LSrc.DirPower(dir, i);
+                    double[] W_temp = LSrc.DirPower(dir, j);
 
                     if (tprev != 0)
                     {
@@ -1704,6 +1712,17 @@ namespace Pachyderm_Acoustic
                             //obstructed connection.
                             if (Screen_atten)
                             {
+                                if (dist > 200)
+                                {
+                                    lock (LOCKED)
+                                    {
+                                        I_d.Add(dir);
+                                        I.Add(new double[8]);
+                                        time.Add(tdbl);
+                                    }
+                                    break;
+                                }
+
                                 Hare.Geometry.Point[] path = new Point[0];
                                 double[] Power = Process_Screen_Attenuation(Samples[j], i, ref path, ref dist);
                                 for (int oct = 0; oct < 8; oct++)

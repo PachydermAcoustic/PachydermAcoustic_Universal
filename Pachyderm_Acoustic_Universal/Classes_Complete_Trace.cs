@@ -277,7 +277,7 @@ namespace Pachyderm_Acoustic
                 foreach (int o in _octaves)
                 {
                     Threshold_Power_2[o] = R.Energy[o] * 1E-4;//Cease splitting at 0.0001 sound intensity, or 40 dB down.
-                    Threshold_Power_3[o] = R.Energy[o] * 1E-10;//Finish 8 digits (more than generous) under 60 dB of decay. Full double Precision would be 15 digits.
+                    Threshold_Power_3[o] = R.Energy[o] * 1E-10;//Finish 4 digits (more than generous) under 60 dB of decay. Full double Precision would be 15 digits.
                 }
                 order = 0;
                 double u = 0, v = 0;
@@ -288,7 +288,8 @@ namespace Pachyderm_Acoustic
                     if (!Params.Room.shoot(R, out u, out v, out R.Surf_ID, out Start, out leg, out code))
                     {
                         //Ray is lost... move on...
-                        RecMain.CheckBroadbandRay(R, R.origin + R.direction * 1000000);
+                        if (order > IS_Order) 
+                            RecMain.CheckBroadbandRay(R, R.origin + R.direction * 1000000);
                         for (int j = 0; j < 8; j++) _lost[Params.ThreadID] += R.Energy[j];
                         goto Do_Scattered;
                     }
@@ -352,6 +353,7 @@ namespace Pachyderm_Acoustic
                                 _lost[Params.ThreadID] += OR.Intensity;
                                 goto Do_Scattered;
                             }
+
                             RecMain.CheckRay(OR, Start[0]);
 
                             OR.Intensity *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[OR.Octave] * leg[0]);
