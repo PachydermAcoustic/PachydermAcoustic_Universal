@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2020, Arthur van der Harten 
+//'Copyright (c) 2008-2023, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -54,6 +54,7 @@ namespace Pachyderm_Acoustic
             public bool hasnulllayers = false;
             //Raw edges
             protected List<MathNet.Numerics.Interpolation.CubicSpline[]> Edges;
+            protected List<int[]> Edge_Srfs = new List<int[]>();
             protected List<MathNet.Numerics.Interpolation.CubicSpline[]> Edge_Tangents;
             protected List<bool> Edge_isSoft;
             protected List<double> EdgeLength;
@@ -140,14 +141,21 @@ namespace Pachyderm_Acoustic
             /// cast a ray within the model.
             /// </summary>
             /// <param name="R">A ray, complete with origin point and direction...</param>
-            /// <param name="u">optional surface coordinate</param>
-            /// <param name="v">optional surface coordinate</param>
-            /// <param name="Poly_ID">the polygon of intersection</param>
+            /// <param name="top_id">the topology id (for multi-res models, or alternate universes...)</param>
             /// <param name="X_PT">the point of intersection</param>
-            /// <param name="t">the distance traveled by the ray</param>
-            /// <param name="code">returns code indicating where the ray has been (for polyrefractive)</param>
             /// <returns>true if successful, false if no hit</returns>
             public abstract bool shoot(Ray R, int topo, out X_Event Xpt);
+            /// <summary>
+            /// cast a ray within the model.
+            /// </summary>
+            /// <param name="R">A ray, complete with origin point and direction...</param>
+            /// <param name="top_id">the topology id (for multi-res models, or alternate universes...)</param>
+            /// <param name="X_PT">the point of intersection</param>
+            /// <param name="poly_origin1">the surface the ray is coming from</param>
+            /// <param name="poly_origin2">the surface the ray is coming from</param>
+            /// <returns>true if successful, false if no hit</returns>
+            public abstract bool shoot(Hare.Geometry.Ray R, int top_id, out Hare.Geometry.X_Event X, int poly_origin1, int poly_origin2 = -1);
+
             /// <summary>
             /// The local normal of a surface.
             /// </summary>
@@ -431,7 +439,7 @@ namespace Pachyderm_Acoustic
                 : base(Temp, hr, Pa, Air_Choice, EdgeCorrection, IsAcoustic)
             {
             }
-
+            
             public void Construct(Point[][][] Model, List<Material> Mat, List<Scattering> Scat, List<double[]> Trans, bool[] IsCurved = null, double[][][] Kurvatures = null, Vector[][][] Frame_Axes = null)
             {
                 if (Mat.Count != Model.Length && Scat.Count != Model.Length) throw new Exception("The number of material codes must match the numer of objects in the model...");
@@ -670,23 +678,12 @@ namespace Pachyderm_Acoustic
                 return Topo[0].Polygon_Centroid(id);
             }
 
-            //private bool coplanarmesh(Point[][] M)
-            //{
-            //    Vector meanN = new Vector();
-            //    if (M.FaceNormals.Count == 0) M.FaceNormals.ComputeFaceNormals();
-            //    meanN = M.FaceNormals[0];
-            //    meanN.Normalize();
-            //    double total = 0;
-            //    foreach (Vector n in M.FaceNormals) total += Math.Sqrt(meanN.X * n.X + meanN.Y * n.Y + meanN.Z * n.Z);
-            //    return total == 0;
-            //}
-
             public override void Register_Edges(IEnumerable<Hare.Geometry.Point> S, IEnumerable<Hare.Geometry.Point> R)
             {
                 //For Curved Edge Analysis using the universal Mathnet NURBS structures:
                 for (int i = 0; i < Edges.Count; i++)
                 {
-                    Edge_Nodes.Add(new Edge_Curved(ref S, ref R, Edge_isSoft[i], EdgeLength[i], Env_Prop, Edges[i], Edge_Tangents[0], Edge_Tangents[1]));
+                    Edge_Nodes.Add(new Edge_Curved(this, S, R, Edge_isSoft[i], EdgeLength[i], Env_Prop, Edges[i], Edge_Tangents[i], Edge_Srfs[i][0], Edge_Srfs[i][1])); //Edge_Tangents[1],
                 }
             }
  
@@ -704,25 +701,6 @@ namespace Pachyderm_Acoustic
                 Hare.Geometry.Point PX = Point - 2 * Topo[Top_Id].Normal(q) * Dist;
                 return PX;
             }
-
-            /// <summary>
-            /// Generates a random point on a polygon in the model
-            /// </summary>
-            /// <param name="Plane_ID">the plane index</param>
-            /// <param name="Polygon">a number from 0 to 1, which aids selection of a polygon on the plane.</param>
-            /// <param name="Rnd1">random number 1</param>
-            /// <param name="Rnd2">random number 2</param>
-            /// <param name="Rnd3">random number 3</param>
-            /// <returns>the random point</returns>
-            //public Hare.Geometry.Point RandomPoint(int Plane_ID, double Polygon, double Rnd1, double Rnd2, double Rnd3)
-            //{
-            //    int i = 0;
-            //    for (i = 0; i < PolyPlaneFract[Plane_ID].Length; i++)
-            //    {
-            //        if (PolyPlaneFract[Plane_ID][i] > Polygon) break;
-            //    }
-            //    return Topo[0].Polys[Topo[0].Plane_Members[Plane_ID][i]].GetRandomPoint(Rnd1, Rnd2, Rnd3);
-            //}
 
             public override void partition()
             {
@@ -782,7 +760,6 @@ namespace Pachyderm_Acoustic
                 }
                 Poly_ID = 0;
                 X_PT = new Hare.Geometry.Point();
-                //Rhino.RhinoDoc.ActiveDoc.Objects.Add(new Rhino.Geometry.LineCurve(Utilities.PachTools.HPttoRPt(R.origin), Utilities.PachTools.HPttoRPt(R.origin + R.direction)));
                 t = 0;
                 u = 0;
                 v = 0;
@@ -791,15 +768,6 @@ namespace Pachyderm_Acoustic
 
             public override bool shoot(Hare.Geometry.Ray R, out double u, out double v, out int Poly_ID, out List<Hare.Geometry.Point> X_PT, out List<double> t, out List<int> code)
             {
-                ///////////////////////
-                //double L2 = (R.direction.x * R.direction.x + R.direction.y * R.direction.y + R.direction.z *R.direction.z);
-                //if (L2 > 1.05 || L2 < 0.95)
-                //{
-                //    Rhino.RhinoApp.Write("Vectors have lost normalization...");
-                //}
-                ///////////////////////
-                //R.direction.Normalize();
-                ///////////////////////
                 Hare.Geometry.X_Event X = new Hare.Geometry.X_Event();
                 if (SP.Shoot(R, 0, out X))
                 {
@@ -824,7 +792,6 @@ namespace Pachyderm_Acoustic
                 }
                 Poly_ID = 0;
                 X_PT = new List<Hare.Geometry.Point>();
-                //Rhino.RhinoDoc.ActiveDoc.Objects.Add(new Rhino.Geometry.LineCurve(Utilities.PachTools.HPttoRPt(R.origin), Utilities.PachTools.HPttoRPt(R.origin + R.direction)));
                 t = new List<double>();
                 u = 0;
                 v = 0;
@@ -835,6 +802,11 @@ namespace Pachyderm_Acoustic
             public override bool shoot(Hare.Geometry.Ray R, int top_id, out Hare.Geometry.X_Event X)
             {
                 if (SP.Shoot(R, top_id, out X)) return true;
+                return false;
+            }
+            public override bool shoot(Hare.Geometry.Ray R, int top_id, out Hare.Geometry.X_Event X, int poly_origin1, int poly_origin2)
+            {
+                if (SP.Shoot(R, top_id, out X, poly_origin1, poly_origin2)) return true;
                 return false;
             }
 
@@ -1203,6 +1175,12 @@ namespace Pachyderm_Acoustic
             }
 
             public override bool shoot(Ray R, int topo, out X_Event Xpt)
+            {
+                Xpt = new X_Event(new Hare.Geometry.Point(), -1, -1, -1, -1);
+                return false;
+            }
+
+            public override bool shoot(Ray R, int top_id, out X_Event Xpt, int poly_origin1, int poly_origin2 = -1)
             {
                 Xpt = new X_Event(new Hare.Geometry.Point(), -1, -1, -1, -1);
                 return false;

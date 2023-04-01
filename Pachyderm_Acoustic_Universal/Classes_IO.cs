@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2020, Arthur van der Harten 
+//'Copyright (c) 2008-2023, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -189,7 +189,7 @@ namespace Pachyderm_Acoustic
                                 break;
                             case "Image-Source_Data":
                                 //10. Read Image Source Sound Data
-                                IS_Data[ISCT] = ImageSourceData.Read_Data(ref sr, Recs.Length, Direct_Data[DDCT - 1], false, ISCT, Pach_version);
+                                IS_Data[ISCT] = ImageSourceData.Read_Data(ref sr, Recs.Length, Direct_Data[DDCT - 1], false, Rho_C, ISCT, Pach_version);
                                 ISCT++;
                                 break;
                             case "Ray-Traced_Data":
@@ -198,6 +198,7 @@ namespace Pachyderm_Acoustic
                                 RTCT++;
                                 break;
                             case "End":
+                            case "":
                                 sr.Close();
                                 return true;
                         }
@@ -315,6 +316,7 @@ namespace Pachyderm_Acoustic
                             {
                                 //Write each energy value in the histogram (double)...
                                 sw.Write(Hist[e]);
+                                sw.Write(Rec_List[s].Rec_List[i].Pressure_rms(e, Octave));//v.2.5
                                 //Write each directional value in the histogram (double) (double) (double);
                                 if (Directional)
                                 {
@@ -524,28 +526,28 @@ namespace Pachyderm_Acoustic
                                         double[] Hist = Map[s].Rec_List[i].GetEnergyHistogram(Octave);
                                         if (Directional)
                                         {
-                                            if (version < 1.7)
+                                            if (version < 2.5)
                                             {
                                                 for (int e = 0; e < SampleCT; e++) 
-                                                    Map[s].Rec_List[i].Combine_Sample(e, sr.ReadDouble(), new Hare.Geometry.Vector(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()), new Hare.Geometry.Vector(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()), Octave);
+                                                    Map[s].Rec_List[i].Combine_Sample(e, sr.ReadDouble(), 0, new Hare.Geometry.Vector(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()), new Hare.Geometry.Vector(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()), Octave);
                                             }
                                             else
                                             {
                                                 for (int e = 0; e < SampleCT; e++)
-                                                    Map[s].Rec_List[i].Combine_Sample(e, sr.ReadDouble(), new Hare.Geometry.Vector(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()), new Hare.Geometry.Vector(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()), Octave);
+                                                    Map[s].Rec_List[i].Combine_Sample(e, sr.ReadDouble(), sr.ReadDouble(), new Hare.Geometry.Vector(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()), new Hare.Geometry.Vector(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()), Octave);
                                             }
                                         }
                                         else
                                         {
-                                            if (version < 1.7)
+                                            if (version < 2.5)
                                             {
                                                 for (int e = 0; e < SampleCT; e++)
-                                                    Map[s].Rec_List[i].Combine_Sample(e, sr.ReadDouble(), new Hare.Geometry.Vector(0, 0, 0), new Hare.Geometry.Vector(0, 0, 0), Octave);
+                                                    Map[s].Rec_List[i].Combine_Sample(e, sr.ReadDouble(), 0, new Hare.Geometry.Vector(0, 0, 0), new Hare.Geometry.Vector(0, 0, 0), Octave);
                                             }
                                             else
                                             {
                                                 for (int e = 0; e < SampleCT; e++)
-                                                    Map[s].Rec_List[i].Combine_Sample(e, sr.ReadDouble(), new Hare.Geometry.Vector(0, 0, 0), new Hare.Geometry.Vector(0,0,0), Octave);
+                                                    Map[s].Rec_List[i].Combine_Sample(e, sr.ReadDouble(), sr.ReadDouble(), new Hare.Geometry.Vector(0, 0, 0), new Hare.Geometry.Vector(0,0,0), Octave);
                                             }                                            
                                         }
                                     }

@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2020, Arthur van der Harten 
+//'Copyright (c) 2008-2023, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -297,7 +297,7 @@ namespace Pachyderm_Acoustic
         }
 
         /// <summary>
-        /// Adds Screen attenuation to this calculation (for line source elements).
+        /// Adds Screen attenuation to this calculation (for individual point elements).
         /// </summary>
         private double[] Process_Screen_Attenuation(Point SrcPt, int rec_id, ref Hare.Geometry.Point[] path, ref double dist)
         {
@@ -544,57 +544,56 @@ namespace Pachyderm_Acoustic
             return ScreenAtten;
         }
 
-        /// <summary>
-        /// Adds Screen attenuation to this calculation.
-        /// </summary>
-        private bool Process_Screen_Attenuation(int rec_id, ref Hare.Geometry.Point[] path)
-        {
-            List<Hare.Geometry.Point[]> Paths = new List<Hare.Geometry.Point[]>();
-            List<double> d_ex = new List<double>();
-            double[] f = new double[8] { 62.5, 125, 250, 500, 1000, 2000, 4000, 8000 };
-            double d_length = (Receiver[rec_id] - Src.H_Origin()).Length();
-            Random Rnd = new Random();
-            object LOCKED = new object();
+        ///// <summary>
+        ///// Adds Screen attenuation to this calculation.
+        ///// </summary>
+        //private bool Process_Screen_Attenuation(int rec_id, ref Hare.Geometry.Point[] path)
+        //{
+        //    List<Hare.Geometry.Point[]> Paths = new List<Hare.Geometry.Point[]>();
+        //    List<double> d_ex = new List<double>();
+        //    double[] f = new double[8] { 62.5, 125, 250, 500, 1000, 2000, 4000, 8000 };
+        //    double d_length = (Receiver[rec_id] - Src.H_Origin()).Length();
+        //    Random Rnd = new Random();
+        //    object LOCKED = new object();
 
-            //No screen contribution needed if receiver is visible.
-            //if (!OcclusionCheck(Src.H_Origin(), Receiver[rec_id], 0, ref Rnd)) return false;
-            //for (int edge = 0; edge < (Room as Polygon_Scene).Raw_Edge.Length; edge++)
-            System.Threading.Tasks.Parallel.For(0, (Room as Polygon_Scene).Raw_Edge.Length, (edge) =>
-            {
-                //Search every edge for a view of both the source and receiver.
-                bool omit = true;
-                for (int i = 0; i < (Room as Polygon_Scene).Raw_Edge[edge].Polys.Count; i++) omit &= Room.IsTransmissive[(Room as Polygon_Scene).Raw_Edge[edge].Polys[i].Poly_ID];
-                if (omit) return;
+        //    //No screen contribution needed if receiver is visible.
+        //    //if (!OcclusionCheck(Src.H_Origin(), Receiver[rec_id], 0, ref Rnd)) return false;
+        //    //for (int edge = 0; edge < (Room as Polygon_Scene).Raw_Edge.Length; edge++)
+        //    System.Threading.Tasks.Parallel.For(0, (Room as Polygon_Scene).Raw_Edge.Length, (edge) =>
+        //    {
+        //        //Search every edge for a view of both the source and receiver.
+        //        bool omit = true;
+        //        for (int i = 0; i < (Room as Polygon_Scene).Raw_Edge[edge].Polys.Count; i++) omit &= Room.IsTransmissive[(Room as Polygon_Scene).Raw_Edge[edge].Polys[i].Poly_ID];
+        //        if (omit) return;
 
-                Hare.Geometry.Point pt;
-                if (ClosestPtSegmentSegment(Src.H_Origin(), Receiver[rec_id], (Room as Polygon_Scene).Raw_Edge[edge], out pt))
-                {
-                    if (!(OcclusionCheck(Src.H_Origin(), pt, 0, ref Rnd) && OcclusionCheck(Receiver[rec_id], pt, 0, ref Rnd)))
-                    {
-                        // Edge point is unoccluded. Register as a reflection.
-                        lock (LOCKED)
-                        {
-                            d_ex.Add((Src.H_Origin() - pt).Length() + (Receiver[rec_id] - pt).Length());
-                            Paths.Add(new Point[3] { Src.H_Origin(), pt, Receiver[rec_id] });
-                        }
-                    }
-                }
-            });
+        //        Hare.Geometry.Point pt;
+        //        if (ClosestPtSegmentSegment(Src.H_Origin(), Receiver[rec_id], (Room as Polygon_Scene).Raw_Edge[edge], out pt))
+        //        {
+        //            if (!(OcclusionCheck(Src.H_Origin(), pt, 0, ref Rnd) && OcclusionCheck(Receiver[rec_id], pt, 0, ref Rnd)))
+        //            {
+        //                // Edge point is unoccluded. Register as a reflection.
+        //                lock (LOCKED)
+        //                {
+        //                    d_ex.Add((Src.H_Origin() - pt).Length() + (Receiver[rec_id] - pt).Length());
+        //                    Paths.Add(new Point[3] { Src.H_Origin(), pt, Receiver[rec_id] });
+        //                }
+        //            }
+        //        }
+        //    });
 
-            if (Paths.Count == 0)
-            {
-                for (int oct = 0; oct < 8; oct++) Io[rec_id][oct][0] = double.Epsilon;
-                return false;
-            }
-            double d_exmin = d_ex.Min();
-            int minid = d_ex.IndexOf(d_exmin);
-            path = Paths[minid];
-            //double[] atten = new double[8];
-            double sigma2pi_170 = 2 * Math.PI * (d_exmin - d_length) / 170.0;
-            for (int oct = 0; oct < 8; oct++) Io[rec_id][oct][0] /= (sigma2pi_170 * f[oct] * 3.162278 / Math.Pow(Math.Tanh(Math.Sqrt(sigma2pi_170 * f[oct])), 2));
+        //    if (Paths.Count == 0)
+        //    {
+        //        for (int oct = 0; oct < 8; oct++) Io[rec_id][oct][0] = double.Epsilon;
+        //        return false;
+        //    }
+        //    double d_exmin = d_ex.Min();
+        //    int minid = d_ex.IndexOf(d_exmin);
+        //    path = Paths[minid];
+        //    double sigma2pi_170 = 2 * Math.PI * (d_exmin - d_length) / 170.0;
+        //    for (int oct = 0; oct < 8; oct++) Io[rec_id][oct][0] /= (sigma2pi_170 * f[oct] * 3.162278 / Math.Pow(Math.Tanh(Math.Sqrt(sigma2pi_170 * f[oct])), 2));
 
-            return true;
-        }
+        //    return true;
+        //}
 
         private bool OcclusionCheck(Hare.Geometry.Point Src, Hare.Geometry.Point EndPt, int Thread_Id, ref Random Rnd)
         {
@@ -776,7 +775,6 @@ namespace Pachyderm_Acoustic
                 Io = new double[Receiver.Count][][];
                 Time_Pt = new double[Receiver.Count];
 
-                //for (int i = 0; i < Receiver.Count; i++)
                 System.Threading.Tasks.Parallel.For(0, Receiver.Count, (i) =>
                 {
                      Io[i] = new double[8][];
@@ -802,25 +800,32 @@ namespace Pachyderm_Acoustic
 
                      double[] Power = Src.DirPower(0, rnd.Next(), dir);
 
-                     Io[i][0][0] = Power[0] * Math.Pow(10, -.1 * Room.Attenuation(0)[0] * Length) * transmod[0] / (4 * Math.PI * Length * Length);
-                     Io[i][1][0] = Power[1] * Math.Pow(10, -.1 * Room.Attenuation(0)[1] * Length) * transmod[1] / (4 * Math.PI * Length * Length);
-                     Io[i][2][0] = Power[2] * Math.Pow(10, -.1 * Room.Attenuation(0)[2] * Length) * transmod[2] / (4 * Math.PI * Length * Length);
-                     Io[i][3][0] = Power[3] * Math.Pow(10, -.1 * Room.Attenuation(0)[3] * Length) * transmod[3] / (4 * Math.PI * Length * Length);
-                     Io[i][4][0] = Power[4] * Math.Pow(10, -.1 * Room.Attenuation(0)[4] * Length) * transmod[4] / (4 * Math.PI * Length * Length);
-                     Io[i][5][0] = Power[5] * Math.Pow(10, -.1 * Room.Attenuation(0)[5] * Length) * transmod[5] / (4 * Math.PI * Length * Length);
-                     Io[i][6][0] = Power[6] * Math.Pow(10, -.1 * Room.Attenuation(0)[6] * Length) * transmod[6] / (4 * Math.PI * Length * Length);
-                     Io[i][7][0] = Power[7] * Math.Pow(10, -.1 * Room.Attenuation(0)[7] * Length) * transmod[7] / (4 * Math.PI * Length * Length);
+                    if (!Validity[i] && Screen_atten)
+                    {
+                        Hare.Geometry.Point[] path = new Point[0];
+                        double dist = 0;
+                        double[] Atten = Process_Screen_Attenuation(Src.H_Origin(), i, ref path, ref dist);
 
-                     if (!Validity[i] && Screen_atten)
-                     {
-                         Hare.Geometry.Point[] path = new Point[0];
-                         if (Process_Screen_Attenuation(i, ref path))
-                         {
-                             dir = path[2] - path[1];
-                             dir.Normalize();
-                         }
-                     }
-
+                        for (int oct = 0; oct < 8; oct++)
+                        {
+                            Io[i][oct][0] = Power[oct] * Atten[oct] * transmod[oct];
+                            Io[i][oct][0] *= Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist);
+                        }
+                        dir = path[2] - path[1];
+                        dir.Normalize();
+                    }
+                    else
+                    {
+                        Io[i][0][0] = Power[0] * Math.Pow(10, -.1 * Room.Attenuation(0)[0] * Length) * transmod[0] / (4 * Math.PI * Length * Length);
+                        Io[i][1][0] = Power[1] * Math.Pow(10, -.1 * Room.Attenuation(0)[1] * Length) * transmod[1] / (4 * Math.PI * Length * Length);
+                        Io[i][2][0] = Power[2] * Math.Pow(10, -.1 * Room.Attenuation(0)[2] * Length) * transmod[2] / (4 * Math.PI * Length * Length);
+                        Io[i][3][0] = Power[3] * Math.Pow(10, -.1 * Room.Attenuation(0)[3] * Length) * transmod[3] / (4 * Math.PI * Length * Length);
+                        Io[i][4][0] = Power[4] * Math.Pow(10, -.1 * Room.Attenuation(0)[4] * Length) * transmod[4] / (4 * Math.PI * Length * Length);
+                        Io[i][5][0] = Power[5] * Math.Pow(10, -.1 * Room.Attenuation(0)[5] * Length) * transmod[5] / (4 * Math.PI * Length * Length);
+                        Io[i][6][0] = Power[6] * Math.Pow(10, -.1 * Room.Attenuation(0)[6] * Length) * transmod[6] / (4 * Math.PI * Length * Length);
+                        Io[i][7][0] = Power[7] * Math.Pow(10, -.1 * Room.Attenuation(0)[7] * Length) * transmod[7] / (4 * Math.PI * Length * Length);
+                    }
+                     
                      float time = (float)(Length / C_Sound);
 
                      for (int oct = 0; oct < 8; oct++)
@@ -1296,8 +1301,8 @@ namespace Pachyderm_Acoustic
                         for (int k = 0; k < 4096; k++)
                         {
                             int j2 = 2 * j;
-                            Fdir[i][j2][t + k] += Pmin[k] * vpos.byint(j);//((double.IsNaN(hist_temp[j2][k])) ? 0: hist_temp[j2][k]);
-                            Fdir[i][j2 + 1][t + k] += Pmin[k] * vneg.byint(j);//((double.IsNaN(hist_temp[j2 + 1][k])) ? 0 : hist_temp[j2 + 1][k]);
+                            Fdir[i][j2][t + k] += Pmin[k] * Math.Sqrt(vpos.byint(j));//((double.IsNaN(hist_temp[j2][k])) ? 0: hist_temp[j2][k]);
+                            Fdir[i][j2 + 1][t + k] += Pmin[k] * Math.Sqrt(vneg.byint(j));//((double.IsNaN(hist_temp[j2 + 1][k])) ? 0 : hist_temp[j2 + 1][k]);
                         }
                     }
                 }

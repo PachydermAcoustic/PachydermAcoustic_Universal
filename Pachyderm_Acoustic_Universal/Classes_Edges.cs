@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2020, Arthur van der Harten 
+//'Copyright (c) 2008-2023, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -18,7 +18,12 @@
 
 using System;
 using System.Collections.Generic;
+//using System.Windows;
 using Hare.Geometry;
+using MathNet.Numerics.LinearAlgebra.Factorization;
+using MathNet.Numerics.Providers.LinearAlgebra;
+using MathNet.Spatial.Euclidean;
+//using MathNet.Numerics.Providers.LinearAlgebra;
 
 namespace Pachyderm_Acoustic
 {
@@ -27,7 +32,14 @@ namespace Pachyderm_Acoustic
         public static int[] Rigid = new int[] { 1, 1, 1, 1 };
         public static int[] Soft = new int[] { -1, 1, 1, -1 };
         protected List<EdgeSource> Sources = new List<EdgeSource>();
+        protected int Plane1;
+        protected int Plane2;
 
+        public Edge (int p1, int p2)
+        {
+            Plane1 = p1;
+            Plane2 = p2;
+        }
         public class EdgeSource
         {
             const double sincos45 = 0.70710678118654752440084436210485;
@@ -40,59 +52,69 @@ namespace Pachyderm_Acoustic
             double Z_Range;
             double Z_Range_2;
             double Z_dot;//Z_Range squared.
-            Hare.Geometry.Vector[] Normal = new Vector[2];
-            Hare.Geometry.Vector[] Tangent = new Vector[2];
+            Hare.Geometry.Vector[] Normal = new Hare.Geometry.Vector[2];
+            Hare.Geometry.Vector[] Tangent = new Hare.Geometry.Vector[2];
             int[] attr;
+            public int Poly_1;
+            public int Poly_2;
+            public bool isthinplate;
 
-            public EdgeSource(int[] attr_in, Hare.Geometry.Point PtZ0, Hare.Geometry.Point _PtZ, Vector[] _Tangents)
+            public EdgeSource(int[] attr_in, Hare.Geometry.Point PtZ0, Hare.Geometry.Point _PtZ, Hare.Geometry.Vector[] _Tangents, int poly1, int poly2 = -1)
             {
+                isthinplate = poly2 < 0; 
                 attr = attr_in;
                 Tangent = _Tangents;
                 Z_Norm = _PtZ - PtZ0;
+                Poly_1 = poly1;
+                Poly_2 = poly2;
 
                 Z_Range = Z_Norm.Length();
                 Z_dot = Z_Range * Z_Range;//Hare_math.Dot(Z_Norm, Z_Norm);
                 Z_Norm /= Z_Range;
                 Z_Range_2 = Z_Range / 2;
                 Z_mid = (PtZ0 + _PtZ) / 2;
-                Vector Bisector = (Tangent[0] + Tangent[1]) / 2;
+                Hare.Geometry.Vector Bisector = (Tangent[0] + Tangent[1]) / 2;
                 Bisector.Normalize();
                 double BisectAngle = Math.Acos(Hare_math.Dot(Tangent[0], Bisector));
-                if (BisectAngle == 0) BisectAngle = 1E-12;
-                v = new double[2] { Math.PI / (2 * BisectAngle), Math.PI / (Utilities.Numerics.PiX2 - 2 * BisectAngle) };
+                if (BisectAngle == 0)
+                {
+                    BisectAngle = 1E-12;
+                    v = new double[2] { Math.PI / (Utilities.Numerics.PiX2 - 2 * BisectAngle), Math.PI / (Utilities.Numerics.PiX2 - 2 * BisectAngle) };
+                }
+                else//v = new double[2] { Math.PI / (Utilities.Numerics.PiX2 - 2 * BisectAngle), Math.PI / (2 * BisectAngle) };
+                {
+                    v = new double[2] { Math.PI / (2 * BisectAngle), Math.PI / (Utilities.Numerics.PiX2 - 2 * BisectAngle) };
+                }
                 v_4pi = new double[2] { v[0] / (4 * Math.PI), v[1] / (4 * Math.PI) };
                 v_2pi = new double[2] { v[0] / (2 * Math.PI), v[1] / (2 * Math.PI) };
                 Normal[0] = Hare_math.Cross(_Tangents[0], Z_Norm);
                 Normal[1] = Hare_math.Cross(_Tangents[1], Z_Norm * -1);
 
-                if (Hare_math.Dot(Normal[0], Bisector) > 0)
-                {
-                    Normal[0] *= -1;
-                    Normal[1] *= -1;
-                }
-
-                Z_limits = new Point[2] {PtZ0, _PtZ};
+                if (Hare_math.Dot(Normal[0], Bisector) >= 0) Normal[0] *= -1;
+                if (Hare_math.Dot(Normal[0], Bisector) >= 0) Normal[0] *= -1;
+                Z_limits = new Hare.Geometry.Point[2] { PtZ0, _PtZ };
 
             }
 
-            public EdgeSource(int[] attr_in, Hare.Geometry.Point Z_mid_in, double Delta_Z, Vector[] _Tangents)
+            public EdgeSource(int[] attr_in, Hare.Geometry.Point Z_mid_in, double Delta_Z, Hare.Geometry.Vector[] _Tangents, int poly1, int poly2 = -1)
             {
                 attr = attr_in;
                 Tangent = _Tangents;
+                Poly_1 = poly1;
+                Poly_2 = poly2;
                 Z_Norm = Hare.Geometry.Hare_math.Cross(_Tangents[0], _Tangents[1]);
                 Z_Range = Delta_Z;
                 Z_dot = Z_Range * Z_Range;//Hare_math.Dot(Z_Norm, Z_Norm);
                 Z_Range_2 = Z_Range / 2;
                 Z_Norm.Normalize();
                 Z_mid = Z_mid_in;
-                Vector Bisector = (Tangent[0] + Tangent[1]) / 2;
+                Hare.Geometry.Vector Bisector = (Tangent[0] + Tangent[1]) / 2;
                 Bisector.Normalize();
                 double BisectAngle = Math.Acos(Hare_math.Dot(Tangent[0], Bisector));
                 if (BisectAngle == 0) BisectAngle = 1E-12;
                 v = new double[2] { Math.PI / (2 * BisectAngle), Math.PI / (Utilities.Numerics.PiX2 - 2 * BisectAngle) };
                 v_4pi = new double[2] { v[0] / (4 * Math.PI), v[1] / (4 * Math.PI) };
                 v_2pi = new double[2] { v[0] / (2 * Math.PI), v[1] / (2 * Math.PI) };
-                //BisectAngle = Math.Cos(BisectAngle);
                 Normal[0] = Hare_math.Cross(_Tangents[0], Z_Norm);
                 Normal[1] = Hare_math.Cross(_Tangents[1], Z_Norm * -1);
 
@@ -108,22 +130,8 @@ namespace Pachyderm_Acoustic
                 //diffx = Tangent;
                 //diffy = Normal;
                 //diffz = Z_Norm;
-                Vector S_D = S - Z_mid;
-                Vector R_D = R - Z_mid;
-
-                Vector S_Norm = new Vector(S_D.x, S_D.y, S_D.z) / S_D.Length();// S - Z_mid;
-                Vector R_Norm = new Vector(R_D.x, R_D.y, R_D.z) / R_D.Length();//R - Z_mid;
-
-                double S0 = Hare_math.Dot(S_Norm, Tangent[0]);
-                double S1 = Hare_math.Dot(S_Norm, Tangent[1]);
-
-                uint SDIR = 0;
-                if (S0 > S1)
-                {
-                    if (S1 > 0) SDIR = 1;
-                }
-
-                Obtuse_Side = (Hare_math.Dot(S_Norm, Normal[SDIR]) < 0 ? 1 : 0);
+                Hare.Geometry.Vector S_D = S - Z_mid;
+                Hare.Geometry.Vector R_D = R - Z_mid;
 
                 zs = Hare_math.Dot(S_D, Z_Norm);//S_Coord.z;
                 zr = Hare_math.Dot(R_D, Z_Norm);//R_Coord.z;
@@ -133,21 +141,88 @@ namespace Pachyderm_Acoustic
 
                 rs = Math.Sqrt(S_p.x * S_p.x + S_p.y * S_p.y + S_p.z * S_p.z);//Math.Sqrt(S_Coord.x * S_Coord.x + S_Coord.y * S_Coord.y + S_Coord.z * S_Coord.z);
                 rr = Math.Sqrt(R_p.x * R_p.x + R_p.y * R_p.y + R_p.z * R_p.z);//Math.Sqrt(R_Coord.x * R_Coord.x + R_Coord.y * R_Coord.y + R_Coord.z * R_Coord.z);
-                thetas = Math.Acos(Hare_math.Dot(Tangent[SDIR], S_Norm));//Math.Atan2(S_Coord.y, S_Coord.x);
 
-                double rdt = Hare_math.Dot(Normal[SDIR] * (Obtuse_Side == 1 ? 1 : -1), R_Norm);
+                Hare.Geometry.Vector S_Norm = new Vector(S_p.x, S_p.y, S_p.z);
+                S_Norm.Normalize();
+                Hare.Geometry.Vector R_Norm = new Vector(R_p.x, R_p.y, R_p.z);
+                R_Norm.Normalize();
 
-                if (rdt > 0)
+                uint SDIR = 0;
+
+                if (isthinplate)
                 {
-                    thetar = Utilities.Numerics.PiX2 - Math.Acos(Hare_math.Dot(Tangent[SDIR], R_Norm));//Math.Atan2(R_Coord.y, R_Coord.x);
+                    if (Hare_math.Dot(S_Norm, Tangent[0]) < 0) SDIR = 1;
                 }
                 else
                 {
-                    thetar = Math.Acos(Hare_math.Dot(Tangent[SDIR], R_Norm));
+                    double S0 = Math.Abs(Hare_math.Dot(S_Norm, Tangent[0]));
+                    double S1 = Math.Abs(Hare_math.Dot(S_Norm, Tangent[1]));
+                    if (S1 > S0) SDIR = 1;
                 }
+                Obtuse_Side = (Hare_math.Dot(S_Norm, Normal[SDIR]) > 0 ? 1 : 0);
 
+                Vector AltSNorm = Hare_math.Cross(S_Norm, Z_Norm);
+                Vector AltRNorm = Hare_math.Cross(R_Norm, Z_Norm);
+                thetas = Math.Acos(Hare_math.Dot(AltSNorm, Normal[SDIR]));//Math.Atan2(S_Coord.y, S_Coord.x);
+
+                double rdt = Hare_math.Dot(Normal[SDIR] * (Obtuse_Side == 1 ? 1 : -1), AltRNorm);
+
+                if (rdt > 0)
+                {
+                    thetar = Utilities.Numerics.PiX2 - Math.Acos(Math.Abs(Hare_math.Dot(AltRNorm, Normal[SDIR])));//Math.Atan2(R_Coord.y, R_Coord.x);
+                }
+                else
+                {
+                    thetar = Math.Acos(Math.Abs(Hare_math.Dot(AltRNorm, Normal[SDIR])));
+                }
                 return true;
             }
+
+            //public bool Cyl_Coord(Hare.Geometry.Point S, Hare.Geometry.Point R, ref double rs, ref double thetas, ref double zs, ref double rr, ref double thetar, ref double zr, out int Obtuse_Side)//, out double[] tm, out double[] tl)
+            //{
+            //    //diffx = Tangent;
+            //    //diffy = Normal;
+            //    //diffz = Z_Norm;
+            //    Hare.Geometry.Vector S_D = S - Z_mid;
+            //    Hare.Geometry.Vector R_D = R - Z_mid;
+
+            //    Hare.Geometry.Vector S_Norm = new Hare.Geometry.Vector(S_D.x, S_D.y, S_D.z) / S_D.Length();// S - Z_mid;
+            //    Hare.Geometry.Vector R_Norm = new Hare.Geometry.Vector(R_D.x, R_D.y, R_D.z) / R_D.Length();//R - Z_mid;
+
+            //    double S0 = Hare_math.Dot(S_Norm, Tangent[0]);
+            //    double S1 = Hare_math.Dot(S_Norm, Tangent[1]);
+
+            //    uint SDIR = 0;
+            //    if (S0 > S1)
+            //    {
+            //        if (S1 > 0) SDIR = 1;
+            //    }
+
+            //    Obtuse_Side = (Hare_math.Dot(S_Norm, Normal[SDIR]) < 0 ? 1 : 0);
+
+            //    zs = Hare_math.Dot(S_D, Z_Norm);//S_Coord.z;
+            //    zr = Hare_math.Dot(R_D, Z_Norm);//R_Coord.z;
+
+            //    Hare.Geometry.Point S_p = S - (Z_mid + zs * Z_Norm);
+            //    Hare.Geometry.Point R_p = R - (Z_mid + zr * Z_Norm);
+
+            //    rs = Math.Sqrt(S_p.x * S_p.x + S_p.y * S_p.y + S_p.z * S_p.z);//Math.Sqrt(S_Coord.x * S_Coord.x + S_Coord.y * S_Coord.y + S_Coord.z * S_Coord.z);
+            //    rr = Math.Sqrt(R_p.x * R_p.x + R_p.y * R_p.y + R_p.z * R_p.z);//Math.Sqrt(R_Coord.x * R_Coord.x + R_Coord.y * R_Coord.y + R_Coord.z * R_Coord.z);
+            //    thetas = Math.Acos(Math.Abs(Hare_math.Dot(Hare_math.Cross(S_Norm, Z_Norm), Normal[SDIR])));//Math.Atan2(S_Coord.y, S_Coord.x);
+
+            //    double rdt = Hare_math.Dot(Normal[SDIR] * (Obtuse_Side == 1 ? 1 : -1), R_Norm);
+
+            //    if (rdt > 0)
+            //    {
+            //        thetar = Utilities.Numerics.PiX2 - Math.Acos(Math.Abs(Hare_math.Dot(Hare_math.Cross(R_Norm, Z_Norm), Normal[SDIR])));//Math.Atan2(R_Coord.y, R_Coord.x);
+            //    }
+            //    else
+            //    {
+            //        thetar = Math.Acos(Math.Abs(Hare_math.Dot(Hare_math.Cross(R_Norm, Z_Norm), Normal[SDIR])));
+            //    }
+
+            //    return true;
+            //}
 
             public double[] Phi(double thetaS, double thetaR)
             {
@@ -194,6 +269,14 @@ namespace Pachyderm_Acoustic
                 return (Z_R * r_S + Z_S * r_R) / (r_R + r_S);
             }
 
+            public bool Is_Apex(Hare.Geometry.Point Src, Hare.Geometry.Point Rec)
+            {
+                //Hare.Geometry.Vector T_Comp = Hare.Geometry.Hare_math.Cross(this.Z_mid - Src, this.Z_mid - Rec);
+                //return (Z_Norm.x * T_Comp.x + Z_Norm.y * T_Comp.y + Z_Norm.z * T_Comp.z) > .95;
+                //Do this as line closest point operation between two points. t > 1 or t < 0 will result in better certainty that the apex lies within this segment.
+                return false;
+            }
+
             public double Calc_Pressure(double B, double m_in, double l_out, bool obtuse)
             {
                 return (-v_4pi[Convert.ToInt32(obtuse)] * B) / (m_in * l_out);
@@ -210,7 +293,7 @@ namespace Pachyderm_Acoustic
 
             public double Aux_n(double alpha_in, double gamma_out, double thetaS, double thetaR)
             {
-                double Z = 1 + Math.Sin(alpha_in) * Math.Sin(gamma_out) / (Math.Cos(alpha_in) * Math.Cos(gamma_out));
+                double Z = (1 + Math.Sin(alpha_in) * Math.Sin(gamma_out)) / (Math.Cos(alpha_in) * Math.Cos(gamma_out));
                 return Math.Log(Z + Math.Sqrt(Z * Z - 1));
             }
 
@@ -493,9 +576,9 @@ namespace Pachyderm_Acoustic
                     double B = Apex_Solve(Za, zs, zr, rs, rr, thetas, thetar, obtuse, out m, out l);
                     dM[0] = m;
                     dL[0] = l;
-                    return B;
+                    return B * Z_Range;
                 }
-                return Gen_Solve(Za, zs, zr, rs, rr, thetas, thetar, obtuse, ref m, ref l);
+                return Gen_Solve(Za, zs, zr, rs, rr, thetas, thetar, obtuse, ref m, ref l) * Z_Range;
             }
 
             //public double Gen_Solve(Hare.Geometry.Point src, Hare.Geometry.Point rec, ref double m, ref double l)
@@ -524,6 +607,7 @@ namespace Pachyderm_Acoustic
                 double B = -v_4pi[obtuse] * Beta; /// / (m * l)
                 return B;
             }
+
         }
 
         /// <summary>
@@ -543,6 +627,22 @@ namespace Pachyderm_Acoustic
             return Apex;
         }
 
+        public int find_poly_id(Environment.Polygon_Scene Room, Point c, int Plane_ID)
+        {
+            double d = double.PositiveInfinity;
+            int p1 = 0;
+                foreach (int poly in Room.ObjectMembers[Plane_ID])
+                {
+                    double d_temp = Room.Hare_Data.Polys[poly].SqDistanceToEdges(c);
+                    if (d_temp < d)
+                    {
+                        p1 = poly;
+                        d = d_temp;
+                    } 
+                }
+            return p1;
+        }
+
         public List<EdgeSource> EdgeSources
         {
             get
@@ -551,60 +651,20 @@ namespace Pachyderm_Acoustic
             }
         }
 
-        //public Curve Basis_Edge
-        //{
-        //    get
-        //    {
-        //        return BasisCurve;
-        //    }
-        //}
-
-        //public void Solve(Hare.Geometry.Point Src, Hare.Geometry.Point Rec, Environment.Scene Rm, out List<double> P, out List<double> t, out List<Vector> dir, out List<Hare.Geometry.Point> PT, int threadid, ref Random r)
-        //{
-        //    P = new List<double>();
-        //    t = new List<double>();
-        //    dir = new List<Vector>();
-        //    PT = new List<Hare.Geometry.Point>();
-        //    for(int i = 0; i < Sources.Count; i++)
-        //    {
-        //        double dr = 0, ds = 0;                
-        //        double p = Sources[i].Flex_Solve(Src, Rec, ref ds, ref dr);
-        //        Vector DirR = (Sources[i].Z_mid - Rec);
-        //        Vector DirS = (Sources[i].Z_mid - Src);
-
-        //        DirS /= ds;
-        //        DirR /= dr;
-        //        double u, v;
-        //        Hare.Geometry.Point pt;
-        //        int id;
-        //        double d;
-
-        //        //Occlusion Check...
-        //        if (Rm.shoot(new Ray(Src, DirS, threadid, r.Next()), out u, out v, out id, out pt, out d)) if(d < ds) {continue;};
-        //        if (Rm.shoot(new Ray(Rec, DirR, threadid, r.Next()), out u, out v, out id, out pt, out d)) if(d < ds) {continue;};
-
-        //        t.Add((ds + dr) / Rm.Sound_speed(Sources[i].Z_mid));
-        //        dir.Add(DirR);
-        //        PT.Add(Sources[i].Z_mid);
-        //        P.Add(p);
-        //    }
-
-        //    //double MaxT = 0;
-        //    //for (int i = 0; i < t.Count; i++) if (MaxT < t[i]) MaxT = t[i];
-
-        //    //for (int i = 0; i < P.Count; i++)
-        //    //{
-
-        //    //}
-        //}
+        public int[] SurfaceIDs
+        {
+            get { return new int[2] { Plane1, Plane2 }; }
+        }
     }
 
-    public class Edge_Straight : Edge
+
+public class Edge_Straight : Edge
     {
         Hare.Geometry.Point PointA;
         Hare.Geometry.Point PointB;
 
-        public Edge_Straight(ref IEnumerable<Hare.Geometry.Point> SPT, ref IEnumerable<Hare.Geometry.Point> RPT, Environment.Medium_Properties Att_Props, bool isSoft, Hare.Geometry.Point[] PointS, MathNet.Numerics.Interpolation.CubicSpline[] TangentA, MathNet.Numerics.Interpolation.CubicSpline[] TangentB)
+        public Edge_Straight(Environment.Polygon_Scene Room, IEnumerable<Hare.Geometry.Point> SPT, IEnumerable<Hare.Geometry.Point> RPT, Environment.Medium_Properties Att_Props, bool isSoft, Hare.Geometry.Point[] PointS, MathNet.Numerics.Interpolation.CubicSpline[] TangentA, MathNet.Numerics.Interpolation.CubicSpline[] TangentB, int plane_1, int plane_2 = -1)
+        : base(plane_1, plane_2)
         {
             PointA = PointS[0];
             PointB = PointS[PointS.Length-1];
@@ -642,8 +702,9 @@ namespace Pachyderm_Acoustic
             for (int i = 1; i < El_Ct; i++)
             {
                 Hare.Geometry.Point Pt2 = PointA - i * Z_Dir * DeltaZ;
+                Point c = (Pt1 + Pt2) / 2; 
                 Vector[] HTangents = new Vector[2] { new Vector(TangentA[0].Interpolate(i), TangentA[1].Interpolate(i), TangentA[2].Interpolate(i)), new Vector(TangentB[0].Interpolate(i), TangentB[1].Interpolate(i), TangentB[2].Interpolate(i)) };
-                Sources.Add(new EdgeSource(Edge.Rigid, Pt1, Pt2, HTangents));
+                Sources.Add(new EdgeSource(Edge.Rigid, Pt1, Pt2, HTangents, find_poly_id(Room, c, Plane1), Plane2 < 0? -1 : find_poly_id(Room, c, Plane2)));
                 Pt1 = Pt2;
             }
 
@@ -669,7 +730,41 @@ namespace Pachyderm_Acoustic
 
     public class Edge_Curved : Edge
     {
-        public Edge_Curved(ref IEnumerable<Hare.Geometry.Point> SPT, ref IEnumerable<Hare.Geometry.Point> RPT, bool issoft, double EdgeLength, Environment.Medium_Properties Att_Props, MathNet.Numerics.Interpolation.CubicSpline[] Edge_Crv, MathNet.Numerics.Interpolation.CubicSpline[] TangentA, MathNet.Numerics.Interpolation.CubicSpline[] TangentB)
+        public Edge_Curved(Environment.Polygon_Scene Room, Hare.Geometry.Point From, Point To, bool issoft, double EdgeLength, Environment.Medium_Properties Att_Props, MathNet.Numerics.Interpolation.CubicSpline[] Edge_Crv, MathNet.Numerics.Interpolation.CubicSpline[] TangentA, int Plane_1, int Plane_2 = -1)//MathNet.Numerics.Interpolation.CubicSpline[] TangentB,
+        : base(Plane_1, Plane_2)
+        {
+            //Find the secondary source spacing DeltaZ
+            double fs = 176400; //Hz.
+            double DeltaZ = 0;
+            
+            Point pt1 = new Point(Edge_Crv[0].Interpolate(0), Edge_Crv[1].Interpolate(0), Edge_Crv[2].Interpolate(0));
+            Vector Z_Dir = pt1 - new Point(Edge_Crv[0].Interpolate(0.001), Edge_Crv[1].Interpolate(0.001), Edge_Crv[2].Interpolate(0.001));
+            Z_Dir.Normalize();
+            List<Hare.Geometry.Point> Dpt = new List<Hare.Geometry.Point>();
+
+            //Find the secondary source spacing DeltaZ
+            double i = 0;
+            do
+            {
+                double MinAngle = double.NegativeInfinity;
+                Vector D1 = (pt1 - To);
+                Vector D2 = (pt1 - From);
+                D1.Normalize(); D2.Normalize();
+                double angle = Math.Abs(Hare_math.Dot((D2 + D1) / 2, Z_Dir));
+                if (angle > MinAngle) MinAngle = angle;
+                DeltaZ = Math.Min(Att_Props.Sound_Speed(pt1) / (fs * MinAngle), 0.1);
+
+                i += DeltaZ;
+                if (i > EdgeLength) break;
+                Hare.Geometry.Point pt2 = new Point(Edge_Crv[0].Interpolate(i), Edge_Crv[1].Interpolate(i), Edge_Crv[2].Interpolate(i));
+                Point c = (pt1 + pt2) / 2;
+                Sources.Add(new EdgeSource(Edge.Rigid, pt1, pt2, new Vector[2] { new Vector(TangentA[0].Interpolate(i), TangentA[1].Interpolate(i), TangentA[2].Interpolate(i)), new Vector(TangentA[3].Interpolate(i), TangentA[4].Interpolate(i), TangentA[5].Interpolate(i)) }, find_poly_id(Room, c, Plane1), Plane2 < 0 ? -1 : find_poly_id(Room, c, Plane_2) ));
+                pt1 = pt2;
+            } while (true);
+        }
+
+        public Edge_Curved(Environment.Polygon_Scene Room, IEnumerable<Hare.Geometry.Point> SPT, IEnumerable<Hare.Geometry.Point> RPT, bool issoft, double EdgeLength, Environment.Medium_Properties Att_Props, MathNet.Numerics.Interpolation.CubicSpline[] Edge_Crv, MathNet.Numerics.Interpolation.CubicSpline[] TangentA, int Plane_1, int Plane_2 = -1)// MathNet.Numerics.Interpolation.CubicSpline[] TangentB,
+        : base(Plane_1, Plane_2)
         {
             //Find the secondary source spacing DeltaZ
             double fs = 176400; //Hz.
@@ -680,9 +775,6 @@ namespace Pachyderm_Acoustic
             List<Hare.Geometry.Point> Dpt = new List<Hare.Geometry.Point>();
 
             //Find the secondary source spacing DeltaZ
-            //Dpt.AddRange(RPT);
-            //Dpt.AddRange(SPT);
-
             double i = 0;
             do
             {
@@ -696,14 +788,23 @@ namespace Pachyderm_Acoustic
                         Vector D2 = (pt1 - spt);
                         D1.Normalize(); D2.Normalize();
                         double angle = Math.Abs(Hare_math.Dot((D2 + D1) / 2, Z_Dir));
+                        //double angle = 1 - Math.Abs(Hare_math.Dot(Hare_math.Cross(D2,D1), Z_Dir));
                         if (angle > MinAngle) MinAngle = angle;
-                    } }
-                DeltaZ = Att_Props.Sound_Speed(pt1) / (fs * MinAngle);
+                    } 
+                }
+                DeltaZ = Math.Min(Att_Props.Sound_Speed(pt1) / (fs * MinAngle), 0.1);
 
                 i += DeltaZ;
                 if (i > EdgeLength) break;
                 Hare.Geometry.Point pt2 = new Point(Edge_Crv[0].Interpolate(i), Edge_Crv[1].Interpolate(i), Edge_Crv[2].Interpolate(i));
-                Sources.Add(new EdgeSource(Edge.Rigid, pt1, pt2, new Vector[2] { new Vector(TangentA[0].Interpolate(i), TangentA[1].Interpolate(i), TangentA[2].Interpolate(i)), new Vector(TangentA[3].Interpolate(i), TangentA[4].Interpolate(i), TangentA[5].Interpolate(i)) }));
+                //find the particular polygons that apply to the center of this node.
+                Point c = (pt1 + pt2) / 2;
+                int p1 = find_poly_id(Room, c, Plane_1);
+                int p2 = Plane2 >= 0 ? find_poly_id(Room, c, Plane_2) : -1;
+
+                Sources.Add(new EdgeSource(Edge.Rigid, pt1, pt2, new Vector[2] { new Vector(TangentA[0].Interpolate(i), TangentA[1].Interpolate(i), TangentA[2].Interpolate(i)), new Vector(TangentA[3].Interpolate(i), TangentA[4].Interpolate(i), TangentA[5].Interpolate(i)) }, p1, p2));
+                Z_Dir = pt2 - pt1;
+                Z_Dir.Normalize();
                 pt1 = pt2;
             } while (true);
         }

@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("Pachyderm_Acoustic_Universal")]
-[assembly: AssemblyCopyright("Copyright ©  2016-2023")]
+[assembly: AssemblyCopyright("Copyright ©  2023-2023")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 

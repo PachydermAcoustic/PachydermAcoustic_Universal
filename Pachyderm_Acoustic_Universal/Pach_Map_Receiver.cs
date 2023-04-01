@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2020, Arthur van der Harten 
+//'Copyright (c) 2008-2023, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -242,7 +242,7 @@ namespace Pachyderm_Acoustic
                     for (int s = 0; s < length; s++)
                     {
                         if (D.EnergyValue(oct, s, i) > 0 && tsample == 0) tsample = s;
-                        if (s < Rec_List[i].Recs.SampleCT && (D.Validity[i] || D.Screen_atten)) Rec_List[i].Combine_Sample(s - tsample, D.EnergyValue(oct, s, i), dir, dir, oct);
+                        if (s < Rec_List[i].Recs.SampleCT && (D.Validity[i] || D.Screen_atten)) Rec_List[i].Combine_Sample(s - tsample, D.EnergyValue(oct, s, i), Math.Sqrt(D.EnergyValue(oct, s, i)), dir, dir, oct);
                     }
                 }
             }
@@ -1373,7 +1373,7 @@ namespace Pachyderm_Acoustic
                 {
                     for (int T = 0; T < Rec.Duration(); T++)
                     {
-                        Rec_List[R].Combine_Sample(T, Rec.Rec_List[R].Energy(T, oct), Rec.Rec_List[R].Directions_Pos(oct, T), Rec.Rec_List[R].Directions_Neg(oct, T), oct);
+                        Rec_List[R].Combine_Sample(T, Rec.Rec_List[R].Energy(T, oct), Rec.Rec_List[R].Pressure_rms(T, oct), Rec.Rec_List[R].Directions_Pos(oct, T), Rec.Rec_List[R].Directions_Neg(oct, T), oct);
                     }
                 }
             }

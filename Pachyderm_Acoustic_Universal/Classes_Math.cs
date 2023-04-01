@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2020, Arthur van der Harten 
+//'Copyright (c) 2008-2023, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -20,6 +20,8 @@ using System.Collections.Generic;
 using System;
 using Pachyderm_Acoustic.Environment;
 using System.Linq;
+using System.Windows.Forms;
+using System.Runtime.CompilerServices;
 
 namespace Pachyderm_Acoustic
 {
@@ -96,7 +98,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public static double Pressure_SPL(double Level)
             {
-                return Math.Pow(10, Level / 20) * 2E-5;
+                return Math.Pow(10, (Level-93) / 20);// * 20E-6;
             }
 
             /// <summary>
@@ -116,11 +118,21 @@ namespace Pachyderm_Acoustic
                     return 20 * Math.Log10(Math.Abs(Pressure) / 2E-5);
                 }
 
+            public static double Intensity_Pressure(double Pressure, double Rho_C = 405)
+            {
+                return Pressure * Pressure / Rho_C;
+            }
+
+            public static double Pressure_Intensity(double Intensity, double Rho_C = 405)
+            {
+                return Math.Sqrt(Intensity * Rho_C);
+            }
+
             /// <summary>
-                /// Calculate Sound Pressure Level (in dB) from intensity/energy for entire signal.
-                /// </summary>
-                /// <param name="Intensity"></param>
-                /// <returns></returns>
+            /// Calculate Sound Pressure Level (in dB) from intensity/energy for entire signal.
+            /// </summary>
+            /// <param name="Intensity"></param>
+            /// <returns></returns>
             public static double[] SPL_Intensity_Signal(double[] Intensity)
                 {
                     for (int i = 0; i < Intensity.Length; i++)
@@ -136,7 +148,7 @@ namespace Pachyderm_Acoustic
 
                     for (int i = 0; i < P.Length; i++)
                     {
-                        SPL[i] = SPL_Pressure(P[i]);
+                        SPL[i] = P[i] == 0 ? 0 : SPL_Pressure(P[i]);
                     }
                     return SPL;
                 }
@@ -454,7 +466,7 @@ namespace Pachyderm_Acoustic
             public static double EarlyDecayTime(double[] Schroeder_Integral, int sample_f)
             {
                 double[] log_sch = Log10Data(Schroeder_Integral, -60);
-                int[] Limits = Schroeder_Limits(log_sch, -0.0001, -10.0001);
+                int[] Limits = Schroeder_Limits(log_sch, -1, -10.0001);
 
                 double[] snippet = new double[Limits[1] - Limits[0] + 1];
                 for (int index = Limits[0]; index <= Limits[1]; index++)
@@ -482,11 +494,12 @@ namespace Pachyderm_Acoustic
 
                 double Binwidth = 1 / sample_f;
 
+                int StartIndex = (int)Math.Floor((startTime) * sample_f);
                 int EndIndex = (int)Math.Floor((seconds + startTime) * sample_f);
                 double Sum_Early = 0;
                 double Sum_Late = 0;
 
-                for (int q = 0; q < EndIndex; q++)
+                for (int q = StartIndex; q < EndIndex; q++)
                 {
                     Sum_Early += etc[q];
                 }
@@ -1020,94 +1033,57 @@ namespace Pachyderm_Acoustic
             {
                 double[] Histogram = null;
 
-                //if (Octave < 8)
-                //{
-                    //Get Power...
-                    double power = 0;
-                    double delay = 0;
-                    if (Direct.ElementAt<Direct_Sound>(0) != null)
-                    {
-                        //power = Pachyderm_Acoustic.Utilities.AcousticalMath.Intensity_SPL(Direct[Src_ID].SWL[Octave]);
-                        delay = Direct[Src_ID].Delay_ms;
-                    }
-                    else if (RTData.ElementAt<Receiver_Bank>(0) != null && RTData[0] is PachMapReceiver)
-                    {
-                        //power = Pachyderm_Acoustic.Utilities.AcousticalMath.Intensity_SPL((RTData[Src_ID] as PachMapReceiver).SWL[Octave]);
-                        delay = (RTData[Src_ID] as PachMapReceiver).delay_ms;
-                    }
+                double delay = 0;
+                if (Direct.ElementAt<Direct_Sound>(0) != null)
+                {
+                    delay = Direct[Src_ID].Delay_ms;
+                }
+                else if (RTData.ElementAt<Receiver_Bank>(0) != null && RTData[0] is PachMapReceiver)
+                {
+                    delay = (RTData[Src_ID] as PachMapReceiver).delay_ms;
+                }
 
-                    if (RTData[Src_ID] != null)
-                    {
-                        Histogram = RTData[Src_ID].GetEnergyHistogram(Octave, delay, Rec_ID);
-                    }
-                    else
-                    {
-                        Histogram = new double[(int)((CO_Time_ms + (int)delay) * 0.001 * Sampling_Frequency)];
-                    }
+                if (RTData[Src_ID] != null)
+                {
+                    Histogram = RTData[Src_ID].GetEnergyHistogram(Octave, delay, Rec_ID);
+                }
+                else
+                {
+                    Histogram = new double[(int)((CO_Time_ms + (int)delay) * 0.001 * Sampling_Frequency)];
+                }
 
-                    if (Direct[Src_ID] != null && Direct[Src_ID].IsOccluded(Rec_ID))
+                if (Direct[Src_ID] != null && Direct[Src_ID].IsOccluded(Rec_ID))
+                {
+                    int D_Start = 0;
+                    if (!Start_at_Zero) D_Start = (int)Math.Ceiling(((double)delay * 0.001 + Direct[Src_ID].Time(Rec_ID)) * Sampling_Frequency);
+                    for (int i = 0; i < Direct[Src_ID].Io[Rec_ID][0].Length; i++)
                     {
-                        int D_Start = 0;
-                        if (!Start_at_Zero) D_Start = (int)Math.Ceiling(((double)delay * 0.001 + Direct[Src_ID].Time(Rec_ID)) * Sampling_Frequency);
-                        for (int i = 0; i < Direct[Src_ID].Io[Rec_ID][0].Length; i++)
+                        double DirectValue = 0;
+                        switch (Octave)
                         {
-                            double DirectValue = 0;
-                            switch (Octave)
-                            {
-                                case 8:
-                                    DirectValue = Direct[Src_ID].EnergySum(Rec_ID, i);
-                                    break;
-                                default:
-                                    DirectValue = Direct[Src_ID].EnergyValue(Octave, Rec_ID)[i];
-                                    break;
-                            }
-                            Histogram[D_Start + i] += DirectValue;
+                            case 8:
+                                DirectValue = Direct[Src_ID].EnergySum(Rec_ID, i);
+                                break;
+                            default:
+                                DirectValue = Direct[Src_ID].EnergyValue(Octave, Rec_ID)[i];
+                                break;
+                        }
+                        Histogram[D_Start + i] += DirectValue;
+                    }
+                }
+
+                if (ISData[Src_ID] != null)
+                {
+                    foreach (Deterministic_Reflection value in ISData[Src_ID].Paths[Rec_ID])
+                    {
+                        int place = (int)Math.Ceiling(Sampling_Frequency * (value.TravelTime + (double)Direct[Src_ID].Delay_ms * 0.001));
+                        if (place < Histogram.Length - 1 && place > 0)
+                        {
+                            double[] e = value.Energy(Octave, Sampling_Frequency);
+                            for (int t = 0; t < e.Length; t++) if (place + t < Histogram.Length - 1) Histogram[place + t] += e[t];
                         }
                     }
-
-                    if (ISData[Src_ID] != null)
-                    {
-                        //switch (Octave)
-                        //{
-                        //    case 8:
-                        //        foreach (Deterministic_Reflection value in ISData[Src_ID].Paths[Rec_ID])
-                        //        {
-                        //            if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram.Length - 1)
-                        //            {
-                        //                for (int oct = 0; oct < 8; oct++)
-                        //                {
-                        //                    double[] e = value.Energy(oct, Sampling_Frequency);
-                        //                    for (int t = 0; t < e.Length; t++) Histogram[(int)Math.Ceiling(Sampling_Frequency * (value.TravelTime + (double)Direct[Src_ID].Delay_ms * 0.001)) + t] += e[t];
-                        //                }
-                        //            }
-                        //        }
-                        //        break;
-                        //    default:
-                                foreach (Deterministic_Reflection value in ISData[Src_ID].Paths[Rec_ID])
-                                {
-                                    int place = (int)Math.Ceiling(Sampling_Frequency * (value.TravelTime + (double)Direct[Src_ID].Delay_ms * 0.001));
-                                    if (place < Histogram.Length - 1 && place > 0)
-                                    {
-                                        double[] e = value.Energy(Octave, Sampling_Frequency);
-                                        for (int t = 0; t < e.Length; t++) if (place + t < Histogram.Length-1)  Histogram[place + t] += e[t];
-                                    }
-                                }
-                                //break;
-                        //}
-                    }
-                    //for (int i = 0; i < Histogram.Length; i++) Histogram[i] *= power;
-                //}
-                //else
-                //{
-                //    //Take Sum
-                //    for (int oct = 0; oct < 8; oct++)
-                //    {
-                //        RTData[Src_ID].GetEnergyHistogram(8, Direct[Src_ID].Delay_ms, Rec_ID);
-                //        double[] Hist = ETCurve(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, oct, Rec_ID, Src_ID, Start_at_Zero);
-                //        if (Histogram == null) Histogram = new double[Hist.Length];
-                //        for (int i = 0; i < Histogram.Length; i++) Histogram[i] += Hist[i];
-                //    }
-                //}
+                }
 
                 return Histogram;
             }
@@ -1643,9 +1619,10 @@ namespace Pachyderm_Acoustic
                             double[] f_value = flat ? value.Filter: value.Create_Filter(SWL, Sampling_Frequency, 0, 4096, 0);
 
                             int end = value.Filter.Length < F.Length - (int)Math.Ceiling(Sampling_Frequency * value.TravelTime) ? value.Filter.Length : F.Length - (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                            int R_start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
                             for (int t = 0; t < end; t++)
                             {
-                                int t_s = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime) + t;
+                                int t_s = R_start + t;
                                 if (t_s >= 0) F[t_s] += (float)value.Filter[t];
                             }
                         }
@@ -1769,7 +1746,7 @@ namespace Pachyderm_Acoustic
                         }
                     }
                 }
-                return Histogram;
+                return Histogram; //XYZ - Furse Malham (FUMA)
             }
 
             /// <summary>
@@ -1816,11 +1793,11 @@ namespace Pachyderm_Acoustic
                         double cossqphpos = Math.Cos(phipos) * Math.Cos(phipos);
                         double cossqphneg = Math.Cos(phineg) * Math.Cos(phineg);
 
-                        Histogram[0][i] = magpos * (3 * (Math.Sin(phipos) * Math.Sin(phipos) - 1) / 2 + magneg * 3 * Math.Sin(phineg) * Math.Sin(phineg) - 1) / 2;
-                        Histogram[1][i] = rt3_2 * (Math.Cos(thetapos) * sin2phpos * magpos + Math.Cos(thetaneg) * sin2phneg * magneg);
-                        Histogram[2][i] = rt3_2 * (Math.Sin(thetapos) * sin2phpos * magpos + Math.Sin(thetaneg) * sin2phneg * magneg);
-                        Histogram[3][i] = rt3_2 * (Math.Cos(2 * thetapos) * cossqphpos * magpos + Math.Cos(2 * thetaneg) * cossqphneg * magneg);
-                        Histogram[4][i] = rt3_2 * (Math.Sin(2 * thetapos) * cossqphpos * magpos + Math.Sin(2 * thetaneg) * cossqphneg * magneg);
+                        Histogram[0][i] = magpos * (3 * (Math.Sin(phipos) * Math.Sin(phipos) - 1) / 2 + magneg * 3 * Math.Sin(phineg) * Math.Sin(phineg) - 1) / 2; //R
+                        Histogram[1][i] = rt3_2 * (Math.Cos(thetapos) * sin2phpos * magpos + Math.Cos(thetaneg) * sin2phneg * magneg);  //S
+                        Histogram[2][i] = rt3_2 * (Math.Sin(thetapos) * sin2phpos * magpos + Math.Sin(thetaneg) * sin2phneg * magneg);  //T
+                        Histogram[3][i] = rt3_2 * (Math.Cos(2 * thetapos) * cossqphpos * magpos + Math.Cos(2 * thetaneg) * cossqphneg * magneg);  //U
+                        Histogram[4][i] = rt3_2 * (Math.Sin(2 * thetapos) * cossqphpos * magpos + Math.Sin(2 * thetaneg) * cossqphneg * magneg);  //V
                     }
                 }
                 else
@@ -1929,13 +1906,13 @@ namespace Pachyderm_Acoustic
                         double PQ_compos = Math.Pow(Math.Cos(phipos), 3);
                         double PQ_comneg = Math.Pow(Math.Cos(phipos), 3);
 
-                        Histogram[0][i] = magpos * Math.Sin(phipos) * (5 * Math.Sin(phipos) * Math.Sin(phipos) - 3) / 2 + magneg * Math.Sin(phineg) * (5 * Math.Sin(phineg) * Math.Sin(phineg) - 3) / 2;
-                        Histogram[1][i] = rt3_8 * (magpos * Math.Cos(thetapos) * LM_compos + magneg * Math.Cos(thetaneg) * LM_comneg);
-                        Histogram[2][i] = rt3_8 * (magpos * Math.Sin(thetapos) * LM_compos + magneg * Math.Sin(thetaneg) * LM_comneg);
-                        Histogram[3][i] = rt15_2 * (magpos * Math.Cos(2 * thetapos) * NO_compos + magneg * Math.Cos(2 * thetaneg) * NO_compos);
-                        Histogram[4][i] = rt15_2 * (magpos * Math.Sin(2 * thetapos) * NO_compos + magneg * Math.Sin(2 * thetaneg) * NO_compos);
-                        Histogram[5][i] = rt5_8 * (magpos * Math.Cos(3 * thetapos) * PQ_compos + magneg * Math.Cos(3 * thetaneg) * PQ_compos);
-                        Histogram[6][i] = rt5_8 * (magpos * Math.Sin(3 * thetapos) * PQ_compos + magneg * Math.Sin(3 * thetaneg) * PQ_compos);
+                        Histogram[0][i] = magpos * Math.Sin(phipos) * (5 * Math.Sin(phipos) * Math.Sin(phipos) - 3) / 2 + magneg * Math.Sin(phineg) * (5 * Math.Sin(phineg) * Math.Sin(phineg) - 3) / 2; //K
+                        Histogram[1][i] = rt3_8 * (magpos * Math.Cos(thetapos) * LM_compos + magneg * Math.Cos(thetaneg) * LM_comneg); //L
+                        Histogram[2][i] = rt3_8 * (magpos * Math.Sin(thetapos) * LM_compos + magneg * Math.Sin(thetaneg) * LM_comneg); //M
+                        Histogram[3][i] = rt15_2 * (magpos * Math.Cos(2 * thetapos) * NO_compos + magneg * Math.Cos(2 * thetaneg) * NO_compos); //N
+                        Histogram[4][i] = rt15_2 * (magpos * Math.Sin(2 * thetapos) * NO_compos + magneg * Math.Sin(2 * thetaneg) * NO_compos); //O
+                        Histogram[5][i] = rt5_8 * (magpos * Math.Cos(3 * thetapos) * PQ_compos + magneg * Math.Cos(3 * thetaneg) * PQ_compos); //P
+                        Histogram[6][i] = rt5_8 * (magpos * Math.Sin(3 * thetapos) * PQ_compos + magneg * Math.Sin(3 * thetaneg) * PQ_compos); //Q
                     }
                 }
                 else
@@ -2205,6 +2182,56 @@ namespace Pachyderm_Acoustic
                 return Histogram;
             }
 
+            public enum Ambisonics_Component_Order { FuMa, SID, ACN }
+
+            public static double[][] AurFilter_Fig8_3Axis(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, Ambisonics_Component_Order order)
+            {
+                double[][] filter = AurFilter_Fig8_3Axis(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Rec_ID, SrcIDs, StartAtZero, alt, azi, degrees, flat);
+                if (order == Ambisonics_Component_Order.ACN)
+                {
+                    double[][] final = new double[filter.Length][];
+                    final[0] = filter[2];
+                    final[1] = filter[0];
+                    final[2] = filter[1];
+                    return final;
+                }
+                else return filter; //FuMa,SID
+            }
+
+            public static double[][] AurFilter_Ambisonics2(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, Ambisonics_Component_Order order)
+            {
+                double[][] filter = AurFilter_Ambisonics2(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Rec_ID, SrcIDs, StartAtZero, alt, azi, degrees, flat);
+                if (order == Ambisonics_Component_Order.ACN)
+                {
+                    double[][] final = new double[filter.Length][];
+                    final[0] = filter[4];//4
+                    final[1] = filter[0];//5
+                    final[2] = filter[3];//6
+                    final[3] = filter[1];//7
+                    final[4] = filter[2];//8
+                    return final;
+                }
+                else return filter; //FuMa,SID
+            }
+
+            public static double[][] AurFilter_Ambisonics3(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, Ambisonics_Component_Order order)
+            {
+                double[][] filter = AurFilter_Ambisonics3(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Rec_ID, SrcIDs, StartAtZero, alt, azi, degrees, flat);
+                if (order == Ambisonics_Component_Order.ACN)
+                {
+                    double[][] final = new double[filter.Length][];
+                    final[0] = filter[6];//9
+                    final[1] = filter[0];//10
+                    final[2] = filter[5];//11
+                    final[3] = filter[1];//12
+                    final[4] = filter[4];//13
+                    final[5] = filter[2];//14
+                    final[6] = filter[3];//15
+                    return final;
+                }
+                else return filter; //FuMa,SID
+            }
+
             public static double[][] AurFilter_Fig8_3Axis(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat)
             {
                 double[][] Histogram = new double[3][];
@@ -2376,7 +2403,6 @@ namespace Pachyderm_Acoustic
                 System.Reflection.Assembly me = System.Reflection.Assembly.GetExecutingAssembly();
                 return me.GetName().Version.ToString();
             }
-
 
             /// <summary>
             /// Searches for the minimum value in an array of numbers.
