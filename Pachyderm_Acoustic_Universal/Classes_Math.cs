@@ -1391,12 +1391,12 @@ namespace Pachyderm_Acoustic
                                 {
                                     if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
                                     {
-                                        Hare.Geometry.Vector[] E_Dir = value.Dir_Energy(Octave, alt, azi, degrees);
+                                        Hare.Geometry.Vector[] E_Dir = value.Dir_Energy(Octave, alt, azi, degrees, true);
                                         for (int i = 0; i < E_Dir.Length; i++)
                                         {
-                                            Histogram[0][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += Math.Abs(E_Dir[i].x);
-                                            Histogram[1][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += Math.Abs(E_Dir[i].y);
-                                            Histogram[2][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += Math.Abs(E_Dir[i].z);
+                                            Histogram[0][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Dir[i].x);
+                                            Histogram[1][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Dir[i].y);
+                                            Histogram[2][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Dir[i].z);
                                         }
                                     }
                                 }
@@ -1735,9 +1735,10 @@ namespace Pachyderm_Acoustic
 
                             double[][] V = value.Dir_Filter(Direct.SWL, xpos_alt, xpos_azi, degrees, Sampling_Frequency, flat);
 
-                            Hare.Geometry.Vector dir = value.Path[0][value.Path[0].Length - 1] - value.Path[0][value.Path[0].Length - 2];
-                            dir.Normalize();
-                            for (int i = 0; i < value.Filter.Length; i++)
+                            //Hare.Geometry.Vector dir = value.Path[0][value.Path[0].Length - 1] - value.Path[0][value.Path[0].Length - 2];
+                            //dir.Normalize();
+                            //for (int i = 0; i < value.Filter.Length; i++)
+                            for (int i = 0; i < V.Length; i++)
                             {
                                 Histogram[0][R_Start + i] += V[i][0];
                                 Histogram[1][R_Start + i] += V[i][1];

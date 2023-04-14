@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using Hare.Geometry;
+using Pachyderm_Acoustic.Utilities;
 
 namespace Pachyderm_Acoustic
 {
@@ -140,6 +141,20 @@ namespace Pachyderm_Acoustic
             public virtual double[] DirPower(int threadid, int random, Vector Direction)
             {
                 return SourcePower.Clone() as double[];//new double[8] {1,1,1,1,1,1,1,1};
+            }
+
+            /// <summary>
+            /// Provides source power. (Deterministic Only)
+            /// </summary>
+            /// <param name="threadid"></param>
+            /// <param name="random"></param>
+            /// <param name="Direction"></param>
+            /// <returns></returns>
+            public virtual double[] DirPressure(int threadid, int random, Vector Direction)
+            {
+                double[] H = SourcePower.Clone() as double[];
+                for (int i = 0; i < H.Length; i++) H[i] = AcousticalMath.Pressure_Intensity(H[i], this.Rho_C);
+                return H;//new double[8] {1,1,1,1,1,1,1,1};
             }
 
             /// <summary>

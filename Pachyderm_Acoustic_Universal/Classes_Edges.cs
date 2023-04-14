@@ -178,52 +178,6 @@ namespace Pachyderm_Acoustic
                 return true;
             }
 
-            //public bool Cyl_Coord(Hare.Geometry.Point S, Hare.Geometry.Point R, ref double rs, ref double thetas, ref double zs, ref double rr, ref double thetar, ref double zr, out int Obtuse_Side)//, out double[] tm, out double[] tl)
-            //{
-            //    //diffx = Tangent;
-            //    //diffy = Normal;
-            //    //diffz = Z_Norm;
-            //    Hare.Geometry.Vector S_D = S - Z_mid;
-            //    Hare.Geometry.Vector R_D = R - Z_mid;
-
-            //    Hare.Geometry.Vector S_Norm = new Hare.Geometry.Vector(S_D.x, S_D.y, S_D.z) / S_D.Length();// S - Z_mid;
-            //    Hare.Geometry.Vector R_Norm = new Hare.Geometry.Vector(R_D.x, R_D.y, R_D.z) / R_D.Length();//R - Z_mid;
-
-            //    double S0 = Hare_math.Dot(S_Norm, Tangent[0]);
-            //    double S1 = Hare_math.Dot(S_Norm, Tangent[1]);
-
-            //    uint SDIR = 0;
-            //    if (S0 > S1)
-            //    {
-            //        if (S1 > 0) SDIR = 1;
-            //    }
-
-            //    Obtuse_Side = (Hare_math.Dot(S_Norm, Normal[SDIR]) < 0 ? 1 : 0);
-
-            //    zs = Hare_math.Dot(S_D, Z_Norm);//S_Coord.z;
-            //    zr = Hare_math.Dot(R_D, Z_Norm);//R_Coord.z;
-
-            //    Hare.Geometry.Point S_p = S - (Z_mid + zs * Z_Norm);
-            //    Hare.Geometry.Point R_p = R - (Z_mid + zr * Z_Norm);
-
-            //    rs = Math.Sqrt(S_p.x * S_p.x + S_p.y * S_p.y + S_p.z * S_p.z);//Math.Sqrt(S_Coord.x * S_Coord.x + S_Coord.y * S_Coord.y + S_Coord.z * S_Coord.z);
-            //    rr = Math.Sqrt(R_p.x * R_p.x + R_p.y * R_p.y + R_p.z * R_p.z);//Math.Sqrt(R_Coord.x * R_Coord.x + R_Coord.y * R_Coord.y + R_Coord.z * R_Coord.z);
-            //    thetas = Math.Acos(Math.Abs(Hare_math.Dot(Hare_math.Cross(S_Norm, Z_Norm), Normal[SDIR])));//Math.Atan2(S_Coord.y, S_Coord.x);
-
-            //    double rdt = Hare_math.Dot(Normal[SDIR] * (Obtuse_Side == 1 ? 1 : -1), R_Norm);
-
-            //    if (rdt > 0)
-            //    {
-            //        thetar = Utilities.Numerics.PiX2 - Math.Acos(Math.Abs(Hare_math.Dot(Hare_math.Cross(R_Norm, Z_Norm), Normal[SDIR])));//Math.Atan2(R_Coord.y, R_Coord.x);
-            //    }
-            //    else
-            //    {
-            //        thetar = Math.Acos(Math.Abs(Hare_math.Dot(Hare_math.Cross(R_Norm, Z_Norm), Normal[SDIR])));
-            //    }
-
-            //    return true;
-            //}
-
             public double[] Phi(double thetaS, double thetaR)
             {
                 return new double[] {
@@ -752,7 +706,7 @@ public class Edge_Straight : Edge
                 D1.Normalize(); D2.Normalize();
                 double angle = Math.Abs(Hare_math.Dot((D2 + D1) / 2, Z_Dir));
                 if (angle > MinAngle) MinAngle = angle;
-                DeltaZ = Math.Min(Att_Props.Sound_Speed(pt1) / (fs * MinAngle), 0.1);
+                DeltaZ = Math.Min(Att_Props.Sound_Speed(pt1) / (2 * fs * MinAngle), 0.1);
 
                 i += DeltaZ;
                 if (i > EdgeLength) break;
@@ -792,7 +746,7 @@ public class Edge_Straight : Edge
                         if (angle > MinAngle) MinAngle = angle;
                     } 
                 }
-                DeltaZ = Math.Min(Att_Props.Sound_Speed(pt1) / (fs * MinAngle), 0.1);
+                DeltaZ = Math.Min(Att_Props.Sound_Speed(pt1) / (2 * fs * MinAngle), 0.1);
 
                 i += DeltaZ;
                 if (i > EdgeLength) break;

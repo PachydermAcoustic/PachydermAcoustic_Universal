@@ -23,11 +23,7 @@ using Pachyderm_Acoustic.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Runtime.Remoting.Channels;
-using System.Security.Cryptography;
-using System.Windows.Forms.DataVisualization.Charting;
+using System.Windows.Documents;
 
 namespace Pachyderm_Acoustic
 {
@@ -354,14 +350,16 @@ namespace Pachyderm_Acoustic
         }
 
         /// <summary>
-        /// This function calculates the actual path of the specular reflection.
+        /// This function calculates the actual path of the specular/diffracted/focussed reflection.
         /// </summary>
         /// <param name="Images">The list of images.</param>
         /// <param name="Sequence">The list of surface indices for reflection.</param>
         /// <param name="Threadid">The id of the calling thread.</param>
-        private void ProcessImages(Hare.Geometry.Point[][] Images, int[] Sequence, int Threadid, List<int[]> sub)
+        private void ProcessImages(Hare.Geometry.Point[][] Images, int[] Sequence, int Threadid, List<int[]> sub, int one_rec_id = -1)
         {
-            for (int rec_id = 0; rec_id < Rec.Length; rec_id++)
+            int rec_end = one_rec_id < 0 ? rec_end = Rec.Length : rec_end = one_rec_id + 1;
+
+            for (int rec_id = one_rec_id < 0 ? 0 : one_rec_id; rec_id < rec_end; rec_id++)
             {
                 double c_sound = Room.Sound_speed(Rec[rec_id]);
 
@@ -407,7 +405,8 @@ namespace Pachyderm_Acoustic
                                 /// it's curved. Check that these are meeting the ballpark criteria for a curved reflection. Then it's business as usual.
                                 if (Room.ObjectMeshEdges[Sequence[q]][r].Polys.Count != 2) { path = null; break; }
                                 if (!this.Check_Edge_For_Specular(path[q + 2], path[q] == null ? Images[r][q] : path[q], new Hare.Geometry.Vector(Room.ObjectMeshEdges[Sequence[q]][r].Polys[0].Normal * -1), new Hare.Geometry.Vector(Room.ObjectMeshEdges[Sequence[q]][r].Polys[1].Normal * -1), Room.ObjectMeshEdges[Sequence[q]][r].a, Room.ObjectMeshEdges[Sequence[q]][r].b, ref path[q + 1])) { path = null; break; }
-                                if (!OcclusionIntersect(path[q + 2], path[q + 1], Sequence[q], ref Trans_Mod[r], ref path[q + 1], ref Seq_Polys[q], Threadid)) { path = null; break; }
+                                //if (!OcclusionIntersect(path[q + 2], path[q + 1], Sequence[q], ref Trans_Mod[r], ref path[q + 1], ref Seq_Polys[q], Threadid)) { path = null; break; }
+                                if (!OcclusionIntersectED(path[q + 2], Images[r][q], Sequence[q], sub[r][q], ref Trans_Mod[r], Threadid)) { path = null; break; }
                             }
                         }
                     }
@@ -468,7 +467,8 @@ namespace Pachyderm_Acoustic
                 else
                 {
                     //Assumed either a convex, or planar reflection
-                    ThreadPaths[rec_id, Threadid].Add(new Specular_Path(PathVertices[0], Sequence, Seq_Polys, Room, Src, c_sound, B_Functions_Octave[0], Trans_Mod[0], ref Direct_Time[rec_id], Threadid, Rnd[Threadid].Next()));
+                    double[] H_in = new double[8]; for (int oct = 0; oct < 8; oct++) H_in[oct] = H[0][oct][0];
+                    ThreadPaths[rec_id, Threadid].Add(new Specular_Path(PathVertices[0], Sequence, Seq_Polys, Room, Src, c_sound, H_in, Trans_Mod[0], ref Direct_Time[rec_id], Threadid, Rnd[Threadid].Next()));
                 }
             }
         }
@@ -486,26 +486,33 @@ namespace Pachyderm_Acoustic
 
         public bool Check_Edge_For_Specular(Hare.Geometry.Point S, Hare.Geometry.Point R, Hare.Geometry.Point Z1, Hare.Geometry.Point Z2, Hare.Geometry.Vector T1_Norm, Hare.Geometry.Vector T2_Norm, Hare.Geometry.Point Z_mid, double Z_range2, ref Hare.Geometry.Point Spec_Pt)
         {
-            //Determine closest ppint to a midpoint between reflection points before and after...
-            Hare.Geometry.Point Cpt = (S + R) / 2;
+            //Determine closest point to a midpoint between reflection points before and after...
             Hare.Geometry.Vector ZDir = Z2 - Z1;
+            double denom = Hare_math.Dot(ZDir, ZDir);
+            Hare.Geometry.Vector SZ1 = S - Z1;
+            Hare.Geometry.Vector RZ1 = R - Z1;
+            double s_t = Hare_math.Dot(SZ1, ZDir);
+            double r_t = Hare_math.Dot(RZ1, ZDir);
+            double s_d = Math.Sqrt(Hare_math.Dot(SZ1, SZ1) - (s_t * s_t) / denom);
+            double r_d = Math.Sqrt(Hare_math.Dot(RZ1, SZ1) - (r_t * r_t) / denom);
+            double d = s_d + r_d;
+            Hare.Geometry.Point Cpt = (S * r_d/d + R * s_d/d);
+
             Hare.Geometry.Vector tDir = Cpt - Z1;
             double t = Hare_math.Dot(tDir, ZDir);
-            double denom;
-            if (t < 0)
+            if (t+0.01 < 0)
                 return false;
             else
             {
-                denom = Hare_math.Dot(ZDir, ZDir);
-                if (t >= denom)
+                if (t-0.01 > denom)
                     return false;
             }
 
             Hare.Geometry.Point Z_pt = Z1 + ZDir * t / denom;
-            //Hare.Geometry.Vector TheoreticalNormal = Cpt - Z_pt;
             Hare.Geometry.Vector v1 = Z_pt - S, v2 = Z_pt - R;
             v1.Normalize(); v2.Normalize();
             Hare.Geometry.Vector TheoreticalNormal = v1 + v2;
+            TheoreticalNormal -= Hare_math.Dot(TheoreticalNormal, ZDir) / Hare_math.Dot(ZDir, ZDir) * ZDir;
             TheoreticalNormal.Normalize();
 
             Hare.Geometry.Vector bsect = T1_Norm + T2_Norm;
@@ -515,7 +522,7 @@ namespace Pachyderm_Acoustic
             double dot_Norm2 = Math.Abs(Hare_math.Dot(T2_Norm, bsect));
             double testdot = Math.Abs(Hare_math.Dot(bsect, TheoreticalNormal));
             //If it is between the two normals adjacent to these edges, then reflection is valid. Return true.
-            if (testdot >= dot_Norm1 && testdot >= dot_Norm2)
+            if (testdot*1.000001 > dot_Norm1 && testdot*1.00000 > dot_Norm2)
             {
                 Spec_Pt = Z_pt;
                 return true;
@@ -787,9 +794,10 @@ namespace Pachyderm_Acoustic
                 W_Frame[1] -= local_N * Hare_math.Dot(W_Frame[1], local_N) * 2;
             }
 
-            if (!hasedge) h *= Math.Sqrt((1 / (4 * Math.PI)) * Math.Abs(W_Kurvature.Determinant()));
+            if (!hasedge) h *= Math.Sqrt(Math.Abs((1 / (4 * Math.PI)) * W_Kurvature.Determinant()));
             else h *= Math.Sqrt(Math.Abs(W_Kurvature.Determinant()));
             return h;
+            //return h * Math.Sqrt(Math.Abs(W_Kurvature.Determinant()));
         }
 
         private MathNet.Numerics.LinearAlgebra.Double.DenseMatrix project_wavefront(double dist, MathNet.Numerics.LinearAlgebra.Double.DenseMatrix M)
@@ -865,7 +873,8 @@ namespace Pachyderm_Acoustic
                 double[] B_oct = new double[8];
                 for (int oct = 0; oct < 8; oct++)
                 {
-                    B_oct[oct] = p * Math.Sqrt(intensity_mod[i][oct]) * Math.Pow(10, -.05 * Room.Attenuation(0)[oct] * Room.Sound_speed(0) * 0.5 * (t_limits[0] + t_limits[1]));
+                    double mod = Math.Sqrt(intensity_mod[i][oct] * Math.Pow(10, -.05 * Room.Attenuation(0)[oct] * Room.Sound_speed(0) * 0.5 * (t_limits[0] + t_limits[1])));
+                    B_oct[oct] = p * mod;
                 }
 
                 Bs.Add(B_oct);
@@ -885,6 +894,7 @@ namespace Pachyderm_Acoustic
             double[][][] H_directional = new double[7][][];
 
             PathVertices.RemoveAll(item => item == null);
+            int order = PathVertices[0].Length - 3;
 
             if (Sequence[0] > Room.ObjectCount - 1)
             {
@@ -899,7 +909,7 @@ namespace Pachyderm_Acoustic
                 {
                     Hare.Geometry.Vector DIR = PathVertices[i][Sequence.Length - 1] - PathVertices[i][Sequence.Length];
                     DIR.Normalize();
-                    double[] dmod = Src.DirPower(threadid, Rnd[threadid].Next(), DIR);
+                    double[] dmod = Src.DirPressure(threadid, Rnd[threadid].Next(), DIR);
 
                     double delta = Times[1][i] - Times[0][i]; //duration of the power receipt.
                     double t0 = Times[0][i] - mintime; //start time of the power receipt.
@@ -910,12 +920,9 @@ namespace Pachyderm_Acoustic
                     if (s0 == s1) { frac0 = 0; frac1 = 1; }
                     else { frac1 = (t1 - (double)s1 / 44100.00) / delta; frac0 = 1 - frac1; }
 
-                    if (s1 - s0 > 1)
-                        s0 = s0;
-
                     for (int oct = 0; oct < 8; oct++)
                     {
-                        double mod = Math.Sqrt(dmod[oct]);// * Room.Rho_C(0));
+                        double mod = AcousticalMath.Pressure_Intensity(dmod[oct], Room.Rho_C(0));
                         double p1 = frac1 * Bs[i][oct] * mod, p0 = frac0 * Bs[i][oct] * mod;
                         if (p1 > 0)
                         {
@@ -937,7 +944,7 @@ namespace Pachyderm_Acoustic
             }
             else
             {
-                //for curved surfaces
+                //for curved and planar surfaces
                 int l = Math.Max(1, (int)(Math.Ceiling((Times[1].Max() - Times[0].Min()) * 44100)));
                 for (int j = 0; j < 7; j++)
                 {
@@ -947,28 +954,33 @@ namespace Pachyderm_Acoustic
                 for (int i = 0; i < PathVertices.Count; i++)
                 {
                     if (PathVertices[i] == null) continue;
-                    ////
-                    if (Room.Edge_Normals[Sequence[PathVertices[i].Length-3]].Length == 0) continue;
-                    ////
+                    bool k1, k2;
                     Hare.Geometry.Vector DIR = PathVertices[i][Sequence.Length - 1] - PathVertices[i][Sequence.Length];
                     DIR.Normalize();
-                    double[] dmod = Src.DirPower(threadid, Rnd[threadid].Next(), DIR);
+                    double[] dmod = Src.DirPressure(threadid, Rnd[threadid].Next(), DIR);
 
-                    int samplenbr = (int)Math.Ceiling(Math.Abs(Times[1][i] - Times[0][i]) * 44100);
-
-                    int order = PathVertices[i].Length - 3;
-                    Hare.Geometry.Vector d0 = PathVertices[i][order + 1] - PathVertices[i][order];
-                    d0.Normalize();
-                    double dir = Hare.Geometry.Hare_math.Dot(d0, Room.Edge_Normals[Sequence[order]][elementIds[i]]);
-                    bool k1, k2;
-
-                    if (dir > 0) { k1 = Room.Edge_Kurvatures[Sequence[0]][elementIds[i]][0] * -1 < 0; k2 = Room.Edge_Kurvatures[Sequence[0]][elementIds[i]][1] * -1 < 0; }
-                    else { k1 = Room.Edge_Kurvatures[Sequence[0]][elementIds[i]][0] * -1 < 0; k2 = Room.Edge_Kurvatures[Sequence[0]][elementIds[i]][1] * -1 < 0; }
+                    ////
+                    if (Room.Edge_Normals[Sequence[PathVertices[i].Length - 3]].Length > 0)
+                    {
+                        Hare.Geometry.Vector d0 = PathVertices[i][order + 1] - PathVertices[i][order];
+                        d0.Normalize();
+                        double dir = Hare.Geometry.Hare_math.Dot(d0, Room.Edge_Normals[Sequence[order]][elementIds[i]]);
+                        //
+                        if (dir > 0) { k1 = Room.Edge_Kurvatures[Sequence[order]][elementIds[i]][0] * -1 < 0; k2 = Room.Edge_Kurvatures[Sequence[order]][elementIds[i]][1] * -1 < 0; }
+                        else { k1 = Room.Edge_Kurvatures[Sequence[order]][elementIds[i]][0] * -1 < 0; k2 = Room.Edge_Kurvatures[Sequence[order]][elementIds[i]][1] * -1 < 0; }
+                    }
+                    else
+                    {
+                        k1 = false; k2 = false;
+                    }
 
                     if (k1 || k2)
                     {
+                        //Curved surface
+                        int samplenbr = (int)Math.Ceiling(Math.Abs(Times[1][i] - Times[0][i]) * 44100);
+
                         double dt = 1.0 / 44100;
-                        double[][] BFct = (k1 && k2) ? EdgeDistribution_2d(samplenbr, Room.ObjectMeshEdges[Sequence[0]][elementIds[i]], Bs[i], PathVertices[i][0], PathVertices[i][1], PathVertices[i][2]) : EdgeDistribution_1d(samplenbr, Room.ObjectMeshEdges[Sequence[0]][elementIds[i]], Bs[i], Times[0][i], Times[1][i], PathVertices[i][0], PathVertices[i][1], PathVertices[i][2]);
+                        double[][] BFct = (k1 && k2) ? EdgeDistribution_2d(samplenbr, Room.ObjectMeshEdges[Sequence[order]][elementIds[i]], Bs[i], PathVertices[i][0], PathVertices[i][1], PathVertices[i][2]) : EdgeDistribution_1d(samplenbr, Room.ObjectMeshEdges[Sequence[order]][elementIds[i]], Bs[i], Times[0][i], Times[1][i], PathVertices[i][0], PathVertices[i][1], PathVertices[i][2]);
 
                         double x_2 = Math.Sqrt(Math.Abs(DIR.x)); double y_2 = Math.Sqrt(Math.Abs(DIR.y)); double z_2 = Math.Sqrt(Math.Abs(DIR.z));
                         double[] x_out = new double[BFct.Length]; double[] y_out = new double[BFct.Length]; double[] z_out = new double[BFct.Length];
@@ -979,7 +991,7 @@ namespace Pachyderm_Acoustic
                             for (int oct = 0; oct < 8; oct++)
                             {
                                 double t = Times[0][i] + dt * j - mintime;
-                                double pressure = BFct[j][oct];
+                                double pressure = BFct[j][oct] * dmod[oct];
                                 H_directional[0][oct][(int)(t / dt)] += pressure;
                                 if (DIR.x > 0) H_directional[1][oct][(int)(t / dt)] += pressure * x_2;
                                 else H_directional[2][oct][(int)(t / dt)] += pressure * x_2;
@@ -992,19 +1004,21 @@ namespace Pachyderm_Acoustic
                     }
                     else
                     {
+                        //Planar surface
                         double t = (Times[0][i] + Times[0][i]) * 0.5;
-                        double[] pressure = Bs[i];
+
                         int s = (int)Math.Floor(44100 * (t - mintime));
                         for (int oct = 0; oct < 8; oct++)
                         {
-                            H_directional[0][oct][s] += pressure[oct]; //Omni Channel...
+                            double pressure = Bs[i][oct] * dmod[oct];
+                            H_directional[0][oct][s] += pressure; //Omni Channel...
                             double x_2 = Math.Sqrt(Math.Abs(DIR.x)); double y_2 = Math.Sqrt(Math.Abs(DIR.y)); double z_2 = Math.Sqrt(Math.Abs(DIR.z));
-                            if (DIR.x > 0) H_directional[1][oct][s] += pressure[oct] * x_2;
-                            else H_directional[2][oct][s] += pressure[oct] * x_2;
-                            if (DIR.y > 0) H_directional[3][oct][s] += pressure[oct] * y_2;
-                            else H_directional[4][oct][s] += pressure[oct] * y_2;
-                            if (DIR.z > 0) H_directional[5][oct][s] += pressure[oct] * z_2;
-                            else H_directional[6][oct][s] += pressure[oct] * z_2;
+                            if (DIR.x > 0) H_directional[1][oct][s] += pressure * x_2;
+                            else H_directional[2][oct][s] += pressure * x_2;
+                            if (DIR.y > 0) H_directional[3][oct][s] += pressure * y_2;
+                            else H_directional[4][oct][s] += pressure * y_2;
+                            if (DIR.z > 0) H_directional[5][oct][s] += pressure * z_2;
+                            else H_directional[6][oct][s] += pressure * z_2;
                         }
                     }
                 }
@@ -1077,73 +1091,107 @@ namespace Pachyderm_Acoustic
             return result2;
         }
 
-        //private void Split_at_Inflection(List<double> BS, List<double> Time, List<double> xdir, List<double> ydir, List<double> zdir, out List<List<double>> BS_out, out List<List<double>> T_out, out List<List<double>> xout, out List<List<double>> yout, out List<List<double>> zout)
-        //{
-        //    BS_out = new List<List<double>>();
-        //    T_out = new List<List<double>>();
-        //    xout = new List<List<double>>();
-        //    yout = new List<List<double>>();
-        //    zout = new List<List<double>>();
-
-        //    double t_last = Time[0];
-        //    int start = 0;
-        //    List<double> B = new List<double>();
-        //    for (int i = 1; i < Time.Count - 1; i++)
-        //    {
-        //        double dt1 = (Time[i] - t_last);
-        //        double dt2 = (Time[i + 1] - Time[i]);
-        //        B.Add(BS[i]);
-        //        if (Math.Sign(dt1) != Math.Sign(dt2) || i == Time.Count-2)  //Double check that this is the right way to find extreme inflections.
-        //        {
-        //            BS_out.Add(B);
-        //            T_out.Add(Time.GetRange(start, i - start));
-        //            List<double> x = xdir.GetRange(start, i - start);
-        //            List<double> y = ydir.GetRange(start, i - start);
-        //            List<double> z = zdir.GetRange(start, i - start);
-        //            for (int j = 0; j < B.Count; j++)
-        //            {
-        //                x[j] = Math.Sqrt(x[j]) * B[j];
-        //                y[j] = Math.Sqrt(y[j]) * B[j];
-        //                z[j] = Math.Sqrt(z[j]) * B[j];
-        //            }
-        //            xout.Add(x);
-        //            yout.Add(y);
-        //            zout.Add(z);
-        //            start = i;
-        //            B = new List<double>();
-        //        }
-        //        t_last = Time[i];
-        //    }
-        //    //BS_out.Add(BS.GetRange(start, BS.Count - 1));
-        //    //T_out.Add(Time.GetRange(start, Time.Count - 1));
-        //    //xout.Add(xdir.GetRange(start, xdir.Count - 1));
-        //    //yout.Add(ydir.GetRange(start, ydir.Count - 1));
-        //    //zout.Add(zdir.GetRange(start, zdir.Count - 1));
-        //}
-
         /// <summary>
         /// This function calculates the actual path of the specular reflection.
         /// </summary>
         /// <param name="Images">The list of images.</param>
         /// <param name="Sequence">The list of surface indices for reflection.</param>
         /// <param name="Threadid">The id of the calling thread.</param>
-        private void ProcessImages(Hare.Geometry.Point[] Images, int[] Sequence, int rec_id, int Threadid)
-        {
-            double[] Trans_Mod = new double[8];
-            int[] Seq_Polys = new int[Sequence.Length];
-            for (int t_oct = 0; t_oct < 8; t_oct++) Trans_Mod[t_oct] = 1;
-            Hare.Geometry.Point[] PathVertices = new Hare.Geometry.Point[Sequence.Length + 2];
-            PathVertices[0] = Src.H_Origin();
-            PathVertices[PathVertices.Length - 1] = Rec[rec_id];
+        //private void ProcessImages(Hare.Geometry.Point[] Images, int[] Sequence, int rec_id, int Threadid)
+        //{
+        //    double[] Trans_Mod = new double[8];
+        //    int[] Seq_Polys = new int[Sequence.Length];
+        //    for (int t_oct = 0; t_oct < 8; t_oct++) Trans_Mod[t_oct] = 1;
+        //    Hare.Geometry.Point[] PathVertices = new Hare.Geometry.Point[Sequence.Length + 2];
+        //    PathVertices[0] = Src.H_Origin();
+        //    PathVertices[PathVertices.Length - 1] = Rec[rec_id];
 
-            //Find all Path Legs from Receiver to Source
-            for (int q = Sequence.Length; q > 0; q--) if (!OcclusionIntersect(PathVertices[q + 1], Images[q - 1], Sequence[q - 1], ref Trans_Mod, ref PathVertices[q], ref Seq_Polys[q - 1], Threadid)) return;
+        //    //Find all Path Legs from Receiver to Source
+        //    for (int q = Sequence.Length; q > 0; q--) if (!OcclusionIntersect(PathVertices[q + 1], Images[q - 1], Sequence[q - 1], ref Trans_Mod, ref PathVertices[q], ref Seq_Polys[q - 1], Threadid)) return;
 
-            //Final Occlusion Check:
-            if (FinalOcclusion(PathVertices[0], PathVertices[1], Sequence[0], ref Trans_Mod, Threadid)) return;
-            //Specular_Path SP = new Specular_Path(PathVertices, Sequence, Seq_Polys, Room, Src, Speed_of_Sound, Trans_Mod, ref Direct_Time[rec_id], Threadid, Rnd[Threadid].Next());
-            //ThreadPaths[rec_id, Threadid].Add(SP);
-        }
+        //    //Final Occlusion Check:
+        //    if (FinalOcclusion(PathVertices[0], PathVertices[1], Sequence[0], ref Trans_Mod, Threadid)) return;
+
+        //    ThreadPaths[Threadid].Add(new Specular_Path(PathVertices, Trans_Mod, )
+        //}
+
+        //private void ProcessImages(Hare.Geometry.Point[] Images, int[] Sequence, int rec_id, int Threadid)
+        //{
+        //        double c_sound = Room.Sound_speed(Rec[rec_id]);
+
+        //        double[] Trans_Mod = new double[8];
+        //        int[] Seq_Polys = new int[Sequence.Length];
+        //        List<Hare.Geometry.Point[]> PathVertices = new List<Hare.Geometry.Point[]>();
+        //        Hare.Geometry.Point S = Src.H_Origin();
+        //        Hare.Geometry.Point E = Rec[rec_id];
+        //        double df = SampleRate * .5 / 4096;
+
+        //        //Find all Path Legs from Receiver to Source
+        //        //for (int r = 0; r < Images.Length; r++)
+        //        //{
+        //            Trans_Mod = new double[8];
+        //            for (int t_oct = 0; t_oct < 8; t_oct++) Trans_Mod[t_oct] = 1;
+
+        //            Hare.Geometry.Point[] path = new Hare.Geometry.Point[Sequence.Length + 2];
+        //            path[0] = S;
+        //            path[path.Length - 1] = E;
+
+        //            for (int q = Sequence.Length - 1; q >= 0; q--)
+        //            {
+        //                if (Sequence[q] > Room.ObjectCount - 1)
+        //                {
+        //                //It's an edge
+        //                //if (!OcclusionIntersectED(path[q + 2], Images[r][q], Sequence[q], sub[r][q], ref Trans_Mod[r], Threadid))
+        //                //{
+        //                //    path = null; break;
+        //                //}
+        //                //else path[q + 1] = Images[r][q];
+        //                throw new Exception("Edges should not be run through the image processor for IS Tracing...");
+        //                }
+        //                else
+        //                {
+        //                    //It's a plane or curve!
+        //                    //Check sequence to determine if it is curved. These should be bundled so that it is clear which (for example) edge node is associated with which (for example) other edge or curved surface reflection.
+        //                    if (Room.IsPlanar(Sequence[q]))
+        //                    {
+        //                        //This is where we should be...
+        //                        if (!OcclusionIntersect(path[q + 2], Images[q], Sequence[q], ref Trans_Mod, ref path[q + 1], ref Seq_Polys[q], Threadid))
+        //                        { 
+        //                    return; 
+        //                }
+        //                    }
+        //                    else
+        //                    {
+        //                /// it's curved. Check that these are meeting the ballpark criteria for a curved reflection. Then it's business as usual.
+        //                //if (Room.ObjectMeshEdges[Sequence[q]][r].Polys.Count != 2) { path = null; break; }
+        //                //if (!this.Check_Edge_For_Specular(path[q + 2], path[q] == null ? Images[r][q] : path[q], new Hare.Geometry.Vector(Room.ObjectMeshEdges[Sequence[q]][r].Polys[0].Normal * -1), new Hare.Geometry.Vector(Room.ObjectMeshEdges[Sequence[q]][r].Polys[1].Normal * -1), Room.ObjectMeshEdges[Sequence[q]][r].a, Room.ObjectMeshEdges[Sequence[q]][r].b, ref path[q + 1])) { path = null; break; }
+        //                ////if (!OcclusionIntersect(path[q + 2], path[q + 1], Sequence[q], ref Trans_Mod[r], ref path[q + 1], ref Seq_Polys[q], Threadid)) { path = null; break; }
+        //                //if (!OcclusionIntersectED(path[q + 2], Images[r][q], Sequence[q], sub[r][q], ref Trans_Mod[r], Threadid)) { path = null; break; }
+        //                ////Maybe someday, but not today...
+        //                        return;
+        //                    }
+        //                }
+        //            }
+        //            if (FinalOcclusion(path[0], path[1], Sequence[0], ref Trans_Mod, Threadid)) return;
+
+        //            Hare.Geometry.Vector d = path[1] - path[0];
+        //            d.Normalize();
+        //            double[] En = Src.DirPower(Threadid, 0, d);
+        //            for (int oct = 0; oct < 8; oct++) Trans_Mod[oct] *= En[oct];
+
+        //        //////////////////////////////
+        //        //Process Compound Path before storing it.
+        //        double[][] times;
+        //        double mintime;
+        //        int[] elementIds;
+        //        double[][] B_Functions_Octave = B_Function_NoInterp(PathVertices, Sequence, new double[1][] { Trans_Mod }, c_sound, Threadid, out times, out elementIds);
+        //        double[][][] H = H_Function(B_Functions_Octave, PathVertices, Sequence, elementIds, times, out mintime, Threadid);
+
+        //            //Assumed either a convex, or planar reflection
+        //            double[] H_in = new double[8]; for (int oct = 0; oct < 8; oct++) H_in[oct] = H[0][oct][0];
+        //            ThreadPaths[rec_id, Threadid].Add(new Specular_Path(PathVertices[0], Sequence, Seq_Polys, Room, Src, c_sound, H_in,  Trans_Mod, ref Direct_Time[rec_id], Threadid, Rnd[Threadid].Next()));
+        //    }
+
 
         /// <summary>
         /// Processes image source paths with input of only a sequence of indices.
@@ -1165,12 +1213,20 @@ namespace Pachyderm_Acoustic
             //Find all Source Images
             for (int q = 0; q < Sequence.Length; q++)
             {
-                //RefPM = Room.PlaneMembers[Sequence[q]];
                 Images[q] = Room.Image(RefPoint, 0, Room.ObjectMembers[Sequence[q]][0]);
-                RefPoint = Images[q];
+                RefPoint = new Point( Images[q].x, Images[q].y, Images[q].z);
             }
 
-            ProcessImages(Images, Sequence, rec_id, Threadid);
+            int[] s = new int[Sequence.Length];
+            List<int[]> sub = new List<int[]>();
+            for (int i = 0; i < Sequence.Length; i++) s[i] = -1;
+            //im[Order] = Room.Image(Order > 0 ? Images0[r][Images0[r].Length - 1] : this.Src.H_Origin(), 0, Room.ObjectMembers[Sequence[Order]][0]);
+            //s[Order] = -1;//no sub needed...
+            //Images.Add(im);
+            sub.Add(s);
+
+            ProcessImages(new Point[1][] { Images }, Sequence, Threadid, sub, rec_id);
+            //ProcessImages(Images, Sequence, rec_id, Threadid);
 
             return true;
         }
@@ -1199,7 +1255,7 @@ namespace Pachyderm_Acoustic
                 {
                     ///The ray hit something transparent. Account for this...
                     double[] Absorption = Room.AbsorptionValue[X.Poly_id].Coefficient_A_Broad();
-                    for (int oct = 0; oct < 8; oct++) Trans_Mod[oct] *= (1 - Absorption[oct]) * Room.TransmissionValue[X.Poly_id][oct];
+                    for (int oct = 0; oct < 8; oct++) Trans_Mod[oct] *= (1 - Absorption[oct]) * Room.TransmissionValue[X.Poly_id][oct];// * (1-Scattering[oct]);
                     R.origin = X.X_Point;
                     R.Ray_ID = Rnd[Thread_Id].Next();
                     L2 += X.t;
@@ -1287,7 +1343,7 @@ namespace Pachyderm_Acoustic
         {
             Hare.Geometry.Vector D = (EndPt - Origin);
             double L = D.Length();
-            L *= .99; //For tolerance...
+            //L *= .99; //For tolerance...
             D /= L;
             Ray R = new Ray(Origin, D, Thread_Id, Rnd[Thread_Id].Next());
 
@@ -1337,12 +1393,15 @@ namespace Pachyderm_Acoustic
             List<int> planeids = new List<int>();
             if (Poly_X > Room.ObjectCount - 1)
             {
+                //Edge Diffraction Case
                 //for (int p = 0; p < Room.Raw_Edge[Poly_X - Room.ObjectCount].Polys.Count; p++) planeids.Add(Room.Edge_Nodes[Poly_X - Room.ObjectCount].Polys[p].Plane_ID);
                 planeids = new List<int>() { Room.Edge_Nodes[Poly_X - Room.ObjectCount].EdgeSources[sub].Poly_1, Room.Edge_Nodes[Poly_X - Room.ObjectCount].EdgeSources[sub].Poly_2 };
             }
             else
             {
-                throw new Exception("Used an edge diffraction occlusion check for something other than edge diffraction...");
+                //Curved Surface Source Case
+                //throw new Exception("Used an edge diffraction occlusion check for something other than edge diffraction...");
+                planeids = new List<int> { Room.ObjectMeshEdges[Poly_X][sub].Polys[0].Poly_ID, Room.ObjectMeshEdges[Poly_X][sub].Polys[1].Poly_ID};
             }
 
             do
@@ -1719,7 +1778,7 @@ namespace Pachyderm_Acoustic
             VB.Close();
         }
 
-        public Hare.Geometry.Vector[] Dir_Energy(int rec_id, int index, int Octave, double alt, double azi, bool degrees)
+        public Hare.Geometry.Vector[] Dir_Energy(int rec_id, int index, int Octave, double alt, double azi, bool degrees, bool Figure8 = false)
         {
             return ValidPaths[rec_id][index].Dir_Energy(Octave, alt, azi, degrees);
         }
@@ -1767,7 +1826,7 @@ namespace Pachyderm_Acoustic
         public abstract Hare.Geometry.Vector[] Dir_Energy(int Octave);
         public abstract Hare.Geometry.Vector[] Dir_Energy(int Octave, Hare.Geometry.Vector V);
         public abstract double[] Dir_Energy(int Octave, int dir);
-        public abstract Hare.Geometry.Vector[] Dir_Energy(int Octave, double alt, double azi, bool degrees);
+        public abstract Hare.Geometry.Vector[] Dir_Energy(int Octave, double alt, double azi, bool degrees, bool Figure8 = false);
 
         public abstract Hare.Geometry.Vector[] Dir_EnergySum(Hare.Geometry.Vector V);
         public abstract Hare.Geometry.Vector[] Dir_EnergySum(double alt, double azi, bool degrees);
@@ -1848,8 +1907,8 @@ namespace Pachyderm_Acoustic
 
             for (int oct = 0; oct < 8; oct++)
             {
-                double H_rc = H[0] / Room.Rho_C(0);
-                PathEnergy[oct] = Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * Length) * H_rc * H_rc ;
+                double H_rc = AcousticalMath.Intensity_Pressure(H[0], Room.Rho_C(0));
+                PathEnergy[oct] = Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * Length) * H_rc ;
                 PathEnergy[oct] *= Trans_Mod[oct];
             }
 
@@ -1867,7 +1926,7 @@ namespace Pachyderm_Acoustic
 
             prms = new double[8];
 
-            for (int i = 0; i < 8; i++) prms[i] = Math.Sqrt(PathEnergy[i] * Room.Rho_C(Path[0]));
+            for (int i = 0; i < 8; i++) prms[i] = AcousticalMath.Pressure_Intensity(PathEnergy[i], Room.Rho_C(Path[0]));
 
             Special_Filter = new System.Numerics.Complex[4096];
             for (int i = 0; i < Special_Filter.Length; i++) Special_Filter[i] = 1;
@@ -1999,7 +2058,7 @@ namespace Pachyderm_Acoustic
             return new Hare.Geometry.Vector[] { Dir * PathEnergy[Octave] };
         }
 
-        public override Hare.Geometry.Vector[] Dir_Energy(int Octave, double alt, double azi, bool degrees)
+        public override Hare.Geometry.Vector[] Dir_Energy(int Octave, double alt, double azi, bool degrees, bool Figure8 = false)
         {
             Hare.Geometry.Vector[] V = Dir_Energy(Octave);
             return new Hare.Geometry.Vector[] { Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V[0], azi, 0, degrees), 0, alt, degrees)};
@@ -2263,29 +2322,68 @@ namespace Pachyderm_Acoustic
 
         public override Hare.Geometry.Vector[] Dir_Energy(int Octave)
         {
-            Hare.Geometry.Vector[] De = new Hare.Geometry.Vector[PathEnergy.Length];
-            for (int i = 0; i < PathEnergy.Length; i++)
+            Hare.Geometry.Vector[] De = new Hare.Geometry.Vector[H.Length];
+            for (int i = 0; i < H.Length; i++)
             {
                 Hare.Geometry.Vector Dir = Path[i][Path[i].Length - 1] - Path[i][Path[i].Length - 2];
-                Dir.Normalize();
-                De[i] = Dir * PathEnergy[i][Octave];
+                //Dir.Normalize();
+                //De[i] = Dir * PathEnergy[i][Octave];
+
             }
             return De;
         }
 
-        public override Hare.Geometry.Vector[] Dir_Energy(int Octave, double alt, double azi, bool degrees)
+        public override Hare.Geometry.Vector[] Dir_Energy(int Octave, double alt, double azi, bool degrees, bool Figure8 = false)
         {
-            Hare.Geometry.Vector[] V = Dir_Energy(Octave);
-            for (int i = 0; i < V.Length; i++)
+            //Hare.Geometry.Vector[] V = Dir_Energy(Octave);
+            Hare.Geometry.Vector[] Fn = new Hare.Geometry.Vector[H[0].Length];
+
+            double[][] Hdir_out = new double[6][];
+            for(int d = 0; d < 6; d++)
             {
-                 Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V[i], azi, 0, degrees), 0, alt, degrees);
+                Hdir_out[d] = new double[H[0].Length];
+                if (Octave < 8)
+                {
+                    for (int t = 0; t < Hdir[d][0].Length; t++)
+                    {
+                        Hdir_out[d][t] = AcousticalMath.Intensity_Pressure(Hdir[d][Octave][t], RhoC);
+                    } 
+                }
+                else
+                {
+                    for (int o = 0; o < 8; o++)
+                    {
+                        for (int t = 0; t < Hdir[d][0].Length; t++)
+                        {
+                            Hdir_out[d][t] += AcousticalMath.Intensity_Pressure(Hdir[d][o][t], RhoC);
+                        }
+                    }
+                }
             }
-            return V;
+
+            if (Figure8)
+            {
+                for (int i = 0; i < Hdir_out[0].Length; i++)
+                {
+                    Fn[i] = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Hare.Geometry.Vector(Hdir_out[0][i] - Hdir_out[1][i], Hdir_out[2][i] - Hdir_out[3][i], Hdir_out[4][i] - Hdir_out[5][i]), azi, 0, degrees), 0, alt, degrees);
+                }
+            }
+            else
+            {
+                int[] ids = new int[3];
+                ids[0] = (azi > 90 && azi < 270) ? 1 : 0;
+                ids[0] = (azi <= 180) ? 3 : 4;
+                ids[0] = (alt > 0) ? 4 : 5;
+                for (int i = 0; i < Hdir_out[0].Length; i++)
+                {
+                    Fn[i] = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Hare.Geometry.Vector(Hdir_out[ids[0]][i], Hdir_out[ids[1]][i], Hdir_out[ids[2]][i]), azi, 0, true), 0, alt, true);
+                }
+            }
+            return Fn;
         }
 
         public override Hare.Geometry.Vector[] Dir_Energy(int Octave, Hare.Geometry.Vector V)
-        {
-            double l = Math.Sqrt(V.z * V.z + V.x * V.x);
+        {            double l = Math.Sqrt(V.z * V.z + V.x * V.x);
             double azi = Math.Asin(V.y / l);
             double alt = Math.Atan2(V.x, V.z);
             return Dir_Energy(Octave, alt, azi, false);
@@ -2366,11 +2464,11 @@ namespace Pachyderm_Acoustic
         public override double[][] Dir_Filter(double[] SWL, double alt, double azi, bool degrees, int sampleFreq, bool flat)
         {
             double[][] Hdir_out = (sampleFreq == 44100 && flat) ? Fdir : Create_Filter(SWL, sampleFreq, 4096, 0);
-            double[][] Fn = new double[H.Length][];
+            double[][] Fn = new double[Hdir_out[0].Length][];
 
-            for (int i = 0; i < Hdir.Length; i++)
+            for (int i = 0; i < Hdir_out[0].Length; i++)
             {
-                Hare.Geometry.Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Hare.Geometry.Vector(Hdir_out[i][0] - Hdir_out[i][1], Hdir_out[i][2] - Hdir_out[i][3], Hdir_out[i][4] - Hdir_out[i][5]), azi, 0, degrees), 0, alt, degrees);
+                Hare.Geometry.Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Hare.Geometry.Vector(Hdir_out[0][i] - Hdir_out[1][i], Hdir_out[2][i] - Hdir_out[3][i], Hdir_out[4][i] - Hdir_out[5][i]), azi, 0, degrees), 0, alt, degrees);
                 Fn[i] = new double[3] { Vn.x, Vn.y, Vn.z };
             }
             return Fn;

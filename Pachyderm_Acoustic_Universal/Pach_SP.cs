@@ -700,9 +700,6 @@ namespace Pachyderm_Acoustic
             {
                 int spec_length = length_starttofinish / 2;
 
-                //if (Octave_pressure[0] < 0)
-                //    Octave_pressure[0] = Octave_pressure[0];
-
                 List<double> f = new List<double>();
                 f.Add(0);
 
@@ -718,7 +715,7 @@ namespace Pachyderm_Acoustic
                 List<double> pr = new List<double>();
                 pr.Add(Octave_pressure[0] * 0.0000000001);
                 pr.Add(Octave_pressure[0] * 0.00000001);
-                pr.Add(Octave_pressure[0] * 0.01);
+                pr.Add(Octave_pressure[0] * 0.001);
                 pr.Add(Octave_pressure[0]);
                 pr.Add(Octave_pressure[0]);
 
@@ -1100,7 +1097,6 @@ namespace Pachyderm_Acoustic
                 //System.Threading.CountdownEvent CDE = new System.Threading.CountdownEvent(Octave_ETC[0].Length);
                 System.Threading.CountdownEvent CDE = new System.Threading.CountdownEvent(Octave_PRMS[0].Length);
 
-
                 for (int p = 0; p < proc; p++)
                 {
                     output[p] = new double[length];
@@ -1113,9 +1109,7 @@ namespace Pachyderm_Acoustic
                         int thr = (int)thread;
                         for (int t = to[thr]; t < from[thr]; t++)
                         {
-                            //ct++;
                             double[] pr = new double[8];
-                            //for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Sqrt(Math.Abs(Octave_ETC[oct][t]) * Rho_C) * p_mod[oct];
                             for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Abs(Octave_PRMS[oct][t]) * p_mod[oct];
                             double sum = 0;
                             foreach (double d in pr) sum += d;

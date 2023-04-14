@@ -88,7 +88,7 @@ namespace Pachyderm_Acoustic
         {
             foreach (System.Threading.Thread T in T_List)
             {
-                if (T.ThreadState == System.Threading.ThreadState.Running) return System.Threading.ThreadState.Running;
+                if (T != null && T.ThreadState == System.Threading.ThreadState.Running) return System.Threading.ThreadState.Running;
             }
             return System.Threading.ThreadState.Stopped;
         }
@@ -140,7 +140,7 @@ namespace Pachyderm_Acoustic
                     R.Ray_ID = RND.Next();
                     if (Room.shoot(R, out u, out v, out ChosenIndex, out Start, out leg, out code))
                     {
-                        if (!Room.IsPlanar(ChosenIndex)) break;
+                        if (!Room.IsPlanar(Room.PlaneID(ChosenIndex))) break;
                         Reflections ++;
                         Room.ReflectRay(ref R, ref u, ref v, ref ChosenIndex);
                         if (Reflections > ImageOrder + 1)

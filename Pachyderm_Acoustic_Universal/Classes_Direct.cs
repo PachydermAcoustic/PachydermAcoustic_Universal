@@ -21,6 +21,7 @@ using Hare.Geometry;
 using Pachyderm_Acoustic.Environment;
 using System.Collections.Generic;
 using System.Linq;
+using Pachyderm_Acoustic.Utilities;
 
 namespace Pachyderm_Acoustic
 {
@@ -1260,7 +1261,7 @@ namespace Pachyderm_Acoustic
         {
             F = new double[Receiver.Count][];
             Fdir = new double[Receiver.Count][][];
-            double scale = Math.Sqrt(4096);
+            //double scale = Math.Sqrt(4096);
 
             double[] p_mod = new double[8];
             for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
@@ -1385,12 +1386,12 @@ namespace Pachyderm_Acoustic
                 for (int t = 0; t < Io[Rec_ID][0].Length; t++)
                 {
                     double[] pr = new double[8];
-                    for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Sqrt(Io[Rec_ID][oct][0] * Rho_C[0]) * p_mod[oct];
+                    for (int oct = 0; oct < 8; oct++) pr[oct] = AcousticalMath.Pressure_Intensity(Io[Rec_ID][oct][0], Rho_C[t]) * p_mod[oct];
 
                     double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 4096, 0);
                     for (int u = 0; u < Pmin.Length; u++)
                     {
-                        F_out[0][t + u] += Pmin[u];// *scale;
+                        F_out[0][t + u] += Pmin[u];
                     }
 
                     double[][] dir_E = new double[6][];
