@@ -1265,6 +1265,285 @@ namespace Pachyderm_Acoustic
             /// This class stores all energy detections in a compact, reduced sampling rate series of histograms.
             /// </summary>
             [Serializable]
+            protected internal class Directional_Histogram_ThirdOctave : Histogram
+            {
+
+                public double[][][] Dir_Rec_Pos;
+                public double[][][] Dir_Rec_Neg;
+                public double[][] Fdir;
+                public Directional_Histogram(int SampleRate_in, int SampleCT)
+                : base(SampleRate_in, SampleCT)
+                {
+                    SampleRate = SampleRate_in;
+                    this.SampleCT = SampleCT;
+                    Energy = new double[8][];
+
+                    for (int o = 0; o < 8; o++)
+                    {
+                        Energy[o] = new double[SampleCT];
+                    }
+                    Dir_Rec_Pos = new double[3][][];
+                    Dir_Rec_Neg = new double[3][][];
+                    for (int i = 0; i < 3; i++)
+                    {
+                        Dir_Rec_Pos[i] = new double[8][];
+                        Dir_Rec_Neg[i] = new double[8][];
+                        for (int oct = 0; oct < 8; oct++)
+                        {
+                            Dir_Rec_Pos[i][oct] = new double[SampleCT];
+                            Dir_Rec_Neg[i][oct] = new double[SampleCT];
+                        }
+                    }
+                }
+
+                /// <summary>
+                /// gets the histogram of aggregated vector directions.
+                /// </summary>
+                /// <param name="SampleRate_in"></param>
+                /// <param name="C_Sound_in"></param>
+                /// <param name="COTime_in"></param>
+                public Directional_Histogram(int SampleRate_in, double COTime_in)
+                : base(SampleRate_in, COTime_in)
+                {
+                    SampleRate = SampleRate_in;
+                    CO_Time = COTime_in / 1000;
+                    SampleCT = (int)(CO_Time * SampleRate);
+                    Energy = new double[8][];
+                    for (int o = 0; o < 8; o++)
+                    {
+                        Energy[o] = new double[(int)(SampleRate * CO_Time)];
+                    }
+                    Dir_Rec_Pos = new double[3][][];
+                    Dir_Rec_Neg = new double[3][][];
+                    for (int i = 0; i < 3; i++)
+                    {
+                        Dir_Rec_Pos[i] = new double[8][];
+                        Dir_Rec_Neg[i] = new double[8][];
+                        for (int oct = 0; oct < 8; oct++)
+                        {
+                            Dir_Rec_Pos[i][oct] = new double[SampleCT];
+                            Dir_Rec_Neg[i][oct] = new double[SampleCT];
+                        }
+                    }
+                }
+
+                public override string Type()
+                {
+                    return "Type;Map_Data";
+                }
+
+                public override void Combine_Sample(int Sample, double Energy_in, double Pressure_in, Vector direction_pos, Vector direction_neg, int Octave)// float p_real, float p_imag,
+                {
+                    if (Sample >= Energy[Octave].Length) return;
+                    if (Sample < 0) Sample = 0;
+                    Energy[Octave][Sample] += Energy_in;
+                    Pressure[Octave][Sample] += Pressure_in;
+                    Dir_Rec_Pos[0][Octave][Sample] += (direction_pos.x);
+                    Dir_Rec_Pos[1][Octave][Sample] += (direction_pos.y);
+                    Dir_Rec_Pos[2][Octave][Sample] += (direction_pos.z);
+                    Dir_Rec_Neg[0][Octave][Sample] += (direction_neg.x);
+                    Dir_Rec_Neg[1][Octave][Sample] += (direction_neg.y);
+                    Dir_Rec_Neg[2][Octave][Sample] += (direction_neg.z);
+                }
+
+                public override void Scale(int ray_ct)
+                {
+                    for (int oct = 0; oct < Energy.Length; oct++) for (int i = 0; i < Energy[oct].Length; i++)
+                        {
+                            Energy[oct][i] /= ray_ct;
+                            Pressure[oct][i] /= Math.Sqrt(ray_ct);
+                        }
+                    for (int dir = 0; dir < 3; dir++) for (int oct = 0; oct < Dir_Rec_Pos[dir].Length; oct++) for (int i = 0; i < Dir_Rec_Pos[dir][oct].Length; i++)
+                            {
+                                Dir_Rec_Pos[dir][oct][i] /= ray_ct;
+                                Dir_Rec_Neg[dir][oct][i] /= ray_ct;
+                            }
+                }
+
+                /// <summary>
+                /// Returns the energy response of the simulation.
+                /// </summary>
+                /// <param name="Octave">the octave band index</param>
+                /// <returns></returns>
+                public override double[] GetEnergyHistogram(int Octave)
+                {
+                    if (Octave < 8)
+                    {
+                        return Energy[Octave];
+                    }
+                    else
+                    {
+                        double[] Sum_Energy = new double[(Energy[0].Length)];
+                        for (int Oct = 0; Oct < 8; Oct++)
+                        {
+                            for (int idx = 0; idx < Energy[Oct].Length; idx++)
+                            {
+                                Sum_Energy[idx] += Energy[Oct][idx];
+                            }
+                        }
+                        return Sum_Energy;
+                    }
+                }
+
+                public override void Add(double time, double Energy_in, Vector direction, double Rho_C, int Octave)
+                {
+                    int sample = (int)(time * SampleRate);
+                    if (sample >= Energy[Octave].Length) return;
+                    Energy[Octave][sample] += Energy_in;
+                    Pressure[Octave][sample] += Math.Sqrt(Energy_in * Rho_C);
+                    if (direction.x > 0) Dir_Rec_Pos[0][Octave][sample] += (float)(direction.x * Energy_in);
+                    else Dir_Rec_Neg[0][Octave][sample] += (float)(direction.x * Energy_in);
+                    if (direction.y > 0) Dir_Rec_Pos[1][Octave][sample] += (float)(direction.y * Energy_in);
+                    else Dir_Rec_Neg[1][Octave][sample] += (float)(direction.y * Energy_in);
+                    if (direction.z > 0) Dir_Rec_Pos[2][Octave][sample] += (float)(direction.z * Energy_in);
+                    else Dir_Rec_Pos[2][Octave][sample] += (float)(direction.z * Energy_in);
+                }
+
+                /// <summary>
+                /// Adds the direction of the arrival.
+                /// </summary>
+                /// <param name="octave">the octave of the arriving ray.</param>
+                /// <param name="sample">the time point of arrival</param>
+                /// <param name="V">the direction of the arrival.</param>
+                public override void Add_direction(int octave, int sample, Vector VPos, Vector VNeg)
+                {
+                    this.Dir_Rec_Pos[0][octave][sample] = (float)VPos.x;
+                    this.Dir_Rec_Pos[1][octave][sample] = (float)VPos.y;
+                    this.Dir_Rec_Pos[2][octave][sample] = (float)VPos.z;
+                    this.Dir_Rec_Neg[0][octave][sample] = (float)VNeg.x;
+                    this.Dir_Rec_Neg[1][octave][sample] = (float)VNeg.y;
+                    this.Dir_Rec_Neg[2][octave][sample] = (float)VNeg.z;
+                }
+
+                /// <summary>
+                /// the direction of the sound at a given instant in the energy response.
+                /// </summary>
+                /// <param name="oct">octave band index</param>
+                /// <param name="t">the sample in time of the energy response to reference</param>
+                /// <returns></returns>
+                public override Vector Directions_Pos(int oct, int t)
+                {
+                    if (oct < 8) return new Vector(Dir_Rec_Pos[0][oct][t], Dir_Rec_Pos[1][oct][t], Dir_Rec_Pos[2][oct][t]);
+
+                    Vector D = new Vector(Dir_Rec_Pos[0][0][t], Dir_Rec_Pos[1][0][t], Dir_Rec_Pos[2][0][t]);
+                    D.x += Dir_Rec_Pos[0][1][t] + Dir_Rec_Pos[0][2][t] + Dir_Rec_Pos[0][3][t] + Dir_Rec_Pos[0][4][t] + Dir_Rec_Pos[0][5][t] + Dir_Rec_Pos[0][6][t] + Dir_Rec_Pos[0][7][t];
+                    D.y += Dir_Rec_Pos[1][1][t] + Dir_Rec_Pos[1][2][t] + Dir_Rec_Pos[1][3][t] + Dir_Rec_Pos[1][4][t] + Dir_Rec_Pos[1][5][t] + Dir_Rec_Pos[1][6][t] + Dir_Rec_Pos[1][7][t];
+                    D.x += Dir_Rec_Pos[2][1][t] + Dir_Rec_Pos[2][2][t] + Dir_Rec_Pos[2][3][t] + Dir_Rec_Pos[2][4][t] + Dir_Rec_Pos[2][5][t] + Dir_Rec_Pos[2][6][t] + Dir_Rec_Pos[2][7][t];
+                    return D;
+                }
+
+                /// <summary>
+                /// the direction of the sound at a given instant in the energy response.
+                /// </summary>
+                /// <param name="oct">octave band index</param>
+                /// <param name="t">the sample in time of the energy response to reference</param>
+                /// <returns></returns>
+                public override Vector Directions_Neg(int oct, int t)
+                {
+                    if (oct < 8) return new Vector(Dir_Rec_Neg[0][oct][t], Dir_Rec_Neg[1][oct][t], Dir_Rec_Neg[2][oct][t]);
+
+                    Vector D = new Vector(Dir_Rec_Neg[0][0][t], Dir_Rec_Neg[1][0][t], Dir_Rec_Neg[2][0][t]);
+                    D.x += Dir_Rec_Neg[0][1][t] + Dir_Rec_Neg[0][2][t] + Dir_Rec_Neg[0][3][t] + Dir_Rec_Neg[0][4][t] + Dir_Rec_Neg[0][5][t] + Dir_Rec_Neg[0][6][t] + Dir_Rec_Neg[0][7][t];
+                    D.y += Dir_Rec_Neg[1][1][t] + Dir_Rec_Neg[1][2][t] + Dir_Rec_Neg[1][3][t] + Dir_Rec_Neg[1][4][t] + Dir_Rec_Neg[1][5][t] + Dir_Rec_Neg[1][6][t] + Dir_Rec_Neg[1][7][t];
+                    D.x += Dir_Rec_Neg[2][1][t] + Dir_Rec_Neg[2][2][t] + Dir_Rec_Neg[2][3][t] + Dir_Rec_Neg[2][4][t] + Dir_Rec_Neg[2][5][t] + Dir_Rec_Neg[2][6][t] + Dir_Rec_Neg[2][7][t];
+                    return D;
+                }
+
+                public override void Divide(double divisor)
+                {
+                    for (int i = 0; i < Energy.Length; i++)
+                    {
+                        for (int j = 0; j < Energy[i].Length; j++)
+                        {
+                            this.Energy[i][j] /= divisor;
+                            this.Pressure[i][j] /= divisor;
+                            for (int k = 0; k < 3; k++) this.Dir_Rec_Pos[k][i][j] /= (float)divisor;
+                            for (int k = 0; k < 3; k++) this.Dir_Rec_Neg[k][i][j] /= (float)divisor;
+                        }
+                    }
+                }
+
+                /// <summary>
+                /// the direction of the sound at a given instant in the energy response.
+                /// </summary>
+                /// <param name="oct">octave band index</param>
+                /// <param name="t">the sample in time of the energy response to reference</param>
+                /// <param name="c">0 for x, 1 for y, 2 for z</param>
+                /// <returns></returns>
+                public override double Directions_Pos(int oct, int t, int c)
+                {
+                    return Dir_Rec_Pos[c][oct][t];
+                }
+
+                /// <summary>
+                /// Creates a filter with a custom leve/EQ. This is useful for auralization using a source with a colored spectrum.
+                /// </summary>
+                /// <param name="SWL"></param>
+                /// <param name="Rho_C"></param>
+                /// <returns></returns>
+                public override double[][] Create_Filter(double[] SWL, double Rho_C)
+                {
+                    double[][] F_ = new double[7][];
+                    F_[0] = Audio.Pach_SP.ETCToFilter(this.Pressure, SWL, this.SampleRate, 44100, "Filter Progress: Creating Omnidirectional..");
+                    Array.Resize(ref F_[0], F_[0].Length - 4096);
+
+                    for (int dir = 0; dir < 3; dir++)
+                    {
+                        double[][] temp_ptcP = new double[8][];
+                        double[][] temp_ptcN = new double[8][];
+                        for (int oct = 0; oct < 8; oct++)
+                        {
+                            temp_ptcP[oct] = new double[this.Pressure[oct].Length];
+                            temp_ptcN[oct] = new double[this.Pressure[oct].Length];
+                            for (int t = 0; t < temp_ptcP[oct].Length; t++)
+                            {
+                                temp_ptcP[oct][t] = this.Energy[oct][t] == 0 ? 0 : this.Pressure[oct][t] * this.Dir_Rec_Pos[dir][oct][t] / this.Energy[oct][t];
+                                temp_ptcN[oct][t] = this.Energy[oct][t] == 0 ? 0 : this.Pressure[oct][t] * this.Dir_Rec_Neg[dir][oct][t] / this.Energy[oct][t];
+                            }
+                        }
+                        F_[2 * dir + 1] = Audio.Pach_SP.ETCToFilter(temp_ptcP, SWL, this.SampleRate, 44100, string.Format("Filter Progress: Creating Positive {0}.", new string[3] { "X", "Y", "Z" }[dir]));
+                        Array.Resize(ref F_[2 * dir + 1], F_[2 * dir + 1].Length - 4096);
+                        F_[2 * dir + 2] = Audio.Pach_SP.ETCToFilter(temp_ptcN, SWL, this.SampleRate, 44100, string.Format("Filter Progress: Creating Negative {0}.", new string[3] { "X", "Y", "Z" }[dir]));
+                        Array.Resize(ref F_[2 * dir + 2], F_[2 * dir + 2].Length - 4096);
+                    }
+                    return F_;
+                }
+
+                public override double[] Create_Filter(double[] SWL, double Rho_C, int dim)
+                {
+                    double[][] temp = new double[8][];
+                    string msg;
+                    if (dim < 1 || dim > 6)
+                    {
+                        temp = this.Pressure;
+                        msg = "Filter Progress: Creating Omnidirectional..";
+                    }
+                    else
+                    {
+                        int d = (int)Math.Ceiling((double)dim / 2) - 1;
+                        double[][] tref = dim.IsOdd() ? Dir_Rec_Pos[d] : Dir_Rec_Neg[d];
+                        msg = string.Format(dim.IsOdd() ? "Filter Progress: Creating Positive {0}." : "Filter Progress: Creating Negative {0}.", new string[3] { "X", "Y", "Z" }[d]);
+
+                        for (int oct = 0; oct < 8; oct++)
+                        {
+                            for (int t = 0; t < temp[oct].Length; t++)
+                            {
+                                temp[oct][t] = this.Pressure[oct][t] * tref[oct][t] / this.Energy[oct][t];
+                            }
+                        }
+                    }
+
+                    double[] F = Audio.Pach_SP.ETCToFilter(temp, SWL, this.SampleRate, 44100, msg);
+                    Array.Resize(ref F, F.Length - 4096);
+                    return F;
+                }
+
+            }
+
+                /// <summary>
+                /// This class stores all energy detections in a compact, reduced sampling rate series of histograms.
+                /// </summary>
+                [Serializable]
             protected internal class Directional_Histogram : Histogram
             {
                 public double[][][] Dir_Rec_Pos;

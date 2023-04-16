@@ -32,7 +32,8 @@ namespace Pachyderm_Acoustic
             public static double rt2 = Math.Sqrt(2);
             public static double PiX2 = 2 * Math.PI;
             public static double Pi_180 = Math.PI / 180;
-            public static double[] angularFrequency = new double[] { 62.5 * PiX2, 125 * PiX2, 250 * PiX2, 500 * PiX2, 1000 * PiX2, 2000 * PiX2, 4000 * PiX2, 8000 * PiX2 };
+            public static double[] angularFrequency_Octave = new double[] { 62.5 * PiX2, 125 * PiX2, 250 * PiX2, 500 * PiX2, 1000 * PiX2, 2000 * PiX2, 4000 * PiX2, 8000 * PiX2 };
+            public static double[] angularFrequency_ThirdOctave = new double[] { 50 * PiX2, 62.5 * PiX2, 80 * PiX2, 100 * PiX2, 125 * PiX2, 160 * PiX2, 200 * PiX2, 250 * PiX2, 315 * PiX2, 400 * PiX2, 500 * PiX2, 630 * PiX2, 800 * PiX2, 1000 * PiX2, 1250 * PiX2, 1600 * PiX2, 2000 * PiX2, 2500 * PiX2, 3150 * PiX2, 4000 * PiX2, 5000 * PiX2, 6300 * PiX2, 8000 * PiX2, 10000 * PiX2 };
 
             public enum ComplexComponent
             {
@@ -2596,12 +2597,22 @@ namespace Pachyderm_Acoustic
             }
 
             /// <summary>
-            /// obtains the octave band index by string input.
+            /// obtains the octave band or third octave band index by string input.
             /// </summary>
             /// <param name="choice"></param>
             /// <returns></returns>
-            public static int OctaveStr2Int(string choice)
+            public static int OctaveStr2Int(string choice, bool thirdoct)
             {
+                if (thirdoct) return ThirdOctaveStr2Int(choice); else return OctaveStr2Int(choice); 
+            }
+
+                /// <summary>
+                /// obtains the octave band index by string input.
+                /// </summary>
+                /// <param name="choice"></param>
+                /// <returns></returns>
+                public static int OctaveStr2Int(string choice)
+                {
                 switch (choice)
                 {
                     case "Summation: All Octaves":
@@ -2634,6 +2645,101 @@ namespace Pachyderm_Acoustic
                     case "8k":
                     case "8000":
                         return 7;
+                }
+                return -1;
+            }
+
+            /// <summary>
+            /// obtains the third-octave band index by string input.
+            /// </summary>
+            /// <param name="choice"></param>
+            /// <returns></returns>
+            public static int ThirdOctaveStr2Int(string choice)
+            {
+                switch (choice)
+                {
+                    case "Summation: All Octaves":
+                        return 8;
+                    case "62.5 Hz.":
+                    case "63":
+                        return 0;
+                    case "80 Hz.":
+                    case "80":
+                        return 1
+                    case "100 Hz.":
+                    case "100":
+                        return 2;
+                    case "125 Hz.":
+                    case "125":
+                        return 3;
+                    case "160 Hz.":
+                    case "160":
+                        return 4;
+                    case "200 Hz.":
+                    case "200":
+                        return 5;
+                    case "250 Hz.":
+                    case "250":
+                        return 6;
+                    case "315 Hz.":
+                    case "315":
+                        return 7;
+                    case "400 Hz.":
+                    case "400":
+                        return 8;
+                    case "500 Hz.":
+                    case "500":
+                        return 9;
+                    case "630 Hz.":
+                    case "630":
+                        return 10;
+                    case "800 Hz.":
+                    case "800":
+                        return 11;
+                    case "1 kHz.":
+                    case "1k":
+                    case "1000":
+                        return 12;
+                    case "1.25 kHz.":
+                    case "1.25k":
+                    case "1250":
+                        return 13;
+                    case "1.6 kHz.":
+                    case "1.6k":
+                    case "1600":
+                        return 14;
+                    case "2 kHz.":
+                    case "2k":
+                    case "2000":
+                        return 15;
+                    case "2.5 kHz.":
+                    case "2.5k":
+                    case "2500":
+                        return 16;
+                    case "3.15 kHz.":
+                    case "3.15k":
+                    case "3150":
+                        return 17;
+                    case "4 kHz.":
+                    case "4k":
+                    case "4000":
+                        return 18;
+                    case "5 kHz.":
+                    case "5k":
+                    case "5000":
+                        return 19;
+                    case "6.13 kHz.":
+                    case "6.13k":
+                    case "6130":
+                        return 20;
+                    case "8 kHz.":
+                    case "8k":
+                    case "8000":
+                        return 21;
+                    case "10 kHz.":
+                    case "10k":
+                    case "10000":
+                        return 22;
                 }
                 return -1;
             }

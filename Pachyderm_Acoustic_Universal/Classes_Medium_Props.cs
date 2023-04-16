@@ -44,9 +44,9 @@ namespace Pachyderm_Acoustic
                 return (Pa / (Rd * Tk)) * (1 - 0.378*Pv/Pa); //kg/cubic meter
             }
 
-            protected double[] Calculate_Attenuation(int Air_Choice, double Pa, double Tk, double hr, bool EdgeCorrection)
+            protected double[] Calculate_Attenuation(int Air_Choice, double Pa, double Tk, double hr, bool Third_Octave, bool EdgeCorrection)
             {
-                double[] Freq = new double[8] { 62.5, 125, 250, 500, 1000, 2000, 4000, 8000};
+                double[] Freq = Third_Octave ? new double[23] { 50, 62.5, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 3150, 4000, 5000, 6300, 8000, 10000 } : new double[8] { 62.5, 125, 250, 500, 1000, 2000, 4000, 8000 };
                 double[] Att_Coef = new double[8];
 
                 if (Air_Choice == 0)
@@ -74,7 +74,7 @@ namespace Pachyderm_Acoustic
                     //double h = (Psat / 101.325) / (Pa / 101.325);
                     double h = hr * Math.Pow(10, -6.8346 * Math.Pow(273.16 / Tk, 1.261) + 4.6151) / (Pa / 101.325);
 
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < Freq.Length; oct++)
                     {
                         double frO = (Pa / 101.325) * (24 + 4.04 * Math.Pow(10, 4) * h * ((0.02 + h) / (0.391 + h)));
                         double frN = (Pa / 101.325) * Math.Pow(Tk / 293.15, -1 / 2) * (9 + 280 * h * Math.Exp(-4.170 * (Math.Pow((Tk / 293.15), (-1 / 3)) - 1)));
