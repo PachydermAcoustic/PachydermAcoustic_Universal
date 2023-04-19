@@ -1271,7 +1271,7 @@ namespace Pachyderm_Acoustic
                 public double[][][] Dir_Rec_Pos;
                 public double[][][] Dir_Rec_Neg;
                 public double[][] Fdir;
-                public Directional_Histogram(int SampleRate_in, int SampleCT)
+                public Directional_Histogram_ThirdOctave(int SampleRate_in, int SampleCT)
                 : base(SampleRate_in, SampleCT)
                 {
                     SampleRate = SampleRate_in;
@@ -1302,7 +1302,7 @@ namespace Pachyderm_Acoustic
                 /// <param name="SampleRate_in"></param>
                 /// <param name="C_Sound_in"></param>
                 /// <param name="COTime_in"></param>
-                public Directional_Histogram(int SampleRate_in, double COTime_in)
+                public Directional_Histogram_ThirdOctave(int SampleRate_in, double COTime_in)
                 : base(SampleRate_in, COTime_in)
                 {
                     SampleRate = SampleRate_in;

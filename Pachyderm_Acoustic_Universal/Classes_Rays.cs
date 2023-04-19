@@ -105,13 +105,14 @@ namespace Pachyderm_Acoustic
             public double t_sum;
             public int Surf_ID;
             public int Source_ID;
-            public int[] Octaves = new int[] { 0, 1, 2, 3, 4, 5, 6, 7 };
+            //public int[] Octaves = new int[] { 0, 1, 2, 3, 4, 5, 6, 7 };
+            //public int[] Third_Octaves = new int[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 };
 
             public BroadRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double[] energy_in, double time, int SrcID)
                 : base(StartPt, Direction, ThreadID_IN, ID)
             {
                 t_sum += time;
-                Energy = new double[8];
+                Energy = new double[energy_in.Length];
                 energy_in.CopyTo(Energy,0);
                 Source_ID = SrcID;
                 Surf_ID = -1;
@@ -121,11 +122,11 @@ namespace Pachyderm_Acoustic
                 : base(StartPt, Direction, ThreadID_IN, ID)
             {
                 t_sum += time;
-                Energy = new double[8];
+                Energy = new double[energy_in.Length];
                 energy_in.CopyTo(Energy, 0);
                 Source_ID = SrcID;
                 Surf_ID = -1;
-                Octaves = _Octaves;
+                //Octaves = _Octaves;
             }
 
             /// <summary>

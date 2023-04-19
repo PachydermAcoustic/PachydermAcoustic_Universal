@@ -2367,7 +2367,6 @@ namespace Pachyderm_Acoustic
 
         public class PachTools
         {
-
             public sealed class RandomNumberGenerator : Random
             {
                 private static Random _global = new Random();
@@ -2665,7 +2664,7 @@ namespace Pachyderm_Acoustic
                         return 0;
                     case "80 Hz.":
                     case "80":
-                        return 1
+                        return 1;
                     case "100 Hz.":
                     case "100":
                         return 2;

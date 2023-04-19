@@ -51,47 +51,94 @@ namespace Pachyderm_Acoustic
         {
             double[] Abs = new double[8];
             double[] Ref = new double[8];
-            double[] PD = new double[8];
+            //double[] PD = new double[8];
+            double[] Abs_3rd = new double[24];
+            double[] Ref_3rd = new double[24];
+            //double[] PD = new double[8];
+
             double[] Pdefault = new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
             MathNet.Numerics.Interpolation.CubicSpline Transfer_Function;
-    
-            public Basic_Material(double[] ABS)
-                :this(ABS, new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 })
-            {
-            }
 
-            public Basic_Material(double[] ABS, double[] Phase_Delay)
+            public Basic_Material(double[] ABS)//, double[] Phase_Delay)
             {
-                Abs = ABS;
-                PD = Phase_Delay;
-                for (int i = 0; i < ABS.Length; i++) Ref[i] = 1 - ABS[i];
-
-                //Interpolate a transfer function... this will probably be clumsy at first...
+                //Interpolate a transfer function...
                 double rt2 = Math.Sqrt(2);
 
                 List<double> f = new List<double>();
+                List<double> a = new List<double>();
+                List<double> pr = new List<double>();
+
                 f.Add(0);
-                f.Add(31.25 * rt2);
-                for (int oct = 0; oct < 9; oct++)
+                f.Add(31.25);
+                for (int oct = 0; oct < 8; oct++)
                 {
                     f.Add(62.5 * Math.Pow(2, oct));
-                    f.Add(rt2 * 62.5 * Math.Pow(2, oct));
                 }
+                f.Add(62.5 * Math.Pow(2, 8));
                 f.Add(24000);
 
-                List<double> pr = new List<double>();
-                pr.Add(0);
+                if (Abs.Length == 8)
+                {
+                    Abs = ABS;
+
+                    //F_Spectrum in...
+                    a.Add(Abs[0]);
+                    a.Add(Abs[0]);
+                    
+                    for (int oct = 0; oct < 8; oct++)
+                    {
+                        a.Add(Abs[oct]);
+                    }
+                    a.Add(Abs[7]);
+                    a.Add(Abs[7]);
+
+                    MathNet.Numerics.Interpolation.CubicSpline Alpha = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaSorted(f.ToArray(), a.ToArray());
+
+                    //F_Spectrum Out...
+                    for (int i = 0; i < ABS.Length; i++) Ref[i] = 1 - ABS[i];
+                    double thirdmod = Math.Pow(2, 1 / 6);
+
+                    for (int oct = 0; oct < 24; oct++)
+                    {
+                        double f_center = 50 * Math.Pow(2, oct/3.0);
+                        //double f_lower = (int)((Math.Floor(f_center / thirdmod)));// - min_freq)/df);
+                        //double f_upper = (int)((Math.Floor(f_center * thirdmod)));// - min_freq)/df);
+
+                        //int f_id_l = 0;//(int)Math.Floor((double)((f_lower) / 5));
+
+                        //for (int i = 0; i < frequency.Length; i++)
+                        //{
+                        //    if (frequency[i] < f_lower) f_id_l = i;
+                        //    else break;
+                        //}
+                        Abs_3rd[oct] = Alpha.Interpolate(f_center);
+                        Ref_3rd[oct] = 1 - Abs_3rd[oct];
+                    }
+                }
+                else if(Abs.Length == 24)
+                {
+                    Abs_3rd = ABS;
+                    for(int oct = 0; oct < 8; oct++)
+                    {
+                        int octave = oct * 3;
+                        Ref_3rd[octave] = 1 - Abs_3rd[octave];
+                        Ref_3rd[octave+1] = 1 - Abs_3rd[octave+1];
+                        Ref_3rd[octave+2] = 1 - Abs_3rd[octave+2];
+                        Abs[oct] = (Abs_3rd[octave] + Abs_3rd[octave + 1]+ Abs_3rd[octave + 2])/3;
+                        Ref[oct] = 1 - Abs[oct];
+                    }
+                }
+
+                pr.Add(Math.Sqrt(1 - Abs[0]));
                 pr.Add(Math.Sqrt(1 - Abs[0]));
 
-                for (int oct = 0; oct < 7; oct++)
+                for (int oct = 0; oct < 8; oct++)
                 {
                     pr.Add(Math.Sqrt(1 - Abs[oct]));
-                    pr.Add(Math.Sqrt((2 - Abs[oct] - Abs[oct + 1]) / 2));
                 }
-                if (pr.Count < f.Count) pr.Add(Math.Sqrt(1 - Abs[7]));//8k
-                if (pr.Count < f.Count) pr.Add(Math.Sqrt((1 - Abs[7] + (1 - Abs[7])) / 2));//10k
-                if (pr.Count < f.Count) pr.Add(Math.Sqrt(1 - Abs[7]));//12k
-                if (pr.Count < f.Count) pr.Add(Math.Sqrt(1 - Abs[7]));//16k
+                pr.Add(Math.Sqrt(1 - Abs[7]));
+                pr.Add(Math.Sqrt(1 - Abs[7]));
+
                 while (pr.Count < f.Count) pr.Add(1 - Abs[7]);
 
                 Transfer_Function = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaSorted(f.ToArray(), pr.ToArray());
@@ -894,8 +941,9 @@ namespace Pachyderm_Acoustic
                     Cos_Theta *= -1;
                 }
                     
-                foreach (int oct in Ray.Octaves)
+                for(int oct = 0; oct < 8; oct++)
                 {
+                    if (Ray.Energy[oct] == 0) continue;
                     // 3. Apply Scattering.
                     //// a. Create new source for scattered energy (E * Scattering).
                     //// b. Modify E (E * 1 - Scattering).
