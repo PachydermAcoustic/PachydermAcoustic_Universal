@@ -48,9 +48,10 @@ namespace Pachyderm_Acoustic
             /// </summary>
             Topology T;
 
-            public SurfaceSource(Hare.Geometry.Point[] samples, Topology T_in, String CodeList, double area, int el_m, int SrcID)
-            : base(new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 }, new Hare.Geometry.Point(0, 0, 0), SrcID)
+            public SurfaceSource(Hare.Geometry.Point[] samples, Topology T_in, String CodeList, double area, int el_m, int SrcID, bool Third_Octave)
+            : base(new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 }, new Hare.Geometry.Point(0, 0, 0), SrcID, Third_Octave)
             {
+                //TODO: Accommodate third octave.
                 T = T_in;
 
                 samplespermeter = el_m;

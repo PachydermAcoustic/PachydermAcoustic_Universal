@@ -111,10 +111,10 @@ namespace Pachyderm_Acoustic
         /// <param name="BR">The open BinaryReader object</param>
         /// <param name="Rec_CT">The number of receivers the direct sound was calculated for.</param>
         /// <returns>The completed direct sound simulation type.</returns>
-        public static Direct_Sound Read_Data(ref System.IO.BinaryReader BR, IEnumerable<Hare.Geometry.Point> RecPts, Hare.Geometry.Point SrcPt, double[] Rho_C, string Version)
+        public static Direct_Sound Read_Data(ref System.IO.BinaryReader BR, IEnumerable<Hare.Geometry.Point> RecPts, Hare.Geometry.Point SrcPt, double[] Rho_C, bool Third_Oct, string Version)
         {
             Direct_Sound D = new Direct_Sound();
-
+            int no_of_bands = Third_Oct ? 24 : 8;
             D.Receiver = RecPts.ToList<Hare.Geometry.Point>(); //new Receiver_Bank(RecPts, SrcPt, 343, new double[] { 0, 0, 0, 0, 0, 0, 0, 0 }, 0, 1000, 0, Receiver_Bank.Type.Stationary);
             int Rec_Ct = D.Receiver.Count;//RecPts.Count<Rhino.Geometry.Point3d>();
             D.Rho_C = Rho_C;
@@ -137,7 +137,7 @@ namespace Pachyderm_Acoustic
                     ////Duration_ms = BR.ReadInt32();
                 //}
                 D.SWL = new double[8];
-                for (int o = 0; o < 8; o++)
+                for (int o = 0; o < no_of_bands; o++)
                 {
                     D.SWL[o] = BR.ReadDouble(); //double
                 }
@@ -157,7 +157,7 @@ namespace Pachyderm_Acoustic
                     D.Delay_ms = 0;
             }
 
-            D.Src = new GeodesicSource(D.SWL, SrcPt, 0);
+            D.Src = new GeodesicSource(D.SWL, SrcPt, 0, Third_Oct);
             D.Validity = new Boolean[RecPts.Count<Hare.Geometry.Point>()];
             D.Time_Pt = new double[RecPts.Count<Hare.Geometry.Point>()];
             D.Io = new double[RecPts.Count<Hare.Geometry.Point>()][][];
@@ -190,20 +190,16 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                D.Io[q][8] = new double[no_of_samples];
+                D.Io[q][no_of_bands+1] = new double[no_of_samples];
 
                 for (int s = 0; s < no_of_samples; s++)
                 {
                     //5a. Write all Energy data
-                    D.Io[q][0][s] = BR.ReadDouble();
-                    D.Io[q][1][s] = BR.ReadDouble();
-                    D.Io[q][2][s] = BR.ReadDouble();
-                    D.Io[q][3][s] = BR.ReadDouble();
-                    D.Io[q][4][s] = BR.ReadDouble();
-                    D.Io[q][5][s] = BR.ReadDouble();
-                    D.Io[q][6][s] = BR.ReadDouble();
-                    D.Io[q][7][s] = BR.ReadDouble();
-                    D.Io[q][8][s] = D.Io[q][0][s] + D.Io[q][1][s] + D.Io[q][2][s] + D.Io[q][3][s] + D.Io[q][4][s] + D.Io[q][5][s] + D.Io[q][6][s] + D.Io[q][7][s];
+                    for (int i = 0; i < no_of_bands + 1; i++)
+                    {
+                        D.Io[q][i][s] = BR.ReadDouble();
+                        D.Io[q][no_of_bands][s] = D.Io[q][i][s];
+                    }
 
                     if (v == 1.7)
                     {
@@ -222,7 +218,6 @@ namespace Pachyderm_Acoustic
             }
 
             D.Create_Filter();
-            //D.Create_Pressure();
 
             return D;
         }
@@ -1377,16 +1372,15 @@ namespace Pachyderm_Acoustic
             double[][] F_out = new double[7][];
             double scale = Math.Sqrt(4096);
 
-            double[] p_mod = new double[8];
-            for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
+            double[] p_mod = new double[SWL.Length];
+            for (int i = 0; i < SWL.Length; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
 
-                double[][] ETC = new double[8][];
                 F_out[0] = new double[Io[Rec_ID][0].Length + 4096];
                 for (int j = 1; j < 7; j++) F_out[j] = new double[Io[Rec_ID][0].Length + 4096];
                 for (int t = 0; t < Io[Rec_ID][0].Length; t++)
                 {
-                    double[] pr = new double[8];
-                    for (int oct = 0; oct < 8; oct++) pr[oct] = AcousticalMath.Pressure_Intensity(Io[Rec_ID][oct][0], Rho_C[t]) * p_mod[oct];
+                    double[] pr = new double[SWL.Length];
+                    for (int oct = 0; oct < SWL.Length; oct++) pr[oct] = AcousticalMath.Pressure_Intensity(Io[Rec_ID][oct][0], Rho_C[t]) * p_mod[oct];
 
                     double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 4096, 0);
                     for (int u = 0; u < Pmin.Length; u++)
@@ -1396,7 +1390,6 @@ namespace Pachyderm_Acoustic
 
                     double[][] dir_E = new double[6][];
                     for (int d = 0; d < 6; d++) dir_E[d] = new double[8];
-                    //double[] totalprms = new double[6];
                     Vector vpos = new Vector(), vneg = new Vector();
                     for (int oct = 0; oct < 8; oct++)
                     {
@@ -1405,7 +1398,7 @@ namespace Pachyderm_Acoustic
                     }
 
                     //6th order normalization:
-                    double length = Math.Sqrt(+vpos.x * vpos.x + vneg.x * vneg.x + vpos.y * vpos.y + vneg.y * vneg.y + vpos.z * vpos.z + vneg.z * vneg.z);
+                    double length = Math.Sqrt(vpos.x * vpos.x + vneg.x * vneg.x + vpos.y * vpos.y + vneg.y * vneg.y + vpos.z * vpos.z + vneg.z * vneg.z);
                     vpos /= length;
                     vneg /= length;
 
@@ -1425,15 +1418,12 @@ namespace Pachyderm_Acoustic
 
         private void Record_Line_Segment(ref List<double> t, ref List<double[]> I, ref List<Vector> d, int rec_id)
         {
+            int no_of_bands = Io[0].Length;
             if (SPL_Only)
             {
                 for (int j = 0; j < t.Count; j++)
                 {
-                    //if (double.IsNaN(I[j].Sum()))
-                    //{
-                    //    continue;
-                    //}
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < no_of_bands; oct++)
                     {
                         Io[rec_id][oct][0] += I[j][oct];
 
@@ -1451,19 +1441,19 @@ namespace Pachyderm_Acoustic
             if (t.Count > 4)
             {
                 double[] t_dump = new double[t.Count];
-                double[][] I_dump = new double[8][];
-                double[][] xp_dump = new double[8][];
-                double[][] xn_dump = new double[8][];
-                double[][] yp_dump = new double[8][];
-                double[][] yn_dump = new double[8][];
-                double[][] zp_dump = new double[8][];
-                double[][] zn_dump = new double[8][];
+                double[][] I_dump = new double[no_of_bands][];
+                double[][] xp_dump = new double[no_of_bands][];
+                double[][] xn_dump = new double[no_of_bands][];
+                double[][] yp_dump = new double[no_of_bands][];
+                double[][] yn_dump = new double[no_of_bands][];
+                double[][] zp_dump = new double[no_of_bands][];
+                double[][] zn_dump = new double[no_of_bands][];
 
                 double dt = 1d / (double)SampleFreq;
 
                 double tmin = double.PositiveInfinity;
                 double tmax = double.NegativeInfinity;
-                for (int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < I_dump.Length; oct++)
                 {
                     I_dump[oct] = new double[t.Count];
                     xp_dump[oct] = new double[t.Count];
@@ -1482,7 +1472,7 @@ namespace Pachyderm_Acoustic
                     tmax = Math.Max(t[i], tmax);
                     double log10Eps = Math.Log10(1E-12);
 
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < no_of_bands; oct++)
                     {
                         I_dump[oct][i] = Math.Log10(I[i][oct]);
                         if (v.x > 0)
@@ -1518,15 +1508,15 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                MathNet.Numerics.Interpolation.CubicSpline[] I_Spline = new MathNet.Numerics.Interpolation.CubicSpline[8];
-                MathNet.Numerics.Interpolation.CubicSpline[] xp_Spline = new MathNet.Numerics.Interpolation.CubicSpline[8];
-                MathNet.Numerics.Interpolation.CubicSpline[] xn_Spline = new MathNet.Numerics.Interpolation.CubicSpline[8];
-                MathNet.Numerics.Interpolation.CubicSpline[] yp_Spline = new MathNet.Numerics.Interpolation.CubicSpline[8];
-                MathNet.Numerics.Interpolation.CubicSpline[] yn_Spline = new MathNet.Numerics.Interpolation.CubicSpline[8];
-                MathNet.Numerics.Interpolation.CubicSpline[] zp_Spline = new MathNet.Numerics.Interpolation.CubicSpline[8];
-                MathNet.Numerics.Interpolation.CubicSpline[] zn_Spline = new MathNet.Numerics.Interpolation.CubicSpline[8];
+                MathNet.Numerics.Interpolation.CubicSpline[] I_Spline = new MathNet.Numerics.Interpolation.CubicSpline[no_of_bands];
+                MathNet.Numerics.Interpolation.CubicSpline[] xp_Spline = new MathNet.Numerics.Interpolation.CubicSpline[no_of_bands];
+                MathNet.Numerics.Interpolation.CubicSpline[] xn_Spline = new MathNet.Numerics.Interpolation.CubicSpline[no_of_bands];
+                MathNet.Numerics.Interpolation.CubicSpline[] yp_Spline = new MathNet.Numerics.Interpolation.CubicSpline[no_of_bands];
+                MathNet.Numerics.Interpolation.CubicSpline[] yn_Spline = new MathNet.Numerics.Interpolation.CubicSpline[no_of_bands];
+                MathNet.Numerics.Interpolation.CubicSpline[] zp_Spline = new MathNet.Numerics.Interpolation.CubicSpline[no_of_bands];
+                MathNet.Numerics.Interpolation.CubicSpline[] zn_Spline = new MathNet.Numerics.Interpolation.CubicSpline[no_of_bands];
 
-                for (int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < no_of_bands; oct++)
                 {
                     I_Spline[oct] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(t_dump, I_dump[oct]);
                     xp_Spline[oct] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(t_dump, xp_dump[oct]);
@@ -1543,7 +1533,7 @@ namespace Pachyderm_Acoustic
                 {
                     int tau_present = Io[rec_id][0].Length;
                     //resize the intensity histograms...
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < no_of_bands; oct++)
                     {
                         Array.Resize(ref Dir_Rec_Pos[rec_id][oct], Io[rec_id][oct].Length);
                         Array.Resize(ref Dir_Rec_Neg[rec_id][oct], Io[rec_id][oct].Length);
@@ -1560,7 +1550,7 @@ namespace Pachyderm_Acoustic
 
                 for (int tau = taumin; tau < taumax; tau++)//Io[rec_id][0].Length; tau++)
                 {
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < no_of_bands; oct++)
                     {
                         double tdbl = (double)tau * dt;
                         double spl = I_Spline[oct].Interpolate(tdbl);

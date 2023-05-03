@@ -27,10 +27,6 @@ namespace Pachyderm_Acoustic
     {
         public class LineSource : Source
         {
-            ///// <summary>
-            ///// Original curves saved to the source object.
-            ///// </summary>
-            //public Curve Curve;
             /// <summary>
             /// Sample points on curves.
             /// </summary>
@@ -64,9 +60,10 @@ namespace Pachyderm_Acoustic
             /// <param name="el_m"></param>
             /// <param name="SrcID"></param>
             /// <param name="ph"></param>
-            public LineSource(Hare.Geometry.Point[] samples, double length, string Code, double el_m, int SrcID)
-                : base(new double[8] { 60, 49, 41, 35, 31, 28, 26, 24 }, new Point(0, 0, 0), SrcID)
+            public LineSource(Hare.Geometry.Point[] samples, double length, string Code, double el_m, int SrcID, bool Third_Octave)
+                : base(new double[8] { 60, 49, 41, 35, 31, 28, 26, 24 }, new Point(0, 0, 0), SrcID, Third_Octave)
             {
+                //TODO: Accommodate third octave
                 samplespermeter = el_m;
                 
                 //Divide curve up in ~equal length segments.
@@ -129,9 +126,10 @@ namespace Pachyderm_Acoustic
             /// <param name="el_m"></param>
             /// <param name="SrcID"></param>
             /// <param name="ph"></param>
-            public LineSource(Hare.Geometry.Point[] samples, double length, double _velocity, double _delta, string Code, int el_m, int SrcID)
-            : base(new double[8] { 60, 49, 41, 35, 31, 28, 26, 24 }, new Point(0, 0, 0), SrcID)
+            public LineSource(Hare.Geometry.Point[] samples, double length, double _velocity, double _delta, string Code, int el_m, int SrcID, bool Third_Octave)
+            : base(new double[8] { 60, 49, 41, 35, 31, 28, 26, 24 }, new Point(0, 0, 0), SrcID, Third_Octave)
             {
+                //TODO: accommodate third octave...
                 samplespermeter = el_m;
 
                 Samples = samples;

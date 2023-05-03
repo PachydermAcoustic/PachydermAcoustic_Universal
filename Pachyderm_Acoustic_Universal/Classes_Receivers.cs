@@ -44,6 +44,7 @@ namespace Pachyderm_Acoustic
             public Hare.Geometry.Point Min;
             public Hare.Geometry.Point Max;
             public int[] Oct_choice;
+            public bool Third_Oct = false;
 
             /// <summary>
             /// Specifies the kinds of receivers that can be placed in this receiver bank.
@@ -58,8 +59,9 @@ namespace Pachyderm_Acoustic
             {
             }
 
-            public Receiver_Bank(IList<Point> Pt, Point SrcPT, Scene Sc, int SampleRate_in, double COTime_in, Type Type)
+            public Receiver_Bank(IList<Point> Pt, Point SrcPT, Scene Sc, int SampleRate_in, double COTime_in, Type Type, bool third_Oct)
             {
+                Third_Oct = third_Oct;
                 SampleRate = SampleRate_in;
                 SampleCT = (int)Math.Floor(COTime_in * SampleRate_in / 1000);
                 this.CutOffTime = COTime_in;
@@ -81,7 +83,9 @@ namespace Pachyderm_Acoustic
                     if (arrPts[i].y < Min.y) Min.y = arrPts[i].y;
                     if (arrPts[i].z < Min.z) Min.z = arrPts[i].z;
                 }
+                Third_Oct = third_Oct;
             }
+
             /// <summary>
             /// Private receiver bank constructer for file read-in.
             /// </summary>
@@ -90,8 +94,9 @@ namespace Pachyderm_Acoustic
             /// <param name="CSound">the speed of sound in m/s</param>
             /// <param name="CO_Time_in">The Cut Off Time of the simulation in ms.</param>
             /// <param name="Type">The type of receiver to be used</param>
-            private Receiver_Bank(int Rec_Count, int SampleRate_in, double CO_Time_in, double[] rho_c, int[] Octaves, Receiver_Bank.Type Type)
+            private Receiver_Bank(int Rec_Count, int SampleRate_in, double CO_Time_in, double[] rho_c, int[] Octaves, Receiver_Bank.Type Type, bool third_Oct)
             {
+                Third_Oct = third_Oct;
                 SampleRate = SampleRate_in;
                 SampleCT = (int)Math.Ceiling(CO_Time_in * SampleRate_in / 1000);
                 this.CutOffTime = CO_Time_in;
@@ -114,8 +119,9 @@ namespace Pachyderm_Acoustic
             /// <param name="SampleRate_in">the simulation histogram sampling frequency</param>
             /// <param name="COTime_in">the Cut Off Time in ms.</param>
             /// <param name="Type">the type of receivers contained in this receiver bank</param>
-            public Receiver_Bank(IEnumerable<Point> Pt, Point SrcPT, Scene Sc, int SampleRate_in, double COTime_in, Type Type)
+            public Receiver_Bank(IEnumerable<Point> Pt, Point SrcPT, Scene Sc, int SampleRate_in, double COTime_in, Type Type, bool third_Oct)
             {
+                Third_Oct = third_Oct;
                 SampleRate = SampleRate_in;
                 SampleCT = (int)Math.Floor(COTime_in * SampleRate_in / 1000);
                 this.CutOffTime = COTime_in;
@@ -338,7 +344,7 @@ namespace Pachyderm_Acoustic
                 //6. Write the cut off time:double
                 double CutoffTime = BR.ReadDouble();
 
-                Receiver_Bank Rec = new Receiver_Bank(Rec_CT, SampleRate, CutoffTime, rho_c, new int[] { 0, 1, 2, 3, 4, 5, 6, 7 }, Rec_typ);
+                Receiver_Bank Rec = new Receiver_Bank(Rec_CT, SampleRate, CutoffTime, rho_c, new int[] { 0, 1, 2, 3, 4, 5, 6, 7 }, Rec_typ, false);
 
                 double v = double.Parse(version.Substring(0, 3));
 
@@ -731,17 +737,13 @@ namespace Pachyderm_Acoustic
                 double t = (t1 + t2) * .5;
                 if (t > 0 && t * t < SqDistance(EndPt, R.origin))
                 {
-                    double RayTime = t*Inv_C_Sound + R.t_sum;
+                    double RayTime = t * Inv_C_Sound + R.t_sum;
                     Vector Dir = R.direction * -1;
                     Dir.Normalize();
-                    Recs.Add(RayTime, R.Energy[0] * Math.Pow(10,-.1 * Atten[0] * t) * SizeMod * tsphere, Dir, Rho_C, 0);
-                    Recs.Add(RayTime, R.Energy[1] * Math.Pow(10,-.1 * Atten[1] * t) * SizeMod * tsphere, Dir, Rho_C, 1);
-                    Recs.Add(RayTime, R.Energy[2] * Math.Pow(10,-.1 * Atten[2] * t) * SizeMod * tsphere, Dir, Rho_C, 2);
-                    Recs.Add(RayTime, R.Energy[3] * Math.Pow(10,-.1 * Atten[3] * t) * SizeMod * tsphere, Dir, Rho_C, 3);
-                    Recs.Add(RayTime, R.Energy[4] * Math.Pow(10,-.1 * Atten[4] * t) * SizeMod * tsphere, Dir, Rho_C, 4);
-                    Recs.Add(RayTime, R.Energy[5] * Math.Pow(10,-.1 * Atten[5] * t) * SizeMod * tsphere, Dir, Rho_C, 5);
-                    Recs.Add(RayTime, R.Energy[6] * Math.Pow(10,-.1 * Atten[6] * t) * SizeMod * tsphere, Dir, Rho_C, 6);
-                    Recs.Add(RayTime, R.Energy[7] * Math.Pow(10,-.1 * Atten[7] * t) * SizeMod * tsphere, Dir, Rho_C, 7);
+                    foreach(int oct in R.Freq_Bands)
+                    {
+                        Recs.Add(RayTime, R.Energy[oct] * Math.Pow(10, -.1 * Atten[oct] * t) * SizeMod * tsphere, Dir, Rho_C, oct);
+                    }
                 }
             }
 
@@ -1272,16 +1274,20 @@ namespace Pachyderm_Acoustic
                 public double[][][] Dir_Rec_Neg;
                 public double[][] Fdir;
                 public Directional_Histogram_ThirdOctave(int SampleRate_in, int SampleCT)
-                : base(SampleRate_in, SampleCT)
+                    : base(SampleRate_in, SampleCT)
                 {
                     SampleRate = SampleRate_in;
                     this.SampleCT = SampleCT;
-                    Energy = new double[8][];
+                    CO_Time = (double)SampleCT / SampleRate;
+                    Energy = new double[24][];
+                    Pressure = new double[24][];
 
-                    for (int o = 0; o < 8; o++)
+                    for (int o = 0; o < 24; o++)
                     {
                         Energy[o] = new double[SampleCT];
+                        Pressure[o] = new double[SampleCT];
                     }
+
                     Dir_Rec_Pos = new double[3][][];
                     Dir_Rec_Neg = new double[3][][];
                     for (int i = 0; i < 3; i++)
@@ -1308,10 +1314,11 @@ namespace Pachyderm_Acoustic
                     SampleRate = SampleRate_in;
                     CO_Time = COTime_in / 1000;
                     SampleCT = (int)(CO_Time * SampleRate);
-                    Energy = new double[8][];
-                    for (int o = 0; o < 8; o++)
+                    Energy = new double[24][];
+                    for (int o = 0; o < 24; o++)
                     {
                         Energy[o] = new double[(int)(SampleRate * CO_Time)];
+                        Pressure[o] = new double[(int)(SampleRate * CO_Time)];
                     }
                     Dir_Rec_Pos = new double[3][][];
                     Dir_Rec_Neg = new double[3][][];
@@ -1338,12 +1345,12 @@ namespace Pachyderm_Acoustic
                     if (Sample < 0) Sample = 0;
                     Energy[Octave][Sample] += Energy_in;
                     Pressure[Octave][Sample] += Pressure_in;
-                    Dir_Rec_Pos[0][Octave][Sample] += (direction_pos.x);
-                    Dir_Rec_Pos[1][Octave][Sample] += (direction_pos.y);
-                    Dir_Rec_Pos[2][Octave][Sample] += (direction_pos.z);
-                    Dir_Rec_Neg[0][Octave][Sample] += (direction_neg.x);
-                    Dir_Rec_Neg[1][Octave][Sample] += (direction_neg.y);
-                    Dir_Rec_Neg[2][Octave][Sample] += (direction_neg.z);
+                    Dir_Rec_Pos[0][Octave][Sample] += (direction_pos.x) / 3.0;
+                    Dir_Rec_Pos[1][Octave][Sample] += (direction_pos.y) / 3.0;
+                    Dir_Rec_Pos[2][Octave][Sample] += (direction_pos.z) / 3.0;
+                    Dir_Rec_Neg[0][Octave][Sample] += (direction_neg.x) / 3.0;
+                    Dir_Rec_Neg[1][Octave][Sample] += (direction_neg.y) / 3.0;
+                    Dir_Rec_Neg[2][Octave][Sample] += (direction_neg.z) / 3.0;
                 }
 
                 public override void Scale(int ray_ct)

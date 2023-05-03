@@ -22,6 +22,7 @@ using Pachyderm_Acoustic.Environment;
 using System.Linq;
 using System.Windows.Forms;
 using System.Runtime.CompilerServices;
+using System.Windows;
 
 namespace Pachyderm_Acoustic
 {
@@ -2856,7 +2857,7 @@ namespace Pachyderm_Acoustic
             public static string EncodeAcoustics(int[] Absorption, int[] Scattering, int[] Transparency)
             {
                 string Code = "";
-                for (int q = 0; q < 8; q++)
+                for (int q = 0; q < Absorption.Length; q++)
                 {
                     string Temp = null;
                     if (Absorption[q] > 99)
@@ -2916,11 +2917,12 @@ namespace Pachyderm_Acoustic
             public static bool DecodeAcoustics(string Code, ref double[] Absorption, ref double[] Scattering, ref double[] Transparency)
             {
                 if (Code == null) return false;
-                Absorption = new double[8];
+                int abslength = Code.Length > 48 ? 24 : 8;  
+                Absorption = new double[abslength];
                 Scattering = new double[8];
                 Transparency = new double[8];
 
-                for (int q = 0; q < 8; q++)
+                for (int q = 0; q < abslength; q++)
                 {
                     string Temp = string.Concat(Code[2 * q], Code[2 * q + 1]);
                     if (Temp == "xx")
@@ -2972,8 +2974,8 @@ namespace Pachyderm_Acoustic
                 if (code == null) return new double[] { 120, 120, 120, 120, 120, 120, 120, 120 };
                 string[] SWLCodes = code.Split(";".ToCharArray());
                 if (SWLCodes.Length < 8) return new double[] { 120, 120, 120, 120, 120, 120, 120, 120 };
-                double[] SWL = new double[SWLCodes.Length];
-                for (int i = 0; i < 8; i++)
+                double[] SWL = new double[SWLCodes.Length-1];
+                for (int i = 0; i < SWL.Length; i++)
                 {                                         
                     SWL[i] = double.Parse(SWLCodes[i]);
                 }
@@ -2986,7 +2988,7 @@ namespace Pachyderm_Acoustic
                 string[] TLCodes = code.Split(";".ToCharArray());
                 if (TLCodes.Length < 8) return new double[] { 0, 0, 0, 0, 0, 0, 0, 0 };
                 double[] TL = new double[TLCodes.Length];
-                for (int i = 0; i < 8; i++)
+                for (int i = 0; i < TL.Length; i++)
                 {
                     TL[i] = double.Parse(TLCodes[i]);
                 }

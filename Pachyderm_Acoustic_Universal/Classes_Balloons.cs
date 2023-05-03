@@ -42,18 +42,20 @@ namespace Pachyderm_Acoustic
 
             int minstable = 8;
 
-            for(int oct = 0; oct < 8; oct++)
+            if (ballooncodes.Length == 8)
             {
-                if (ballooncodes[oct] == null) continue;
-                minstable = Math.Min(minstable, oct);
-                string[] lines = ballooncodes[oct].Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-                balloons[oct] = new string[lines.Length][];
-                for (int i = 0; i < lines.Length; i++)
+                for (int oct = 0; oct < 8; oct++)
                 {
-                    balloons[oct][i] = lines[i].Split(new char[1] { ' ' },StringSplitOptions.RemoveEmptyEntries);
+                    if (ballooncodes[oct] == null) continue;
+                    minstable = Math.Min(minstable, oct);
+                    string[] lines = ballooncodes[oct].Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                    balloons[oct] = new string[lines.Length][];
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        balloons[oct][i] = lines[i].Split(new char[1] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    }
                 }
             }
-
             int umax, vmax;
 
             if (balloons[minstable][0].Length == 19) //[36].Count == 36 || balloons[4].Count == 19 || balloons[4].Count == 10)

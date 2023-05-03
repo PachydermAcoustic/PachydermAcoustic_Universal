@@ -66,6 +66,8 @@ namespace Pachyderm_Acoustic
                 //3. Cut off Time (seconds) and SampleRate
                 sw.Write((double)Receiver[0].CO_Time);//CO_TIME.Value);
                 sw.Write(Receiver[0].SampleRate);
+                //3.1 Third Octave? (version 2.6+) true for 1/3 octave, false for octave band.
+                sw.Write(Direct_Data[0].Io[0].Length > 8);
                 //4.0 Source Count(int)
                 Hare.Geometry.Point[] SRC = new Hare.Geometry.Point[Direct_Data.Length];
                 for(int i = 0; i < Direct_Data.Length; i++) SRC[i] = Direct_Data[i].Src_Origin;
@@ -146,6 +148,8 @@ namespace Pachyderm_Acoustic
                     //3. Cut off Time and SampleRate
                     double CO_TIME = sr.ReadDouble();
                     int SampleRate = sr.ReadInt32();
+                    //3.1 Third Octave? (version 2.6+) true for 1/3 octave, false for octave band.
+                    bool Third_Octave = double.Parse(Pach_version) >= 2.6 ? sr.ReadBoolean() : false;
                     //4. Source Count          
                     int SrcCt = 1;
                     if (double.Parse(Pach_version.Substring(0, 3)) >= 1.1) SrcCt = sr.ReadInt32();
@@ -182,7 +186,7 @@ namespace Pachyderm_Acoustic
                             case "Direct_Sound":
                             case "Direct_Sound w sourcedata":
                                 //9. Read Direct Sound Data
-                                Direct_Data[DDCT] = Direct_Sound.Read_Data(ref sr, Recs, SrcPt[DDCT], Rho_C, Pach_version);
+                                Direct_Data[DDCT] = Direct_Sound.Read_Data(ref sr, Recs, SrcPt[DDCT], Rho_C, Third_Octave, Pach_version);
                                 Direct_Data[DDCT].CO_Time = CO_TIME;
                                 Direct_Data[DDCT].SampleFreq = (int)SampleRate;
                                 DDCT++;

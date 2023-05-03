@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Hare.Geometry;
 using Pachyderm_Acoustic.Utilities;
 
@@ -46,61 +47,81 @@ namespace Pachyderm_Acoustic
             /// <param name="TotalRays_in">Number of rays </param>
             /// <param name="Broadband_Time"></param>
             /// <param name="ID">The identifier of the source</param>
-            public Source(double[] power_In_db, Point Source, int ID)
+            public Source(double[] power_In_db, Point Source, int ID, bool Third_Octave)
             {
                 S_ID = ID;
                 H_Center = new Hare.Geometry.Point(Source.x, Source.y, Source.z);
-                Center = Source;                
-
-                SPL[0] = power_In_db[0];
-                SPL[1] = power_In_db[1];
-                SPL[2] = power_In_db[2];
-                SPL[3] = power_In_db[3];
-                SPL[4] = power_In_db[4];
-                SPL[5] = power_In_db[5];
-                SPL[6] = power_In_db[6];
-                SPL[7] = power_In_db[7];
-
-                SourcePower[0] = 1E-12 * Math.Pow(10, .1 * SPL[0]);
-                SourcePower[1] = 1E-12 * Math.Pow(10, .1 * SPL[1]);
-                SourcePower[2] = 1E-12 * Math.Pow(10, .1 * SPL[2]);
-                SourcePower[3] = 1E-12 * Math.Pow(10, .1 * SPL[3]);
-                SourcePower[4] = 1E-12 * Math.Pow(10, .1 * SPL[4]);
-                SourcePower[5] = 1E-12 * Math.Pow(10, .1 * SPL[5]);
-                SourcePower[6] = 1E-12 * Math.Pow(10, .1 * SPL[6]);
-                SourcePower[7] = 1E-12 * Math.Pow(10, .1 * SPL[7]);
+                Center = Source;
+                if (Third_Octave)
+                {
+                    if (power_In_db.Length == 24) 
+                    {
+                        SourcePower = new double[24];
+                        SPL = new double[24];
+                        for (int i = 0; i < 24; i++)
+                        {
+                            SPL[i] = power_In_db[i];
+                            SourcePower[i] = 1E-12 * Math.Pow(10, .1 * SPL[i]);
+                        }
+                    }
+                    else
+                    {
+                        //...an interpolation algorithm for octave to third octave 
+                        double[] freq = new double[9] {16, 63, 125, 250, 500, 1000, 2000, 4000, 8000 };
+                        power_In_db = power_In_db.Reverse().ToArray();
+                        Array.Resize(ref power_In_db, 9);
+                        power_In_db[8] = double.Epsilon;
+                        power_In_db = power_In_db.Reverse().ToArray();
+                        MathNet.Numerics.Interpolation.CubicSpline powerspline = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaInplace(freq, power_In_db);
+                        SourcePower = new double[24];
+                        for (int oct = 1; oct < 9; oct++)
+                        {
+                            double total = 0;
+                            for (int third = 1; third < 4; third++)
+                            {
+                                double f = 20 * Math.Pow(2, oct + (double)third / 3.0);
+                                SourcePower[3 * oct + third - 4] = 1E-12 * Math.Pow(10, .1 * powerspline.Interpolate(f)) / 3.0;
+                                total += SourcePower[3 * oct + third - 4] = 1E-12 * Math.Pow(10, .1 * powerspline.Interpolate(f)) / 3.0;
+                            }
+                            double ideal = 1E-12 * Math.Pow(10, .1 * power_In_db[1]);
+                            for (int third = 1; third < 4; third++)
+                            {
+                                SourcePower[3 * oct + third - 4] *= ideal / total;
+                                SPL[3 * oct + third - 4] = 10 * Math.Log10(SourcePower[3 * oct + third - 4] / 1E-12);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < 8; i++)
+                    {
+                        SPL[i] = power_In_db[i];
+                        SourcePower = new double[8];
+                    }
+                }
             }
 
             /// <summary>
             /// Constructor assigns a default sound power level of 120 dB per octave.
             /// </summary>
             /// <param name="Source">Origin of the source</param>
-            /// <param name="TotalRays_in">Number of rays </param>
-            /// <param name="Broadband_Time"></param>
             /// <param name="ID">The identifier of the source</param>
-            public Source(Point Source, int ID)
+            /// <param name="Third_Octave">Is the simulation to be performed in third octaves?</param>
+            public Source(Point Source, int ID, bool Third_Octave)
             {
                 S_ID = ID;
                 H_Center = new Hare.Geometry.Point(Source.x, Source.y, Source.z);
                 Center = Source;
 
-                SPL[0] = 120;
-                SPL[1] = 120;
-                SPL[2] = 120;
-                SPL[3] = 120;
-                SPL[4] = 120;
-                SPL[5] = 120;
-                SPL[6] = 120;
-                SPL[7] = 120;
+                int no_of_bands = Third_Octave ? 24 : 8;
+                double oct_mod = Third_Octave ? Math.Log(3) : 0;
 
-                SourcePower[0] = 1E-12 * Math.Pow(10, .1 * SPL[0]);
-                SourcePower[1] = 1E-12 * Math.Pow(10, .1 * SPL[1]);
-                SourcePower[2] = 1E-12 * Math.Pow(10, .1 * SPL[2]);
-                SourcePower[3] = 1E-12 * Math.Pow(10, .1 * SPL[3]);
-                SourcePower[4] = 1E-12 * Math.Pow(10, .1 * SPL[4]);
-                SourcePower[5] = 1E-12 * Math.Pow(10, .1 * SPL[5]);
-                SourcePower[6] = 1E-12 * Math.Pow(10, .1 * SPL[6]);
-                SourcePower[7] = 1E-12 * Math.Pow(10, .1 * SPL[7]);
+                for(int band = 0; band < no_of_bands; band++)
+                {
+                    SPL[band] = 120 - oct_mod;
+                    SourcePower[band] = 1E-12 * Math.Pow(10, .1 * SPL[band]);
+                }
             }
 
             public virtual void AppendPts(ref List<Point> SPT)
@@ -115,7 +136,7 @@ namespace Pachyderm_Acoustic
             {
                 get
                 {
-                    return SourcePower;// new double[] { SourcePower[0], SourcePower[1], SourcePower[2], SourcePower[3], SourcePower[4], SourcePower[5], SourcePower[6], SourcePower[7] };
+                    return SourcePower;
                 }
                 set
                 {
@@ -140,7 +161,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public virtual double[] DirPower(int threadid, int random, Vector Direction)
             {
-                return SourcePower.Clone() as double[];//new double[8] {1,1,1,1,1,1,1,1};
+                return SourcePower.Clone() as double[];
             }
 
             /// <summary>
@@ -154,7 +175,7 @@ namespace Pachyderm_Acoustic
             {
                 double[] H = SourcePower.Clone() as double[];
                 for (int i = 0; i < H.Length; i++) H[i] = AcousticalMath.Pressure_Intensity(H[i], this.Rho_C);
-                return H;//new double[8] {1,1,1,1,1,1,1,1};
+                return H;
             }
 
             /// <summary>
@@ -214,8 +235,8 @@ namespace Pachyderm_Acoustic
         [Serializable]
         public class RandomSource: Source
         {
-            public RandomSource(double[] power_in_db, Point Source, int ID)
-                :base(power_in_db, Source, ID)
+            public RandomSource(double[] power_in_db, Point Source, int ID, bool third_octave)
+                :base(power_in_db, Source, ID, third_octave)
             {
                 type = "PseudoRandom";
             }
@@ -251,8 +272,8 @@ namespace Pachyderm_Acoustic
             int Fnum = 0;
             protected int rayct = 0;
             
-            public GeodesicSource(double[] power_in_db, Point Source, int ID)
-                :base(power_in_db, Source, ID)
+            public GeodesicSource(double[] power_in_db, Point Source, int ID, bool Third_Octave)
+                :base(power_in_db, Source, ID, Third_Octave)
             {
                 Random RAND = new Random();
                 type = "Geodesic";
@@ -376,8 +397,8 @@ namespace Pachyderm_Acoustic
         {
             Hare.Geometry.Voxel_Grid Balloon;
 
-            public DirectionalSource(Balloon S, double[] power_in_db, Point Source, int[] Bands, int ID)
-                :base(power_in_db, Source, ID)
+            public DirectionalSource(Balloon S, double[] power_in_db, Point Source, int[] Bands, int ID, bool Third_Oct)
+                :base(power_in_db, Source, ID, Third_Oct)
             {
                 for (int oct = 0; oct < 8; oct++)
                 {
@@ -475,8 +496,8 @@ namespace Pachyderm_Acoustic
             int Fnum = 0;
             int ct = 0;
 
-            public GeodesicMeshSource(double[] power_in_db, Point Source, int MinRays, int ID)
-                : base(power_in_db, Source, ID)
+            public GeodesicMeshSource(double[] power_in_db, Point Source, int MinRays, int ID, bool Third_Octave)
+                : base(power_in_db, Source, ID, Third_Octave)
             {
                 Random RAND = new Random();
                 type = "Geodesic";

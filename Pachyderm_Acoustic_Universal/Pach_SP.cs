@@ -96,7 +96,6 @@ namespace Pachyderm_Acoustic
                 public abstract Complex[] Spectrum(double[] Octave_Pessure, int SampleFrequency, int LengthStartToFinish, int Threadid);
             }
 
-
             public class Minimum_Phase_System : DSP_System
             {
                 public override double[] Signal(double[] OctavePressure, int SampleFrequency, int LengthStartToFinish, int Threadid)
@@ -120,6 +119,7 @@ namespace Pachyderm_Acoustic
                     return Minimum_Phase_Spectrum(Octave_Pessure, SampleFrequency, LengthStartToFinish, Threadid);
                 }
             }
+
             public class Linear_Phase_System : DSP_System
             {
                 public override double[] Signal(double[] OctavePressure, int SampleFrequency, int LengthStartToFinish, int Threadid)
@@ -699,46 +699,66 @@ namespace Pachyderm_Acoustic
             public static double[] Magnitude_Filter(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
                 int spec_length = length_starttofinish / 2;
-
                 List<double> f = new List<double>();
-                f.Add(0);
-
-                for (int oct = 0; oct < 9; oct++)
-                {
-                    f.Add(62.5 * Math.Pow(2, oct) / Utilities.Numerics.rt2);
-                    f.Add(62.5 * Math.Pow(2, oct) * .8);
-                    f.Add(62.5 * Math.Pow(2, oct));
-                    f.Add(62.5 * Math.Pow(2, oct) * 1.2);
-                }
-                f.Add(sample_frequency / 2);
-
                 List<double> pr = new List<double>();
-                pr.Add(Octave_pressure[0] * 0.0000000001);
-                pr.Add(Octave_pressure[0] * 0.00000001);
-                pr.Add(Octave_pressure[0] * 0.001);
-                pr.Add(Octave_pressure[0]);
-                pr.Add(Octave_pressure[0]);
 
-                for (int oct = 1; oct < 7; oct++)
+                if (Octave_pressure.Length == 8)
                 {
-                    double min = Math.Min(Octave_pressure[oct], pr.Last());
-                    double max = Math.Max(Octave_pressure[oct], pr.Last());
-                    pr.Add((max*.95 + min*.05));
-                    pr.Add(Octave_pressure[oct]);
-                    pr.Add(Octave_pressure[oct]);
-                    pr.Add(Octave_pressure[oct]);
-                }
-                if (pr.Count < f.Count) pr.Add(Octave_pressure[7]);//8k
-                if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .9);//10k
-                if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .5);//12k
-                if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .25);//16k
-                int mod = 0;
-                while (pr.Count < f.Count)
-                {
-                    mod++;
-                    pr.Add(Octave_pressure[7] * .125 * Math.Pow(.5, mod));
-                }
+                    f.Add(0);
 
+                    for (int oct = 0; oct < 9; oct++)
+                    {
+                        f.Add(62.5 * Math.Pow(2, oct) / Utilities.Numerics.rt2);
+                        f.Add(62.5 * Math.Pow(2, oct) * .8);
+                        f.Add(62.5 * Math.Pow(2, oct));
+                        f.Add(62.5 * Math.Pow(2, oct) * 1.2);
+                    }
+                    f.Add(sample_frequency / 2);
+
+                    pr.Add(Octave_pressure[0] * 0.0000000001);
+                    pr.Add(Octave_pressure[0] * 0.00000001);
+                    pr.Add(Octave_pressure[0] * 0.001);
+                    pr.Add(Octave_pressure[0]);
+                    pr.Add(Octave_pressure[0]);
+
+                    for (int oct = 1; oct < 7; oct++)
+                    {
+                        double min = Math.Min(Octave_pressure[oct], pr.Last());
+                        double max = Math.Max(Octave_pressure[oct], pr.Last());
+                        pr.Add((max * .95 + min * .05));
+                        pr.Add(Octave_pressure[oct]);
+                        pr.Add(Octave_pressure[oct]);
+                        pr.Add(Octave_pressure[oct]);
+                    }
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7]);//8k
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .9);//10k
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .5);//12k
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .25);//16k
+                    int mod = 0;
+                    while (pr.Count < f.Count)
+                    {
+                        mod++;
+                        pr.Add(Octave_pressure[7] * .125 * Math.Pow(.5, mod));
+                    }
+                }
+                else if (Octave_pressure.Length == 24)
+                {
+                    if (Octave_pressure.Length == 8)
+                    {
+                        f.Add(20);
+                        pr.Add(Octave_pressure[0] * 0.0001);
+
+                        for (int oct = 0; oct < 24; oct++)
+                        {
+                            f.Add(20 * Math.Pow(2, 1 + oct / 3.0));
+                            pr.Add(Octave_pressure[oct]);
+                        }
+                        f.Add(sample_frequency / 2);
+                        pr.Add(Octave_pressure[23] * 0.0001);
+
+                    }
+                }
+                else throw new Exception();
                 //MathNet.Numerics.Interpolation.CubicSpline prm = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaSorted(f.ToArray(), pr.ToArray(),);
                 MathNet.Numerics.Interpolation.LinearSpline prm = MathNet.Numerics.Interpolation.LinearSpline.InterpolateSorted(f.ToArray(), pr.ToArray());
 
@@ -826,7 +846,6 @@ namespace Pachyderm_Acoustic
 
                 //return p_i;
             }
-
 
             public static System.Numerics.Complex[] Minimum_Phase_Spectrum(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
