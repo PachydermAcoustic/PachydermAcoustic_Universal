@@ -26,7 +26,7 @@ namespace Pachyderm_Acoustic
     /// <summary>
     /// Debug tool which shows a 1 dimensional function/array of values graphically.
     /// </summary>
-    partial class VisualizationBox : Form
+    public partial class VisualizationBox : Form
     {
         private ProgressBar Progress;
         private ZedGraphControl Graph;

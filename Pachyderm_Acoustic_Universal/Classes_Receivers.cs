@@ -1132,7 +1132,7 @@ namespace Pachyderm_Acoustic
                 /// <returns></returns>
                 public virtual double[] GetEnergyHistogram(int Octave)
                 {   
-                    if (Octave < 8)
+                    if (Octave < Energy.Length)
                     {
                         return Energy[Octave];
                     }

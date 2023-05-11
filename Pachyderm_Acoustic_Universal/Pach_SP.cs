@@ -241,6 +241,62 @@ namespace Pachyderm_Acoustic
                 return output;
             }
 
+            public static double[] FIR_Third_Bandpass(double[] h, int octave_index, int Sample_Freq, int thread)
+            {
+                int length = h.Length;
+
+                if (length != 4096)
+                {
+                    Array.Resize(ref h, (int)Math.Pow(2, Math.Ceiling(Math.Log(h.Length, 2)) + 1));
+                }
+
+                double ctr = 50 * Math.Pow(2, (double)octave_index/3.0);
+                double freq_l = 1.09 * ctr / Utilities.Numerics.rt2;
+                double freq_u = 0.92 * ctr * Utilities.Numerics.rt2;
+                //int idl = (int)Math.Round((h.Length * freq_l) / (Sample_Freq));
+                //int idu = (int)Math.Round((h.Length * freq_u) / (Sample_Freq));
+
+                //(double[] A, double[] B) = MathNet.Filtering.Butterworth.IirCoefficients.BandPass(freq_l * .8/22050d, freq_l/22050d, freq_u/22050d, freq_u / 0.8/22050d, .1, 100);
+                //Complex[] Ac = new Complex[A.Length], Bc = new Complex[B.Length];
+                double[] freq = new double[h.Length / 2];
+                //for (int i = 0; i < A.Length; i++) Ac[i] = new Complex(A[i],0);
+                //for (int i = 0; i < B.Length; i++) Bc[i] = new Complex(B[i], 0);
+                for (int i = 0; i < h.Length / 2; i++) freq[i] = i * (double)Sample_Freq / h.Length;
+                //Complex[] magspec = Pach_SP.IIR_Design.AB_FreqResponse(Bc.ToList(), Ac.ToList(), freq);
+                //Complex[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(freq, 10, freq_l, freq_u);
+                //double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq,h.Length);
+                double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq, h.Length / 2);
+
+                /////////////Use Zero Phase Bandpass//////////////////////
+                //Array.Resize(ref magspec, h.Length / 2);
+                System.Numerics.Complex[] filter = Mirror_Spectrum(magspec);
+
+                //double[] f_r = new double[filter.Length];
+                //double[] f_i = new double[filter.Length];
+                //double[] f_m = new double[filter.Length];
+
+                //for (int i = 0; i < filter.Length; i++) { f_r[i] = filter[i].Real; f_i[i] = filter[i].Imaginary; f_m[i] = filter[i].Magnitude; }
+
+                /////////////Minimum Phase Bandpass///////////////////////
+                //double[] response = Minimum_Phase_Response(magspec, 44100, 0);
+                //filter = FFT_General(response, 0);
+
+                //Convolve signal with Bandpass Filter.
+                Complex[] freq_h = FFT_General(h, thread);
+
+                for (int i = 0; i < freq_h.Length; i++)
+                {
+                    freq_h[i] *= filter[i];
+                }
+
+                double[] h_oct = IFFT_Real_General(freq_h, thread);
+                Scale(ref h_oct);
+
+                Array.Resize(ref h_oct, length);
+
+                return h_oct;
+            }
+
             public static double[] FIR_Bandpass(double[] h, int octave_index, int Sample_Freq, int thread)
             {
                 int length = h.Length;
