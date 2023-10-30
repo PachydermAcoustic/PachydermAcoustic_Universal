@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
  using System.Threading.Tasks;
+using System.Windows.Forms.DataVisualization.Charting;
 
 namespace Pachyderm_Acoustic
 {
@@ -42,9 +43,9 @@ namespace Pachyderm_Acoustic
         {
             public abstract double Coefficient(int octave);
             public abstract double[] Coefficient();
-            public abstract void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta);
-            public abstract void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta);
-            public abstract void Scatter_VeryLate(ref OctaveRay Ray, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta);
+            public abstract void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, double[] Transmission = null);
+            public abstract void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false);
+            public abstract void Scatter_VeryLate(ref OctaveRay Ray, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false);
         }
 
         public class Basic_Material : Material
@@ -860,6 +861,232 @@ namespace Pachyderm_Acoustic
             }
         }
 
+        public class Lambert_Scatteringex : Scattering
+        {
+            double[,] Scattering_Coefficient;
+            public Lambert_Scatteringex(double[] Scattering, double SplitRatio)
+            {
+                Scattering_Coefficient = new double[8, 3];
+                for (int oct = 0; oct < 8; oct++)
+                {
+                    double Mod = Math.Abs(Scattering[oct] - 0.5); //((Scattering[oct] < (1 - Scattering[oct])) ? (Scattering[oct] * SplitRatio / 2) : ((1 - Scattering[oct]) * SplitRatio / 2));
+                    Scattering_Coefficient[oct, 1] = Scattering[oct];
+                    Scattering_Coefficient[oct, 0] = Scattering_Coefficient[oct, 1] - Mod;
+                    Scattering_Coefficient[oct, 2] = Scattering_Coefficient[oct, 1] + Mod;
+                }
+            }
+            public override double[] Coefficient()
+            {
+                double[] Scat = new double[8];
+                for (int oct = 0; oct < 8; oct++) Scat[oct] = Scattering_Coefficient[oct, 1];
+                return Scat;
+            }
+
+            public override double Coefficient(int octave)
+            {
+                return Scattering_Coefficient[octave, 1];
+            }
+
+            public override void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, double[] Transmission = null)
+            {
+                if (Cos_Theta > 0)
+                {
+                    Normal *= -1;
+                    Cos_Theta *= -1;
+                }
+
+                foreach (int oct in Ray.Octaves)
+                {
+                    // 3. Apply Scattering.
+                    //// a. Create new source for scattered energy (E * Scattering).
+                    //// b. Modify E (E * 1 - Scattering).
+                    OctaveRay R = Ray.SplitRay(oct, Scattering_Coefficient[oct, 1]);
+
+                    Hare.Geometry.Vector diffx;
+                    Hare.Geometry.Vector diffy;
+                    Hare.Geometry.Vector diffz;
+                    double proj;
+                    //Check that the ray and the normal are both on the same side...
+                    diffz = Normal;
+                    diffx = new Hare.Geometry.Vector(0, 0, 1);
+                    proj = Math.Abs(Hare.Geometry.Hare_math.Dot(diffz, diffx));
+
+                    if (0.99 < proj && 1.01 > proj) diffx = new Hare.Geometry.Vector(1, 0, 0);
+                    diffy = Hare.Geometry.Hare_math.Cross(diffz, diffx);
+                    diffx = Hare.Geometry.Hare_math.Cross(diffy, diffz);
+                    diffx.Normalize();
+                    diffy.Normalize();
+                    diffz.Normalize();
+
+                    double u1;
+                    double u2;
+                    double x;
+                    double y;
+                    double z;
+                    Hare.Geometry.Vector vect;
+                    u1 = 2.0 * Math.PI * rand.NextDouble();
+                    // random azimuth
+                    double Scat_Mod = rand.NextDouble();
+                    u2 = Math.Acos(Scat_Mod);
+                    // random zenith (elevation)
+                    x = Math.Cos(u1) * Math.Sin(u2);
+                    y = Math.Sin(u1) * Math.Sin(u2);
+                    z = Math.Cos(u2);
+
+                    vect = (diffx * x) + (diffy * y) + (diffz * z);
+                    vect.Normalize();
+
+                    //Return the new direction
+                    R.direction = vect;
+
+                    if (Transmission != null && Transmission[oct] > 0)
+                    {
+                        OctaveRay tr = Ray.SplitRay(oct, Transmission[oct]);
+                        Rays.Enqueue(tr);
+
+                        OctaveRay td = R.SplitRay(Transmission[oct]);
+                        td.direction *= -1;
+                        Rays.Enqueue(td);
+                    }
+
+                    Rays.Enqueue(R);
+                }
+                Ray.direction -= Normal * Cos_Theta * 2;
+            }
+
+            public override void Scatter_VeryLate(ref OctaveRay Ray, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false)
+            {
+                if (rand.NextDouble() < Scattering_Coefficient[Ray.Octave, 1])
+                {
+                    Hare.Geometry.Vector diffx;
+                    Hare.Geometry.Vector diffy;
+                    Hare.Geometry.Vector diffz;
+                    double proj;
+                    //Check that the ray and the normal are both on the same side...
+                    if (Cos_Theta > 0) Normal *= -1;
+                    diffz = Normal;
+                    diffx = new Hare.Geometry.Vector(0, 0, 1);
+                    proj = Math.Abs(Hare.Geometry.Hare_math.Dot(diffz, diffx));
+
+                    if (0.99 < proj && 1.01 > proj) diffx = new Hare.Geometry.Vector(1, 0, 0);
+                    diffy = Hare.Geometry.Hare_math.Cross(diffz, diffx);
+                    diffx = Hare.Geometry.Hare_math.Cross(diffy, diffz);
+                    diffx.Normalize();
+                    diffy.Normalize();
+                    diffz.Normalize();
+
+                    double u1;
+                    double u2;
+                    double x;
+                    double y;
+                    double z;
+                    Hare.Geometry.Vector vect;
+                    u1 = 2.0 * Math.PI * rand.NextDouble();
+                    // random azimuth
+                    double Scat_Mod = rand.NextDouble();
+                    u2 = Math.Acos(Scat_Mod);
+                    // random zenith (elevation)
+                    x = Math.Cos(u1) * Math.Sin(u2);
+                    y = Math.Sin(u1) * Math.Sin(u2);
+                    z = Scat_Mod; //Math.Cos(u2);
+
+                    vect = (diffx * x) + (diffy * y) + (diffz * z);
+                    vect.Normalize();
+
+                    //Return the new direction
+                    Ray.direction = vect;
+                }
+                else
+                {
+                    //Specular Reflection
+                    Ray.direction -= Normal * Cos_Theta * 2;
+                }
+
+                if (Transmit) Ray.direction *= -1;
+            }
+
+            public override void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false)
+            {
+                //Approximation of a logarithmic function to split proportionally with logarithmic decay, but faster.
+                double percent =  Ray.Intensity * Ray.Decimation_threshold;
+                percent *= 1E9;
+                //if (percent < 0.0001) percent = percent * 1250;
+                //else if (percent < 0.001) percent = percent * 125 + 0.1;
+                //else if (percent < 0.01) percent = percent * 12.5 + 0.2;
+                //else if (percent < 0.1) percent = percent * 1.25 + 0.3;
+                //else if (percent < 1) percent = percent * .125 + 0.4;
+
+                if (percent < 0.00001) percent = percent * 25000;
+                else if (percent < 0.0001) percent = percent * 2500 + 0.1;
+                else if (percent < 0.001) percent = percent * 250 + 0.2;
+                else if (percent < 0.01) percent = percent * 25 + 0.3;
+                else if (percent < .1) percent = percent * 2.5 + 0.4;
+
+                double scat_sel = rand.NextDouble();
+                if (scat_sel > percent + 0.5)
+                {
+                    // Specular Reflection
+                    Ray.direction -= Normal * Cos_Theta * 2;
+                    if (Transmit) Ray.direction *= -1;
+                    return;
+                }
+                else if (scat_sel >= 0.5 - percent)
+                {
+                    //Only for a certain portion of high benefit cases--
+                    //// a. Create new source for scattered energy (E * Scattering).
+                    //// b. Modify E (E * 1 - Scattering).
+                    //Create a new ray...
+                    OctaveRay tr = Ray.SplitRay(1 - Scattering_Coefficient[Ray.Octave, 1]);
+                    // this is the specular reflection. Save it for later.
+                    tr.direction -= Normal * Cos_Theta * 2;
+                    if (Transmit) tr.direction *= -1;
+
+                    Rays.Enqueue(tr);
+                }
+
+                //If we are here, the original ray needs a scattered direction:
+                Hare.Geometry.Vector diffx;
+                Hare.Geometry.Vector diffy;
+                Hare.Geometry.Vector diffz;
+                double proj;
+                //Check that the ray and the normal are both on the same side...
+                if (Cos_Theta > 0) Normal *= -1;
+                diffz = Normal;
+                diffx = new Hare.Geometry.Vector(0, 0, 1);
+                proj = Math.Abs(Hare.Geometry.Hare_math.Dot(diffz, diffx));
+
+                if (0.99 < proj && 1.01 > proj) diffx = new Hare.Geometry.Vector(1, 0, 0);
+                diffy = Hare.Geometry.Hare_math.Cross(diffz, diffx);
+                diffx = Hare.Geometry.Hare_math.Cross(diffy, diffz);
+                diffx.Normalize();
+                diffy.Normalize();
+                diffz.Normalize();
+
+                double u1;
+                double u2;
+                double x;
+                double y;
+                double z;
+                Hare.Geometry.Vector vect;
+                u1 = 2.0 * Math.PI * rand.NextDouble();
+                // random azimuth
+                double Scat_Mod = rand.NextDouble();
+                u2 = Math.Acos(Scat_Mod);
+                // random zenith (elevation)
+                x = Math.Cos(u1) * Math.Sin(u2);
+                y = Math.Sin(u1) * Math.Sin(u2);
+                z = Math.Cos(u2);
+
+                vect = (diffx * x) + (diffy * y) + (diffz * z);
+                vect.Normalize();
+
+                //Return the new direction
+                Ray.direction = vect;
+                if (Transmit) Ray.direction *= -1;
+            }
+        }
+
+
         public class Lambert_Scattering : Scattering
         {
             double[,] Scattering_Coefficient;
@@ -886,7 +1113,7 @@ namespace Pachyderm_Acoustic
                 return Scattering_Coefficient[octave, 1];
             }
             
-            public override void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta)
+            public override void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, double[] Transmission = null)
             {
                 if (Cos_Theta > 0)
                 {
@@ -937,12 +1164,23 @@ namespace Pachyderm_Acoustic
 
                     //Return the new direction
                     R.direction = vect;
+                    
+                    if (Transmission != null && Transmission[oct] > 0)
+                    {
+                        OctaveRay tr = Ray.SplitRay(oct, Transmission[oct]);
+                        Rays.Enqueue(tr);
+
+                        OctaveRay td = R.SplitRay(Transmission[oct]);
+                        td.direction *= -1;
+                        Rays.Enqueue(td);
+                    }
+
                     Rays.Enqueue(R);
                 }
                 Ray.direction -= Normal * Cos_Theta * 2;
             }
 
-            public override void Scatter_VeryLate(ref OctaveRay Ray, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta)
+            public override void Scatter_VeryLate(ref OctaveRay Ray, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false)
             {
                 if (rand.NextDouble() < Scattering_Coefficient[Ray.Octave, 1])
                 {
@@ -989,15 +1227,18 @@ namespace Pachyderm_Acoustic
                     //Specular Reflection
                     Ray.direction -= Normal * Cos_Theta * 2;
                 }
+
+                if (Transmit) Ray.direction *= -1;
             }
-            
-            public override void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta)
+
+            public override void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false)
             {
                 double scat_sel = rand.NextDouble();
                 if (scat_sel > Scattering_Coefficient[Ray.Octave, 2])
                 {
                     // Specular Reflection
                     Ray.direction -= Normal * Cos_Theta * 2;
+                    if (Transmit) Ray.direction *= -1;
                     return;
                 }
                 else if (scat_sel > Scattering_Coefficient[Ray.Octave, 0])
@@ -1009,6 +1250,7 @@ namespace Pachyderm_Acoustic
                     OctaveRay tr = Ray.SplitRay(1 - Scattering_Coefficient[Ray.Octave,1]);
                     // this is the specular reflection. Save it for later.
                     tr.direction -= Normal * Cos_Theta * 2;
+                    if (Transmit) tr.direction *= -1;
 
                     Rays.Enqueue(tr);
                 }
@@ -1050,7 +1292,8 @@ namespace Pachyderm_Acoustic
                 vect.Normalize();
 
                 //Return the new direction
-                Ray.direction = vect;    
+                Ray.direction = vect;
+                if (Transmit) Ray.direction *= -1;
             }
         }
     }

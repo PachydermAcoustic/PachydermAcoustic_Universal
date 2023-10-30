@@ -347,9 +347,9 @@ namespace Pachyderm_Acoustic
 
             public abstract void Absorb(ref BroadRay Ray, out double cos_theta, double u, double v);
             public abstract void Absorb(ref OctaveRay Ray, out double cos_theta, double u, double v);
-            public abstract void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v);
-            public abstract void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v);
-            public abstract void Scatter_Simple(ref OctaveRay Ray, ref Random rand, double cos_theta, double u, double v);
+            public abstract void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v, double[] Transmission = null);
+            public abstract void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v, bool Transmission = false);
+            public abstract void Scatter_Simple(ref OctaveRay Ray, ref Random rand, double cos_theta, double u, double v, bool Transmission = false);
             
             public List<Material> AbsorptionValue
             {
@@ -651,19 +651,19 @@ namespace Pachyderm_Acoustic
                 AbsorptionData[Ray.Surf_ID].Absorb(ref Ray, out cos_theta, Normal(Ray.Surf_ID, u, v));                
             }
 
-            public override void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v)
+            public override void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v, double[] Transmission = null)
             {
-                ScatteringData[Ray.Surf_ID].Scatter_Early(ref Ray, ref Rays, ref rand, Normal(Ray.Surf_ID, u, v), cos_theta);
+                ScatteringData[Ray.Surf_ID].Scatter_Early(ref Ray, ref Rays, ref rand, Normal(Ray.Surf_ID, u, v), cos_theta, Transmission);
             }
 
-            public override void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v)
+            public override void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v, bool Transmission = false)
             {
-                ScatteringData[Ray.Surf_ID].Scatter_Late(ref Ray, ref Rays, ref rand, Normal(Ray.Surf_ID, u, v), cos_theta);
+                ScatteringData[Ray.Surf_ID].Scatter_Late(ref Ray, ref Rays, ref rand, Normal(Ray.Surf_ID, u, v), cos_theta, Transmission);
             }
 
-            public override void Scatter_Simple(ref OctaveRay Ray, ref Random rand, double cos_theta, double u, double v)
+            public override void Scatter_Simple(ref OctaveRay Ray, ref Random rand, double cos_theta, double u, double v, bool Transmission = false)
             {
-                ScatteringData[Ray.Surf_ID].Scatter_VeryLate(ref Ray, ref rand, Normal(Ray.Surf_ID, u, v), cos_theta);
+                ScatteringData[Ray.Surf_ID].Scatter_VeryLate(ref Ray, ref rand, Normal(Ray.Surf_ID, u, v), cos_theta, Transmission);
             }
 
             public Point[] polygon(int id)
@@ -1144,17 +1144,17 @@ namespace Pachyderm_Acoustic
                 return;
             }
 
-            public override void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v)
+            public override void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v, double[] Transmission = null)
             {
                 return;
             }
 
-            public override void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v)
+            public override void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v, bool Transmission = false)
             {
                 return;
             }
 
-            public override void Scatter_Simple(ref OctaveRay Ray, ref Random rand, double cos_theta, double u, double v)
+            public override void Scatter_Simple(ref OctaveRay Ray, ref Random rand, double cos_theta, double u, double v, bool Transmission = false)
             {
                 return;
             }

@@ -43,9 +43,11 @@ namespace Pachyderm_Acoustic
             }
         }
 
-        public bool Populate(double Conv1, double Conv2, double ConvInf, int ID)
+        public bool Populate(double Conv1, double Conv2, double ConvInf, int ID, double corr = 0)
         {
             if (this.Visible == false) return false;
+
+            if (corr != 0) IR_View.GraphPane.Title.Text = "Impulse Response Status - Schroeder correlation = " + Math.Round(corr, 3);
 
             double[] t = new double[6] {0, 0.05, 0.05, 0.08, 0.08, 3};
             double[] conv = new double[6] { Conv1, Conv1, Conv2, Conv2, ConvInf, ConvInf };

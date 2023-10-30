@@ -82,6 +82,14 @@ namespace Pachyderm_Acoustic
                     if (arrPts[i].z < Min.z) Min.z = arrPts[i].z;
                 }
             }
+
+            public virtual Receiver_Bank Duplicate(Source Src, Scene Room)
+            {
+                List<Point> pts = new List<Point>();
+                foreach (Spherical_Receiver s in Rec_List) pts.Add(s.Origin);
+                return new Receiver_Bank(pts, Src.H_Origin(), Room, this.SampleRate, this.CO_Time, this.Rec_Type);
+            }
+
             /// <summary>
             /// Private receiver bank constructer for file read-in.
             /// </summary>

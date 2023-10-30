@@ -153,10 +153,10 @@ namespace Pachyderm_Acoustic
                 int[] trns = new int[1];
                 for (int oct = 0; oct < 8; oct++)
                 {
-                    abs[oct] = (int)(Abs_List[i].Values[oct] * 100.0);
+                    abs[oct] = (int)(Abs_List[i].Values[oct] * 1000.0);
                 }
                 string Abs_Code = Utilities.PachTools.EncodeAcoustics(abs, sct, trns);
-                Entry += Abs_Code.Substring(0, 16);
+                Entry += Abs_Code.Substring(0, 24);
                 Writer.WriteLine(Entry);
             }
             Writer.Close();

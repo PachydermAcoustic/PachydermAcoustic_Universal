@@ -34,9 +34,11 @@ namespace Pachyderm_Acoustic
             public double t_sum;
             public int Surf_ID;
             public int Source_ID;
+            public double Decimation_threshold;
+            public double Decim_Inv;
 
-            public OctaveRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave, int SrcID, int srf_id)
-                : base(StartPt, Direction, ThreadID_IN, ID)
+            public OctaveRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave, int SrcID, int srf_id = -1)
+            : base(StartPt, Direction, ThreadID_IN, ID)
             {
                 t_sum = Time;
                 Octave = octave;
@@ -45,15 +47,29 @@ namespace Pachyderm_Acoustic
                 Surf_ID = srf_id;
             }
 
-            public OctaveRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, int octave, double Scat_Mod_in, int SrcID)
+            public OctaveRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave,  int SrcID, double Decimation_in, int srf_id = -1)
                 : base(StartPt, Direction, ThreadID_IN, ID)
             {
-                t_sum = 0;
+                t_sum = Time;
                 Octave = octave;
                 Intensity = Intensity_in;
                 Source_ID = SrcID;
-                Surf_ID = -1;
+                Surf_ID = srf_id;
+                Decimation = Decimation_in;
             }
+
+            public OctaveRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave, int SrcID, double Decimation_in, double Decimation_Inv, int srf_id = -1)
+            : base(StartPt, Direction, ThreadID_IN, ID)
+            {
+                t_sum = Time;
+                Octave = octave;
+                Intensity = Intensity_in;
+                Source_ID = SrcID;
+                Surf_ID = srf_id;
+                Decimation_threshold = Decimation_in;
+                Decim_Inv = Decimation_Inv;
+            }
+
 
             /// <summary>
             /// Appends the distance of the last ray traversal to the total distance the ray has traveled.
@@ -71,8 +87,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public OctaveRay SplitRay( double E_Mod_Coef)
             {
-                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Surf_ID);
-                //O.Surf_ID = Surf_ID;
+                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation_threshold, Decim_Inv, Surf_ID);
                 this.Intensity *= (1 - E_Mod_Coef);
                 return O;
             }
@@ -85,14 +100,24 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public OctaveRay SplitRay(double E_Mod_Coef, double phase_delay)
             {
-                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Surf_ID);
+                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation_threshold, Decim_Inv, Surf_ID);
                 this.Intensity *= (1 - E_Mod_Coef);
                 return O;
             }
 
             public OctaveRay Clone()
             {
-                return new OctaveRay(this.origin, this.direction, this.Ray_ID, this.ThreadID, this.Intensity, this.t_sum, this.Octave, this.Source_ID, this.Surf_ID);
+                OctaveRay O = new OctaveRay(this.origin, this.direction, this.Ray_ID, this.ThreadID, this.Intensity, this.t_sum, this.Octave, this.Source_ID, this.Decimation_threshold, this.Decim_Inv, this.Surf_ID);
+                return O;
+            }
+
+            public double Decimation
+            {
+                set 
+                {
+                    Decimation_threshold = value;
+                    Decim_Inv = 1.0 / value;
+                }
             }
         }
 
@@ -106,19 +131,20 @@ namespace Pachyderm_Acoustic
             public int Surf_ID;
             public int Source_ID;
             public int[] Octaves = new int[] { 0, 1, 2, 3, 4, 5, 6, 7 };
+            public double[] Decimation = new double[8];
 
             public BroadRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double[] energy_in, double time, int SrcID)
                 : base(StartPt, Direction, ThreadID_IN, ID)
             {
                 t_sum += time;
                 Energy = new double[8];
-                energy_in.CopyTo(Energy,0);
+                energy_in.CopyTo(Energy, 0);
                 Source_ID = SrcID;
                 Surf_ID = -1;
             }
 
             public BroadRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double[] energy_in, double time, int SrcID, int[] _Octaves)
-                : base(StartPt, Direction, ThreadID_IN, ID)
+            : base(StartPt, Direction, ThreadID_IN, ID)
             {
                 t_sum += time;
                 Energy = new double[8];
@@ -127,6 +153,30 @@ namespace Pachyderm_Acoustic
                 Surf_ID = -1;
                 Octaves = _Octaves;
             }
+
+            public BroadRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double[] energy_in, double time, double[] Decim, int SrcID)
+            : base(StartPt, Direction, ThreadID_IN, ID)
+            {
+                t_sum += time;
+                Energy = new double[8];
+                energy_in.CopyTo(Energy, 0);
+                Source_ID = SrcID;
+                Decimation = Decim;
+                Surf_ID = -1;
+            }
+
+            public BroadRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double[] energy_in, double time, double[] Decim, int SrcID, int[] _Octaves)
+            : base(StartPt, Direction, ThreadID_IN, ID)
+            {
+                t_sum += time;
+                Energy = new double[8];
+                energy_in.CopyTo(Energy, 0);
+                Source_ID = SrcID;
+                Decimation = Decim;
+                Surf_ID = -1;
+                Octaves = _Octaves;
+            }
+
 
             /// <summary>
             /// Appends the distnace of the last ray traversal to the total distance the ray has traveled.
@@ -149,7 +199,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public OctaveRay SplitRay(int Octave)
             {
-                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Energy[Octave], t_sum, Octave, Source_ID, Surf_ID);
+                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Energy[Octave], t_sum, Octave, Source_ID, Decimation[Octave], Surf_ID);
                 this.Energy[Octave] = 0;
                 return O;
             }
@@ -162,7 +212,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public OctaveRay SplitRay(int Octave, double E_Mod_Coef)
             {
-                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Energy[Octave] * E_Mod_Coef,  t_sum, Octave, Source_ID, Surf_ID);
+                OctaveRay O = new OctaveRay(origin, direction, Ray_ID, ThreadID, Energy[Octave] * E_Mod_Coef,  t_sum, Octave, Source_ID, Decimation[Octave], Surf_ID);
                 this.Energy[Octave] *= (1 - E_Mod_Coef);
                 return O;
             }

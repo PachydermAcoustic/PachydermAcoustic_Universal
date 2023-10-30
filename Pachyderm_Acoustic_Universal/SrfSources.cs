@@ -78,14 +78,14 @@ namespace Pachyderm_Acoustic
                     }
             }
 
-            public override BroadRay Directions(int index, int thread, ref Random random, int[] Octaves)
+            public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
-                BroadRay Ray = Directions(index, thread, ref random);
+                BroadRay Ray = Directions(thread, ref random);
                 Ray.Octaves = Octaves;
                 return Ray;
             }
 
-            public override BroadRay Directions(int index, int thread, ref Random random)
+            public override BroadRay Directions(int thread, ref Random random)
             {
                 int i = (int)(random.Next() * (double)T.Polygon_Count);
                 Point P = T.Polys[i].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);

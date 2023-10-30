@@ -414,7 +414,121 @@ namespace Pachyderm_Acoustic
             /// Max SWL
             ///
         }
-        
+
+        public static string[] Read_BRAS_csv(string Path)
+        {
+            System.IO.StreamReader SR = new System.IO.StreamReader(Path);
+            List<string[]>[] balloons = new List<string[]>[8];
+            string[] Code = new string[10];
+            string[] BANDS = new string[0];
+            int[] BandIDS = new int[0];
+            while (!SR.EndOfStream)
+            {
+                string line = SR.ReadLine();
+                int oct = -1;
+                switch (line)
+                {
+                    case "63":
+                        oct = 0;
+                        break;
+                    case "125":
+                        oct = 1;
+                        break;
+                    case "250":
+                        oct = 2;
+                        break;
+                    case "500":
+                        oct = 3;
+                        break;
+                    case "1k":
+                        oct = 4;
+                        break;
+                    case "2k":
+                        oct = 5;
+                        break;
+                    case "4k":
+                        oct = 6;
+                        break;
+                    case "8k":
+                        oct = 7;
+                        break;
+                    case "":
+                        continue;
+                    default:
+                        line = line.Replace('<', ' ');
+                        line = line.Replace('>', ' ');
+                        string[] divided = line.Split(new char[1] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (divided[0] == "OCTAVEBANDS")
+                        {
+                            BANDS = new string[divided.Length - 3];
+                            Array.ConstrainedCopy(divided, 2, BANDS, 0, BANDS.Length);
+                            BandIDS = new int[BANDS.Length];
+                            for (int i = 0; i < BANDS.Length; i++)
+                            {
+                                BandIDS[i] = Utilities.PachTools.OctaveStr2Int(BANDS[i]);
+                            }
+                        }
+                        if (BANDS.Length == 0) continue;
+
+                        int codeindex;
+                        if (divided[0] == "NOMSPL_AT_1M")
+                        {
+                            codeindex = 8;
+                        }
+                        else if (divided[0] == "MAXSPL_AT_1M")
+                        {
+                            codeindex = 9;
+                        }
+                        else
+                        {
+                            continue;
+                        }
+
+                        if (oct > 0) continue;
+                        Code[codeindex] = "";
+                        for (int testoct = 0; testoct < 8; testoct++)
+                        {
+                            bool band0 = true;
+                            int bandoct = 0;
+                            for (bandoct = 0; bandoct < BandIDS.Length; bandoct++)
+                            {
+                                if (testoct == BandIDS[bandoct])
+                                {
+                                    Code[codeindex] += double.Parse(divided[bandoct + 2]) + 11 + ";";
+                                    band0 = false;
+                                    break;
+                                }
+                            }
+                            if (band0) Code[codeindex] += "0;";
+                        }
+                        break;
+                }
+
+                if (oct < 0) continue;
+
+                string balloonline = SR.ReadLine();
+                while (balloonline != "")
+                {
+                    Code[oct] += balloonline + ";";
+                    balloonline = SR.ReadLine();
+                }
+            }
+
+            return Code;
+            ///
+            /// Balloon63
+            /// Balloon125
+            /// Balloon250
+            /// Balloon500
+            /// Balloon1k
+            /// Balloon2k
+            /// Balloon4k
+            /// Balloon8k
+            /// Nominal SWL
+            /// Max SWL
+            ///
+        }
+
         public void Update_Position()
         {
             Update_Position(CurrentPos);

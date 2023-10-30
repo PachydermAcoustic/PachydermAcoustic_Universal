@@ -176,8 +176,8 @@ namespace Pachyderm_Acoustic
             /// <summary>
             /// The list of directions. For stochastic calculations only.
             /// </summary>
-            public abstract BroadRay Directions(int index, int thread, ref Random random);
-            public abstract BroadRay Directions(int index, int thread, ref Random random, int[] Octaves);
+            public abstract BroadRay Directions(int thread, ref Random random);
+            public abstract BroadRay Directions(int thread, ref Random random, int[] Octaves);
             
             /// <summary>
             /// The origin of the source.
@@ -220,17 +220,17 @@ namespace Pachyderm_Acoustic
                 type = "PseudoRandom";
             }
 
-            public override BroadRay Directions(int index, int thread, ref Random random)
+            public override BroadRay Directions(int thread, ref Random random)
             {
                 double Theta = random.NextDouble() * 2 * System.Math.PI;
                 double Phi = random.NextDouble() * 2 * System.Math.PI;
                 Vector Direction = new Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
-                
+
                 BroadRay B = new BroadRay(H_Center, Direction, random.Next(), thread, DirPower(thread, random.Next(), Direction), 0, Source_ID());
                 return B;
             }
 
-            public override BroadRay Directions(int index, int thread, ref Random random, int[] Octaves)
+            public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
                 double Theta = random.NextDouble() * 2 * System.Math.PI;
                 double Phi = random.NextDouble() * 2 * System.Math.PI;
@@ -256,7 +256,7 @@ namespace Pachyderm_Acoustic
             {
                 Random RAND = new Random();
                 type = "Geodesic";
-                GeoSphere(3);
+                GeoSphere(1);
             }
 
             /// <summary>
@@ -350,7 +350,7 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            public override BroadRay Directions(int index, int thread, ref Random random)
+            public override BroadRay Directions(int thread, ref Random random)
             {
                 Hare.Geometry.Point Pt = T.Polys[rayct%T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
                 Hare.Geometry.Vector P = new Vector(Pt.x, Pt.y, Pt.z);
@@ -360,7 +360,7 @@ namespace Pachyderm_Acoustic
                 return new BroadRay(H_Center, P, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID()); //Provides divided Power[stochastic]
             }
 
-            public override BroadRay Directions(int index, int thread, ref Random random, int[] Octaves)
+            public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
                 Hare.Geometry.Point Pt = T.Polys[rayct % T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
                 Hare.Geometry.Vector P = new Vector(Pt.x, Pt.y, Pt.z);
@@ -409,7 +409,7 @@ namespace Pachyderm_Acoustic
             /// <param name="thread"></param>
             /// <param name="random"></param>
             /// <returns></returns>
-            public override BroadRay Directions(int index, int thread, ref Random random)
+            public override BroadRay Directions(int thread, ref Random random)
             {
                 X_Event X = new X_Event();
 
@@ -589,13 +589,13 @@ namespace Pachyderm_Acoustic
                 return d;
             }
 
-            public override BroadRay Directions(int index, int thread, ref Random random)
+            public override BroadRay Directions(int thread, ref Random random)
             {
 
                 return new BroadRay(H_Center, Dir_Random(ref random), random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID());
             }
 
-            public override BroadRay Directions(int index, int thread, ref Random random, int[] Octaves)
+            public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
                 return new BroadRay(H_Center, Dir_Random(ref random), random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID(), Octaves);
             }

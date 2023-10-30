@@ -463,7 +463,7 @@ namespace Pachyderm_Acoustic
 
                 ///Process all paths for pulse entry...
                 if (PathVertices.Count > 1)
-                    ThreadPaths[rec_id, Threadid].Add(new Compound_Path(Room, PathVertices.ToArray(), Src, Sequence, H, mintime, ref Direct_Time[rec_id], Threadid));
+                    ThreadPaths[rec_id, Threadid].Add(new Compound_Path(PathVertices.ToArray(), Src.Source_ID(), Sequence, H, mintime, Room.Rho_C(0), ref Direct_Time[rec_id], Threadid));
                 else
                 {
                     //Assumed either a convex, or planar reflection
@@ -1499,6 +1499,8 @@ namespace Pachyderm_Acoustic
                     }
                     else if (ValidPaths[q][i] is Compound_Path)
                     {
+                        ///Specular Path:
+                        BW.Write((short)1);
                         ///Compound Path:
                         //4. Write the number of reflection path points
                         //a. number of sub-paths
@@ -1521,15 +1523,15 @@ namespace Pachyderm_Acoustic
                         }
 
                         //6a. Write the energy values
-                        for (int r = 0; r < ValidPaths[q][i].Path.Length; r++)
-                        {
-                            for (int s = 0; s < ValidPaths[q][i].Path[r].Length; s++)
-                            {
-                                for (int oct = 0; oct < 8; oct++) BW.Write((ValidPaths[q][i] as Compound_Path).PathEnergy[s][oct]);
-                            }
-                        }
+                        //for (int r = 0; r < ValidPaths[q][i].Path.Length; r++)
+                        //{
+                        //    for (int s = 0; s < ValidPaths[q][i].Path[r].Length; s++)
+                        //    {
+                        //        for (int oct = 0; oct < 8; oct++) BW.Write((ValidPaths[q][i] as Compound_Path).PathEnergy[s][oct]);
+                        //    }
+                        //}
 
-                        //6a.2 Write a bool for whether it has a special materials filter...
+                        //6a.2 Write a bool for whether it has a special material. s filter...
                         BW.Write(false);
                         //bool Special_Filter = BR.ReadBoolean();//Defunct for now - should be false.
 
@@ -1590,7 +1592,7 @@ namespace Pachyderm_Acoustic
                 int PathCt = BR.ReadInt32();
                 for (int i = 0; i < PathCt; i++)
                 {
-                    //3.1 Write the kind of reflection (0 = simple speculare reflection, 1 = compound path (made from many paths)
+                    //3.1 Write the kind of reflection (0 = simple specular reflection, 1 = compound path (made from many paths)
                     int ReflectionType = BR.ReadInt16();
                     if (ReflectionType == 0)
                     {
@@ -1659,23 +1661,24 @@ namespace Pachyderm_Acoustic
                         //5. Write the reflection path:double
                         for (int r = 0; r < PTS.Length; r++)
                         {
+                            PTS[r] = new Point[ptct];
                             for(int s = 0; s < ptct; s++) PTS[r][s] = new Hare.Geometry.Point(BR.ReadDouble(), BR.ReadDouble(), BR.ReadDouble());
                         }
 
                         //6a. Write the energy values
-                        double[][] Energy = new double[PTS.Length][];
-                        for (int r = 0; r < PTS.Length; r++)
-                        {
-                            Energy[r] = new double[8];
-                            Energy[r][0] = BR.ReadDouble();
-                            Energy[r][1] = BR.ReadDouble();
-                            Energy[r][2] = BR.ReadDouble();
-                            Energy[r][3] = BR.ReadDouble();
-                            Energy[r][4] = BR.ReadDouble();
-                            Energy[r][5] = BR.ReadDouble();
-                            Energy[r][6] = BR.ReadDouble();
-                            Energy[r][7] = BR.ReadDouble();
-                        }
+                        //double[][] Energy = new double[PTS.Length][];
+                        //for (int r = 0; r < PTS.Length; r++)
+                        //{
+                        //    Energy[r] = new double[8];
+                        //    Energy[r][0] = BR.ReadDouble();
+                        //    Energy[r][1] = BR.ReadDouble();
+                        //    Energy[r][2] = BR.ReadDouble();
+                        //    Energy[r][3] = BR.ReadDouble();
+                        //    Energy[r][4] = BR.ReadDouble();
+                        //    Energy[r][5] = BR.ReadDouble();
+                        //    Energy[r][6] = BR.ReadDouble();
+                        //    Energy[r][7] = BR.ReadDouble();
+                        //}
 
                         //6a.2 Write a bool for whether it has a special materials filter...
                         bool Special_Filter = BR.ReadBoolean();//Defunct for now - should be false.
@@ -1720,12 +1723,30 @@ namespace Pachyderm_Acoustic
                         int filterlength = BR.ReadInt32();
                         double[][] H_Omni = new double[filterlength][];
                         //9.1b - Write the H Function (omno, time, octave)
-                        for (int k = 0; k < filterlength; k++) for(int oct = 0; oct < 8; oct++) H_Omni[k][oct] = BR.ReadDouble();
+                        for (int k = 0; k < filterlength; k++)
+                        {
+                            H_Omni[k] = new double[8];
+                            for (int oct = 0; oct < 8; oct++) H_Omni[k][oct] = BR.ReadDouble();
+                        }
                         //9.2 Write the H function (directional 6 channels, time, octave)
                         double[][][] H_Dir = new double[6][][];
-                        for(int d = 0; d < H_Dir.Length; d++) for(int k = 0; k < filterlength; k++) for(int oct = 0; oct < 8; oct++) H_Dir[d][k][oct] = BR.ReadDouble();
+                        for (int d = 0; d < H_Dir.Length; d++)
+                        {
+                            H_Dir[d] = new double[filterlength][];
+                            for (int k = 0; k < filterlength; k++)
+                            {
+                                H_Dir[d][k] = new double[8];
+                                for (int oct = 0; oct < 8; oct++) H_Dir[d][k][oct] = BR.ReadDouble();
+                            }
+                        }
+                        double[][][] H = new double[7][][];
+                        H[0] = H_Omni;
+                        for(int j =  0; j < H_Dir.GetLength(0); j++)
+                        {
+                            H[j+1] = H_Dir[j];
+                        }
 
-                        IS.ValidPaths[q].Add(new Compound_Path(PTS, Energy, T, sequence, PathPowerMod, H_Omni, H_Dir, RhoC[q], Src_ID));
+                        IS.ValidPaths[q].Add(new Compound_Path(PTS, Src_ID, sequence, H, T, RhoC[q], ref Direct.Time_Pt[q], 0));
                     }
                 }
             }
@@ -2173,23 +2194,23 @@ namespace Pachyderm_Acoustic
         public double[] F; //Filter form of the reflection time signature.
         public double[][] Fdir; //Directional form of F.[d][t]
 
-        public Compound_Path(Hare.Geometry.Point[][] Path, double[][] Energy, double T, int[] sequence, double[][] Octave_Band_Power_Mod, double[][] H_Function_Omni, double[][][] H_Function_Dir, double RhoC_, int SrcID)
-        {
-            ValidPath = Path;
-            PathEnergy = Energy;
-            Time = T;
-            //Octave_Power = Octave_Band_Power_Mod;
-            Sequence = sequence;
-            H = H_Function_Omni;
-            Hdir = H_Function_Dir;
-            Create_Filter(4096,0);
-            Identify(SrcID, Time);
-        }
+        //public Compound_Path(Hare.Geometry.Point[][] Path, double[][] Energy, double T, int[] sequence, double[][] Octave_Band_Power_Mod, double[][] H_Function_Omni, double[][][] H_Function_Dir, double RhoC_, int SrcID)
+        //{
+        //    ValidPath = Path;
+        //    PathEnergy = Energy;
+        //    Time = T;
+        //    //Octave_Power = Octave_Band_Power_Mod;
+        //    Sequence = sequence;
+        //    H = H_Function_Omni;
+        //    Hdir = H_Function_Dir;
+        //    Create_Filter(4096, 0);
+        //    Identify(SrcID, Time);
+        //}
 
-        public Compound_Path(Scene Room, Hare.Geometry.Point[][] PathVertices, Source Src, int[] Seq_Planes, double[][][] _H, double mintime, ref double Direct_Time, int Threadid)
+        public Compound_Path(Hare.Geometry.Point[][] PathVertices, int Src_id, int[] Seq_Planes, double[][][] _H, double mintime, double Rho_C, ref double Direct_Time, int Threadid)
         {
             //Reconcile Source Power as SWL with power with directivity. source directivity needs to be added to OctavePower.
-            RhoC = Room.Rho_C(0);
+            RhoC = Rho_C;
             Time = mintime;
             ///Here, a compound reflection collector, and any interpolation that must be done.
             ValidPath = PathVertices;
@@ -2202,7 +2223,7 @@ namespace Pachyderm_Acoustic
             for (int t = 0; t < timeaxis.Length; t++) { timeaxis[t] = (double)t / 44100f;}
 
             //Build an Identifier
-            Identify(Src.Source_ID(), Direct_Time);
+            Identify(Src_id, Direct_Time);
         }
         
         public override double[][] Create_Filter(double[] SWL, int SampleFrequency, int LengthofPulse, int Threadid)

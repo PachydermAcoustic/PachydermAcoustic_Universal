@@ -159,16 +159,16 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            public override BroadRay Directions(int index, int thread, ref Random random, int[] Octaves)
+            public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
-                BroadRay B = Directions(index, thread, ref random);
+                BroadRay B = Directions(thread, ref random);
                 B.Octaves = Octaves;
                 return B;
             }
 
-            public override BroadRay Directions(int index, int thread, ref Random random)
+            public override BroadRay Directions(int thread, ref Random random)
             {
-                return D.Directions(index, thread, ref random, ref Samples, ref Power, ref S_ID);
+                return D.Directions(thread, ref random, ref Samples, ref Power, ref S_ID);
             }
 
             public double[] DirPower(Vector Direction, int sample_id)
@@ -181,13 +181,13 @@ namespace Pachyderm_Acoustic
             public abstract class Directionality
             {
                 protected int ct = -1;
-                public abstract BroadRay Directions(int index, int thread, ref Random random, ref Hare.Geometry.Point[] samples, ref double[] DomainPower, ref int S_ID);
+                public abstract BroadRay Directions(int thread, ref Random random, ref Hare.Geometry.Point[] samples, ref double[] DomainPower, ref int S_ID);
                 public abstract double[] DirPower(Vector Direction, ref Hare.Geometry.Point[] samples, int i, ref double[] DomainPower);
             }
 
             public class Simple : Directionality
             {
-                public override BroadRay Directions(int index, int thread, ref Random random, ref Hare.Geometry.Point[] samples, ref double[] DomainPower, ref int S_ID)
+                public override BroadRay Directions(int thread, ref Random random, ref Hare.Geometry.Point[] samples, ref double[] DomainPower, ref int S_ID)
                 {
                     ct++;
                     double pos = random.NextDouble();
@@ -256,7 +256,7 @@ namespace Pachyderm_Acoustic
                     return raypower;
                 }
 
-                public override BroadRay Directions(int index, int thread, ref Random random, ref Hare.Geometry.Point[] samples, ref double[] DomainPower, ref int S_ID)
+                public override BroadRay Directions(int thread, ref Random random, ref Hare.Geometry.Point[] samples, ref double[] DomainPower, ref int S_ID)
                 {
                     ct++;
                     double pos = random.NextDouble();

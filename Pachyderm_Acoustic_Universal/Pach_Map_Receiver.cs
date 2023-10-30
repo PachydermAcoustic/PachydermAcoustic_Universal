@@ -64,14 +64,20 @@ namespace Pachyderm_Acoustic
         /// <summary>
         /// General use constructor. Use this prior to starting a mapping calculation. It works seamlessly with ray-tracing operations.
         /// </summary>
-        public PachMapReceiver(Hare.Geometry.Topology Map_MeshIn, Source Src_Pt, int SampleRate_in, double Increment_in, Scene Sc, int RCT, double Cutoff_time, bool Time1Pt, bool Z_displacementIn, bool DirectionalIn, bool RecOnVertex, bool Offset_Mesh)
+        public PachMapReceiver(Hare.Geometry.Topology Map_MeshIn, Source Src_Pt, int SampleRate_in, double Increment_in, Scene Sc, double Cutoff_time, bool Time1Pt, bool Z_displacementIn, bool DirectionalIn, bool RecOnVertex, bool Offset_Mesh)
         {
             Map_Mesh = Map_MeshIn;
-            Fill_in(Src_Pt, SampleRate_in, Increment_in, Sc, RCT, Cutoff_time, Time1Pt, Z_displacementIn, DirectionalIn, RecOnVertex, Offset_Mesh);
+            Fill_in(Src_Pt, SampleRate_in, Increment_in, Sc, Cutoff_time, Time1Pt, Z_displacementIn, DirectionalIn, RecOnVertex, Offset_Mesh);
             Partition(Src_Pt);
         }
 
-        private void Fill_in(Source Src_Pt, int SampleRate_in, double Increment_in, Scene Sc, int RCT, double Cutoff_time, bool Time_1Pt, bool Z_displacementIn, bool DirectionalIn, bool RecOnVertex, bool Offset_Mesh)
+        public override Receiver_Bank Duplicate(Source Src, Scene Room)
+        {
+
+            return new PachMapReceiver(Map_Mesh, Src, this.SampleRate, this.increment, Room, this.CutOffTime, this.Time1Pt, this.Z_Displacement, this.Directional, this.Rec_Vertex, this.Mesh_Offset );
+        }
+
+        private void Fill_in(Source Src_Pt, int SampleRate_in, double Increment_in, Scene Sc, double Cutoff_time, bool Time_1Pt, bool Z_displacementIn, bool DirectionalIn, bool RecOnVertex, bool Offset_Mesh)
         {
             _Sc = Sc;
             SWL = new double[8] { Src_Pt.SWL(0), Src_Pt.SWL(1), Src_Pt.SWL(2), Src_Pt.SWL(3), Src_Pt.SWL(4), Src_Pt.SWL(5), Src_Pt.SWL(6), Src_Pt.SWL(7) };

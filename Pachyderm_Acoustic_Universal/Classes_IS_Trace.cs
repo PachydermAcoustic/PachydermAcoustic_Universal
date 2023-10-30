@@ -127,7 +127,7 @@ namespace Pachyderm_Acoustic
 
             for (Current_Ray[Params.ThreadID] = 0; Current_Ray[Params.ThreadID] < Params.EndIndex-Params.StartIndex; Current_Ray[Params.ThreadID]++)
             {
-                BroadRay R = Source.Directions(Current_Ray[Params.ThreadID] + Params.StartIndex, Params.ThreadID, ref RND);
+                BroadRay R = Source.Directions(Params.ThreadID, ref RND);
                 SumLength = 0;
                 Reflections = 0;
                 Sequence.Clear();

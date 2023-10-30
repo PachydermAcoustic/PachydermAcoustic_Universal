@@ -235,7 +235,8 @@ namespace Pachyderm_Acoustic
                     signal = FIR_Bandpass(MLS, oct, sampling_frequency, 0);
                     for(int i = 0; i < signal.Length; i++)
                     {
-                         output[i] = magnitude[oct] * signal[i] * Math.Pow(10, 120d - (60d / (RT[oct] * sampling_frequency/10)));
+                        double slope = Math.Pow(10, ((-60d / RT[oct]) * ((double)i / sampling_frequency))/10);
+                        output[i] += magnitude[oct] * signal[i] * slope;
                     }
                 }
                 return output;

@@ -744,6 +744,7 @@ namespace Pachyderm_Acoustic
                     if (!Validity[rec_id] && Room.IsTransmissive[x3]) 
                     {
                         for(int oct = 0; oct < 8; oct++) TransMod[oct] *= Room.TransmissionValue[x3][oct];
+                        R.origin = x4;
                         continue;
                     }
                     break;
@@ -1244,7 +1245,7 @@ namespace Pachyderm_Acoustic
         
         public double[][] Get_Filter(int Rec_ID, int Sampling_Frequency)
         {
-            if (Sampling_Frequency != 44100)
+            if (F == null || Sampling_Frequency != 44100)
             {
                 return Create_Filter(SWL, Rec_ID, Sampling_Frequency);
             }

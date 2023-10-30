@@ -2754,13 +2754,17 @@ namespace Pachyderm_Acoustic
                 for (int q = 0; q < 8; q++)
                 {
                     string Temp = null;
-                    if (Absorption[q] > 99)
+                    if (Absorption[q] > 991)
                     {
-                        Temp = "xx";
+                        Temp = "xxx";
+                    }
+                    else if (Absorption[q] < 100)
+                    {
+                        Temp = string.Concat("0", Absorption[q]);
                     }
                     else if (Absorption[q] < 10)
                     {
-                        Temp = string.Concat("0", Absorption[q]);
+                        Temp = string.Concat("00", Absorption[q]);
                     }
                     else
                     {
@@ -2814,22 +2818,40 @@ namespace Pachyderm_Acoustic
                 Absorption = new double[8];
                 Scattering = new double[8];
                 Transparency = new double[8];
+                int mod = 0;
 
-                for (int q = 0; q < 8; q++)
+                for (
+                    int q = 0; q < 8; q++)
                 {
-                    string Temp = string.Concat(Code[2 * q], Code[2 * q + 1]);
-                    if (Temp == "xx")
+                    if (Code.Length == 48 || Code.Length == 32)
                     {
-                        Absorption[q] = 1;
+                        string Temp = string.Concat(Code[2 * q], Code[2 * q + 1]);
+                        if (Temp == "xx")
+                        {
+                            Absorption[q] = 1;
+                        }
+                        else
+                        {
+                            Absorption[q] = Double.Parse(Temp) / 100;
+                        }
                     }
-                    else
+                    else if (Code.Length == 56 || Code.Length == 40)
                     {
-                        Absorption[q] = Double.Parse(Temp) / 100;
+                        string Temp = string.Concat(Code[3 * q], Code[3 * q + 1], Code[3 * q + 2]);
+                        if (Temp == "xxx")
+                        {
+                            Absorption[q] = 1;
+                        }
+                        else
+                        {
+                            Absorption[q] = Double.Parse(Temp) / 1000;
+                        }
+                        mod = 8;
                     }
                 }
                 for (int q = 0; q < 8; q++)
                 {
-                    string Temp = string.Concat(Code[2 * q + 16], Code[2 * q + 17]);
+                    string Temp = string.Concat(Code[2 * q + 16 + mod], Code[2 * q + 17 + mod]);
                     if (Temp == "xx")
                     {
                         Scattering[q] = 1;
@@ -2843,7 +2865,7 @@ namespace Pachyderm_Acoustic
                 {
                     for (int q = 0; q < 8; q++)
                     {
-                        string Temp = string.Concat(Code[2 * q + 32], Code[2 * q + 33]);
+                        string Temp = string.Concat(Code[2 * q + 32 + mod], Code[2 * q + 33 + mod]);
                         if (Temp == "xx")
                         {
                             Transparency[q] = 1;
