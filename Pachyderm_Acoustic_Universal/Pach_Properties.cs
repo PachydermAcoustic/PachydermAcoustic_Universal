@@ -30,7 +30,7 @@ namespace Pachyderm_Acoustic
         {
             get
             {
-                if (instance == null)
+                if (instance == null || instance.IsDisposed)
                 {
                     instance = new Pach_Properties();
                 }

@@ -68,7 +68,7 @@ namespace Pachyderm_Acoustic
                 : base(new double[8] { 60, 49, 41, 35, 31, 28, 26, 24 }, new Point(0, 0, 0), SrcID)
             {
                 samplespermeter = el_m;
-                
+
                 //Divide curve up in ~equal length segments.
                 Samples = samples;
                 D = new Simple();
@@ -77,7 +77,7 @@ namespace Pachyderm_Acoustic
                 Power = new double[8];
 
                 double minx = double.PositiveInfinity, maxx = double.NegativeInfinity;
-                for(int x = 0; x < Samples.Length; x++)
+                for (int x = 0; x < Samples.Length; x++)
                 {
                     minx = Math.Min(minx, Samples[x].x);
                     maxx = Math.Max(maxx, Samples[x].x);
@@ -204,6 +204,14 @@ namespace Pachyderm_Acoustic
                 {
                     return DomainPower.Clone() as double[];
                 }
+            }
+
+            public double ElementsPerMeter
+            { 
+                get 
+                {
+                    return samplespermeter; 
+                } 
             }
 
             public class ANCON : Directionality

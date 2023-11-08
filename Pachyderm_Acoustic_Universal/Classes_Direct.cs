@@ -255,11 +255,9 @@ namespace Pachyderm_Acoustic
             this.CO_Time = Rec_in.CO_Time;
             Receiver = new List<Point>();
             Rho_C = new double[Rec_in.Count];
-            if (Rec_in is PachMapReceiver)
-            {
-                trib = (Rec_in as PachMapReceiver).increment;
-                trib /= 2;
-            }
+
+            if (Src_in is LineSource) trib /= (Src_in as LineSource).ElementsPerMeter;
+
             for (int i = 0; i < Rec_in.Count; i++)
             {
                 Rho_C[i] = Room.Rho_C(Rec_in.Origin(i));
@@ -330,7 +328,7 @@ namespace Pachyderm_Acoustic
             {
                 //Search every edge for a view of both the source and receiver.
 
-                //Omite edges that are not part of an opaque member
+                //Omit edges that are not part of an opaque member
                 bool omit = true;
                 double[] trans = new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
                 for (int i = 0; i < (Room as Polygon_Scene).Raw_Edge[edge].Polys.Count; i++)
@@ -534,6 +532,7 @@ namespace Pachyderm_Acoustic
             {
                 Nf *= Math.Sqrt(2);
                 //ScreenAtten[oct] = 1.0 / (sigma2pi_170 * f[oct] * 3.162278 / Math.Pow(Math.Tanh(Math.Sqrt(sigma2pi_170 * f[oct])), 2));
+                //kurze anderson Screen Attenuation
                 ScreenAtten[oct] = 1.0 / (Nf * 3.162278 / Math.Tanh(Nf)) * D_TransMod[minid][oct];
                 //if (ScreenAtten[oct] <=0 || double.IsNaN(ScreenAtten[oct]) || double.IsInfinity(ScreenAtten[oct]))
                 //{
@@ -1557,7 +1556,6 @@ namespace Pachyderm_Acoustic
                 }
 
                 //Adjust for energy differential between what might be two different sample rates...
-                double mod = (double)(taumax - taumin) / t.Count;
 
                 for (int tau = taumin; tau < taumax; tau++)//Io[rec_id][0].Length; tau++)
                 {
@@ -1565,14 +1563,14 @@ namespace Pachyderm_Acoustic
                     {
                         double tdbl = (double)tau * dt;
                         double spl = I_Spline[oct].Interpolate(tdbl);
-                        Io[rec_id][oct][tau] += Math.Pow(10, spl) * mod;
+                        Io[rec_id][oct][tau] += Math.Pow(10, spl);
 
-                        this.Dir_Rec_Pos[rec_id][oct][tau][0] += (float)(Math.Pow(10, xp_Spline[oct].Interpolate(tdbl)) * mod);
-                        this.Dir_Rec_Neg[rec_id][oct][tau][0] += (float)(Math.Pow(10, xn_Spline[oct].Interpolate(tdbl)) * mod);
-                        this.Dir_Rec_Pos[rec_id][oct][tau][1] += (float)(Math.Pow(10, yp_Spline[oct].Interpolate(tdbl)) * mod);
-                        this.Dir_Rec_Neg[rec_id][oct][tau][1] += (float)(Math.Pow(10, yn_Spline[oct].Interpolate(tdbl)) * mod);
-                        this.Dir_Rec_Pos[rec_id][oct][tau][2] += (float)(Math.Pow(10, zp_Spline[oct].Interpolate(tdbl)) * mod);
-                        this.Dir_Rec_Neg[rec_id][oct][tau][2] += (float)(Math.Pow(10, zn_Spline[oct].Interpolate(tdbl)) * mod);
+                        this.Dir_Rec_Pos[rec_id][oct][tau][0] += (float)(Math.Pow(10, xp_Spline[oct].Interpolate(tdbl)));
+                        this.Dir_Rec_Neg[rec_id][oct][tau][0] += (float)(Math.Pow(10, xn_Spline[oct].Interpolate(tdbl)));
+                        this.Dir_Rec_Pos[rec_id][oct][tau][1] += (float)(Math.Pow(10, yp_Spline[oct].Interpolate(tdbl)));
+                        this.Dir_Rec_Neg[rec_id][oct][tau][1] += (float)(Math.Pow(10, yn_Spline[oct].Interpolate(tdbl)));
+                        this.Dir_Rec_Pos[rec_id][oct][tau][2] += (float)(Math.Pow(10, zp_Spline[oct].Interpolate(tdbl)));
+                        this.Dir_Rec_Neg[rec_id][oct][tau][2] += (float)(Math.Pow(10, zn_Spline[oct].Interpolate(tdbl)));
                     }
                 }
             }
@@ -1724,8 +1722,10 @@ namespace Pachyderm_Acoustic
                                     lock (LOCKED)
                                     {
                                         I_d.Add(dir);
-                                        I.Add(new double[8]);
+                                        I.Add(new double[8] { double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon });
                                         time.Add(tdbl);
+                                        //if (tdbl <= 0)
+                                        //    tdbl = tdbl;
                                     }
                                     break;
                                 }

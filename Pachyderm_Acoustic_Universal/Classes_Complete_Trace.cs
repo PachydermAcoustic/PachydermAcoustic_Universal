@@ -273,7 +273,7 @@ namespace Pachyderm_Acoustic
             LastRays = new BlockingCollection<OctaveRay>[_processorCt];
             _st = DateTime.Now;
             //Thread[] lastraytracers = new Thread[_processorCt];
-            Thread lastraytracers;
+            //Thread lastraytracers;
 
             for (int P_I = 0; P_I < _processorCt; P_I++)
             {
@@ -288,10 +288,10 @@ namespace Pachyderm_Acoustic
             //    lastraytracers[P_I].Start();
             //}
 
-            System.Threading.ParameterizedThreadStart TS = new System.Threading.ParameterizedThreadStart(delegate { TraceWorker(Rnd.Next(), Params.ThreadID); });
-            lastraytracers = new Thread(TS);
-            lastraytracers.Name = "Last Trace " + Params.ThreadID;
-            lastraytracers.Start();
+            //System.Threading.ParameterizedThreadStart TS = new System.Threading.ParameterizedThreadStart(delegate { TraceWorker(Rnd.Next(), Params.ThreadID); });
+            //lastraytracers = new Thread(TS);
+            //lastraytracers.Name = "Last Trace " + Params.ThreadID;
+            //lastraytracers.Start();
 
             for (int ray = 0; ray < Params.EndIndex - Params.StartIndex; ray++)
             {
@@ -299,12 +299,15 @@ namespace Pachyderm_Acoustic
                 _currentRay[Params.ThreadID]++;
             }
 
-            lastraytracers.Join();
+            //lastraytracers.Join();
 
-            while (LastRays[0].Count > 0)
+            int ct;
+            do
             {
-                Thread.Sleep(200);
-            }
+                ct = 0;
+                for (int j = 0; j < _processorCt; j++) ct += LastRays[j].Count;
+                Thread.Sleep(500);
+            } while (ct > 0);
 
             _ts = DateTime.Now - _st;
         }
@@ -578,7 +581,7 @@ namespace Pachyderm_Acoustic
                 OctaveRay OR;
                 while (true)
                 {
-                    if (LastRays[(int)Math.Floor((double)threadid + procmod) % _processorCt ].TryTake(out OR))
+                    if (LastRays[(int)Math.Floor((double)threadid + procmod) % _processorCt].TryTake(out OR))
                     {
                         _rayTotal[OR.ThreadID]++;
                         break;

@@ -2066,6 +2066,15 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
+                if (RTData.ElementAt<Receiver_Bank>(0) != null)
+                {
+                    if (CO_Time_ms == 0) CO_Time_ms = RTData[0].CO_Time;
+                }
+                else
+                {
+                    if (CO_Time_ms == 0) CO_Time_ms = 1000;
+                }
+
                 maxdelay *= Sampling_Frequency / 1000;
 
                 double[] Histogram = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 4096 * 2 + (int)Math.Ceiling(maxdelay)];
