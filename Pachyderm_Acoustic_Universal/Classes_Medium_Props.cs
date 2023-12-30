@@ -28,6 +28,10 @@ namespace Pachyderm_Acoustic
     {
         public abstract class Medium_Properties
         {
+            public double Pa;
+            public double Tk;
+            public double hr;
+
             /// <summary>
             /// Get density of medium
             /// </summary>
@@ -279,7 +283,10 @@ namespace Pachyderm_Acoustic
             /// <param name="EdgeCorrection"></param>
             public Uniform_Medium(int Air_Choice, double Pa, double Tk, double hr, bool EdgeCorrection)
             {
-                rho = Calculate_Density(Tk, Pa*100, hr);
+                this.Pa = Pa;
+                this.Tk = Tk;
+                this.hr = hr;
+                rho = Calculate_Density(Tk, Pa, hr);
                 Atten_Coef = Calculate_Attenuation(Air_Choice, Pa/10, Tk, hr, EdgeCorrection);
                 for (int i = 0; i < Atten_Coef.Length; i++) Atten_Coef[i] *= 0.1151;
                 C_Sound = Utilities.AcousticalMath.SoundSpeed(Tk-273.15);

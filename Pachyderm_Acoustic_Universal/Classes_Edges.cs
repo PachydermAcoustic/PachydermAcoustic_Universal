@@ -22,8 +22,6 @@ using System.Collections.Generic;
 using Hare.Geometry;
 using MathNet.Numerics.LinearAlgebra.Factorization;
 using MathNet.Numerics.Providers.LinearAlgebra;
-using MathNet.Spatial.Euclidean;
-//using MathNet.Numerics.Providers.LinearAlgebra;
 
 namespace Pachyderm_Acoustic
 {

@@ -21,7 +21,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using FFTWSharp;
 using System.Linq;
-using MathNet.Filtering;
 using MathNet.Numerics.Statistics;
 using System.ComponentModel.Design.Serialization;
 using Pachyderm_Acoustic.Utilities;

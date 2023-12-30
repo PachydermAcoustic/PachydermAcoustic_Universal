@@ -728,7 +728,7 @@ namespace Pachyderm_Acoustic
                     Topo[i].Finish_Topology(P);
                 }
 
-                int spspec = Pach_Properties.Instance.SP_Spec();
+                int spspec = Pach_Properties.Instance.Spatial_Optimization;
                 if (spspec == 0)
                 {
                     SP = new Hare.Geometry.Voxel_Grid(Topo, SP_PARAM, 3);
@@ -743,7 +743,7 @@ namespace Pachyderm_Acoustic
             public void partition(List<Hare.Geometry.Point> P)
             {
                 Partitioned = true;
-                partition(P, Pach_Properties.Instance.VG_Domain());
+                partition(P, Pach_Properties.Instance.VoxelGrid_Domain);
             }
             
             public override bool shoot(Hare.Geometry.Ray R, out double u, out double v, out int Poly_ID, out Hare.Geometry.Point X_PT, out double t)

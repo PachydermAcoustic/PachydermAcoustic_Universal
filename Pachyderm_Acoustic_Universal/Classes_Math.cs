@@ -2821,6 +2821,72 @@ namespace Pachyderm_Acoustic
                 return Code;
             }
 
+            public static string EncodeAcoustics(double[] Absorption, double[] Scattering, double[] Transparency)
+            {
+                string Code = "";
+                for (int q = 0; q < 8; q++)
+                {
+                    int abs = (int)(Absorption[q] * 10);
+                    string Temp = null;
+                    if (abs > 991)
+                    {
+                        Temp = "xxx";
+                    }
+                    else if (abs < 10)
+                    {
+                        Temp = string.Concat("00", abs);
+                    }
+                    else if (abs < 100)
+                    {
+                        Temp = string.Concat("0", abs);
+                    }
+                    else
+                    {
+                        Temp = abs.ToString();
+                    }
+                    Code = string.Concat(Code, Temp);
+                }
+                for (int q = 0; q < 8; q++)
+                {
+                    string Temp = null;
+                    if (Scattering[q] > 99)
+                    {
+                        Temp = "xx";
+                    }
+                    else if (Scattering[q] < 10)
+                    {
+                        Temp = string.Concat("0", ((int)Scattering[q]).ToString());
+                    }
+                    else
+                    {
+                        Temp = ((int)Scattering[q]).ToString();
+                    }
+                    Code = string.Concat(Code, Temp);
+                }
+
+                if (Transparency != null && Transparency.Length == 8)
+
+                    for (int q = 0; q < 8; q++)
+                    {
+                        string Temp = null;
+                        if (Transparency[q] > 99)
+                        {
+                            Temp = "xx";
+                        }
+                        else if (Transparency[q] < 10)
+                        {
+                            Temp = string.Concat("0", ((int)Transparency[q]).ToString());
+                        }
+                        else
+                        {
+                            Temp = ((int)Transparency[q]).ToString();
+                        }
+                        Code = string.Concat(Code, Temp);
+                    }
+                return Code;
+            }
+
+
             public static bool DecodeAcoustics(string Code, ref double[] Absorption, ref double[] Scattering, ref double[] Transparency)
             {
                 if (Code == null) return false;
@@ -2829,8 +2895,7 @@ namespace Pachyderm_Acoustic
                 Transparency = new double[8];
                 int mod = 0;
 
-                for (
-                    int q = 0; q < 8; q++)
+                for (int q = 0; q < 8; q++)
                 {
                     if (Code.Length == 48 || Code.Length == 32)
                     {
@@ -2841,7 +2906,7 @@ namespace Pachyderm_Acoustic
                         }
                         else
                         {
-                            Absorption[q] = Double.Parse(Temp) / 100;
+                            Absorption[q] = Double.Parse(Temp)/100;
                         }
                     }
                     else if (Code.Length == 56 || Code.Length == 40)
@@ -2867,10 +2932,10 @@ namespace Pachyderm_Acoustic
                     }
                     else
                     {
-                        Scattering[q] = Double.Parse(Temp) / 100;
+                        Scattering[q] = Double.Parse(Temp)/100;
                     }
                 }
-                if (Code.Length == 48)
+                if (Code.Length == 48 || Code.Length == 56)
                 {
                     for (int q = 0; q < 8; q++)
                     {

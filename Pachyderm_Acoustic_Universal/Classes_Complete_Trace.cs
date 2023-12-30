@@ -24,6 +24,8 @@ using System.Linq;
 using System.Threading;
 using System.Collections.Concurrent;
 using Pachyderm_Acoustic.Utilities;
+using System.ComponentModel;
+using System.Windows.Forms;
 
 namespace Pachyderm_Acoustic
 {
@@ -160,7 +162,7 @@ namespace Pachyderm_Acoustic
                 }
                 check = (rayCountIn < 0) ? new Convergence_Check[2] { T_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, T_id, h_oct, 0), F_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, F_id, h_oct, 1) }
                 : new Convergence_Check[2] { T_id < 0 ? null : new Detailed_Convergence_Check(receiverIn, T_id, h_oct, 0), F_id < 0 ? null : new Detailed_Convergence_Check(receiverIn, F_id, h_oct, 1) };
-                Convergence_Progress_WinForms.Instance.Show();
+                //Pachyderm_Acoustic.UI.Convergence_Progress.Instance.Show();
             }
             else check = null;
         }
@@ -825,6 +827,11 @@ namespace Pachyderm_Acoustic
             }
         }
 
+        public Convergence_Check[] Convergence_Report
+        {
+            get { return check; }
+        }
+
         /// <summary>
         /// A string to identify the type of simulation being run.
         /// </summary>
@@ -859,14 +866,15 @@ namespace Pachyderm_Acoustic
                 foreach (Convergence_Check c in check)
                 {
                     if (c == null) break;
+                    c.Update();
                     //if (!c.Check(this._currentRay.Sum())||conclude) continue;
                     if (!conclude) break;
                     this.Abort_Calculation();
-                    Convergence_Progress_WinForms.Instance.Hide();
+                    //Convergence_Progress_WinForms.Instance.Hide();
                     return "Concluding Simulation...";
                 }
 
-                Convergence_Progress_WinForms.Instance.Refresh();
+                //Convergence_Progress_WinForms.Instance.Refresh();
 
                 int Ray_CT = 0;
                 int subrays = 0;
@@ -915,6 +923,9 @@ namespace Pachyderm_Acoustic
             protected int oct;
             public int check_no;
 
+            public delegate void PlotHandler(double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr);
+            public event PlotHandler On_Convergence_Check;
+
             public Convergence_Check(Receiver_Bank R, int id, int _oct, int check_id)
             {
                 oct = _oct;
@@ -922,18 +933,27 @@ namespace Pachyderm_Acoustic
                 check_no = check_id;
             }
 
+            protected void Plot_Feedback(double[] diff, double conv, double ConvInf, int ID, int count, double corr)
+            {
+                On_Convergence_Check(diff, conv, ConvInf, ID, count, corr);
+            }
+
             public abstract bool Check();
             public abstract bool Check(int No_of_Rays);
+
+            public abstract bool Update();
         }
 
         public class Detailed_Convergence_Check : Convergence_Check
         {
-            //int MaxCheck;
             double[] Snapshot;
             int step;
             int binct;
             int count = 0;
             int RayNo = 0;
+
+            double[] diff;
+            double conv;
 
             public Detailed_Convergence_Check(Receiver_Bank R, int id, int _oct, int check_id)
                 : base(R, id, _oct, check_id)
@@ -989,11 +1009,17 @@ namespace Pachyderm_Acoustic
                 }
                 count++;
 
-                if (Convergence_Progress_WinForms.Instance.Populate(diff, conv, 1000, count, check_no)) return true;
 
                 if (count > 10) return true;
                 return false;
             }
+
+            public override bool Update()
+            {
+                Plot_Feedback(diff, conv, 1000, 0, count, check_no);
+                return true;
+            }
+
         }
 
         public class Minimum_Convergence_Check : Convergence_Check
@@ -1003,6 +1029,7 @@ namespace Pachyderm_Acoustic
             int count = 0;
             int RayNo = 0;
             double[] Schr_old;
+            double conv1, conv2, convinf, r;
 
             public Minimum_Convergence_Check(Source S, Scene Sc, Receiver_Bank R, int id, int _oct, int check_id)
                 : base(R, id, _oct, check_id)
@@ -1034,12 +1061,14 @@ namespace Pachyderm_Acoustic
 
                 double[] Schr_new = AcousticalMath.Log10Data(AcousticalMath.Schroeder_Integral(RunningSim), -70);
                 
-                double r = Schr_old == null? 0 : MathNet.Numerics.Statistics.Correlation.Spearman(Schr_new, Schr_old);
+                r = Schr_old == null? 0 : MathNet.Numerics.Statistics.Correlation.Spearman(Schr_new, Schr_old);
                 //MathNet.Numerics.Statistics.Correlation.Pearson(Schr_new, Schr_old);
 
                 Schr_old = Schr_new;
 
-                double conv1 = Math.Abs(sn50 - snapshot50) / (snapshot50), conv2 = Math.Abs(sn80 - snapshot80) / (snapshot80), convinf = Math.Abs(sninf - snapshotinf) / (snapshotinf);
+                conv1 = Math.Abs(sn50 - snapshot50) / (snapshot50);
+                conv2 = Math.Abs(sn80 - snapshot80) / (snapshot80);
+                convinf = Math.Abs(sninf - snapshotinf) / (snapshotinf);
 
                 if (sn50 == 0
                     || conv1 > 0.02
@@ -1059,10 +1088,14 @@ namespace Pachyderm_Acoustic
                 snapshot80 = sn80;
                 snapshotinf = sninf;
 
-                if (Convergence_Progress_WinForms.Instance.Populate(conv1, conv2, convinf, check_no, r)) return true;
-
                 if (count > 5) return true;
                 return false;
+            }
+
+            public override bool Update()
+            {
+                Plot_Feedback(new double[1] { conv1 }, conv2, convinf, 0, check_no, r);
+                return true;
             }
 
             public override bool Check(int No_of_Rays)
@@ -1109,7 +1142,7 @@ namespace Pachyderm_Acoustic
                 snapshot80 = sn80;
                 snapshotinf = sninf;
 
-                if (Convergence_Progress_WinForms.Instance.Populate(conv1, conv2, convinf, check_no)) return true;
+                Plot_Feedback(new double[1] { conv1 }, conv2, convinf, check_no, count, 1);
 
                 if (count > 10) return true;
                 return false;

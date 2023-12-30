@@ -22,6 +22,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Numerics;
 using MathNet.Numerics.LinearAlgebra.Complex;
+using Pachyderm_Acoustic.Pach_Graphics;
 
 namespace Pachyderm_Acoustic
 {
@@ -842,7 +843,7 @@ namespace Pachyderm_Acoustic
                 return Zr;
             }
 
-            public static Complex[][] Finite_Radiation_Impedance_Rect_Longhand(double Xdim, double Ydim, double[] freq, double[] angles, double C_Sound)
+            public static Complex[][] Finite_Radiation_Impedance_Rect_Longhand(double Xdim, double Ydim, double[] freq, double[] angles, double C_Sound, IReporting Graph)
             {
                 Complex[][] Zr = new Complex[freq.Length][];
                 double phistep = Utilities.Numerics.PiX2 / 16;
@@ -906,11 +907,11 @@ namespace Pachyderm_Acoustic
                 });
 
                 //////////////////////
-                VisualizationBox B = new VisualizationBox(-90, 90, -30, 10);
+                //Pachyderm_Acoustic.VisualizationBox B = new VisualizationBox(-90, 90, -30, 10);
                 double[] rad_eff = new double[angles.Length];
                 double[] rad_effI = new double[angles.Length];
                 double[] rad_effM = new double[angles.Length];
-                B.Show();
+                //B.Show();
 
                 double[] ComparisonCurve = new double[angles.Length];
 
@@ -927,14 +928,14 @@ namespace Pachyderm_Acoustic
                         rad_effI[j] = 10 * Math.Log10(Zr[i][j].Imaginary / (1.2 * C_Sound));
                         rad_effM[j] = 10 * Math.Log10(Zr[i][j].Magnitude / (1.2 * C_Sound));
                     }
-                    B.Populate(angles, rad_eff, angles, rad_effI, angles, rad_effM, angles, "Angle of Incidence (theta)", "Radiation Efficiency (dB)", ComparisonCurve, 750, 100);
+                    if (Graph != null) Graph.Populate(angles, rad_eff, angles, rad_effI, angles, rad_effM, angles, ComparisonCurve, "Angle of Incidence (theta)", "Radiation Efficiency (dB)",  750, 100);
                 }
                 //////////////////////
 
                 return Zr;
             }
 
-            public static Complex[][] Finite_Radiation_Impedance_Atalla_Rect(double Xdim, double Ydim, double[] freq, double[] angles, double C_Sound, double Rho0)
+            public static Complex[][] Finite_Radiation_Impedance_Atalla_Rect(double Xdim, double Ydim, double[] freq, double[] angles, double C_Sound, double Rho0, IReporting Graph = null)
             {
                 Complex[][] Zr = new Complex[freq.Length][];
                 double phistep = Utilities.Numerics.PiX2 / 12;
@@ -957,13 +958,13 @@ namespace Pachyderm_Acoustic
                 }
 
                 ///For progress feedback.
-                VisualizationBox B = new VisualizationBox(-90, 90, -10, 10);
+                //VisualizationBox B = new VisualizationBox(-90, 90, -10, 10);
                 double[] ComparisonCurve = new double[angles.Length];
                 for (int j = 0; j < angles.Length; j++)
                 {
                     ComparisonCurve[j] = 10 * Math.Log10(1 / (Math.Cos(angles[j] * Math.PI / 180)));
                 }
-                B.Show();
+                //B.Show();
 
                 for (int i = 0; i < freq.Length; i++)
                 {
@@ -1011,7 +1012,7 @@ namespace Pachyderm_Acoustic
                         rad_effM[j] = 10 * Math.Log10(Zr[i][j].Magnitude / (Rho0 * C_Sound));
                     }
 
-                    B.Populate(angles, rad_eff, angles, rad_effI, angles, rad_effM, angles, "Angle of Incidence (theta)", "Radiation Efficiency (dB)", ComparisonCurve, 0, (int)(100f * i / freq.Length));
+                    if (Graph != null) Graph.Fill(angles, rad_eff, angles, rad_effI, angles, rad_effM, angles, ComparisonCurve, "Angle of Incidence (theta)", "Radiation Efficiency (dB)",  0, (int)(100f * i / freq.Length));
                 }
 
                 return Zr;

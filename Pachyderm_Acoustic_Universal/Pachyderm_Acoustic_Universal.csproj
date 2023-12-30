@@ -55,21 +55,22 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="LibOptimization, Version=1.12.1.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\LibOptimization.1.12.1\lib\net40\LibOptimization.dll</HintPath>
+    <Reference Include="Eto, Version=2.7.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\Eto.Forms.2.7.1\lib\netstandard2.0\Eto.dll</HintPath>
     </Reference>
-    <Reference Include="MathNet.Filtering, Version=0.7.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\MathNet.Filtering.0.7.0\lib\net461\MathNet.Filtering.dll</HintPath>
+    <Reference Include="LibOptimization, Version=1.14.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\LibOptimization.1.14.0\lib\net48\LibOptimization.dll</HintPath>
     </Reference>
-    <Reference Include="MathNet.Numerics, Version=4.9.1.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\MathNet.Numerics.4.9.1\lib\net461\MathNet.Numerics.dll</HintPath>
-    </Reference>
-    <Reference Include="MathNet.Spatial, Version=0.6.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\MathNet.Spatial.0.6.0\lib\net461\MathNet.Spatial.dll</HintPath>
+    <Reference Include="MathNet.Numerics, Version=5.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\MathNet.Numerics.5.0.0\lib\net48\MathNet.Numerics.dll</HintPath>
     </Reference>
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="System" />
+    <Reference Include="System.ComponentModel.Annotations, Version=4.2.1.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\System.ComponentModel.Annotations.5.0.0\lib\net461\System.ComponentModel.Annotations.dll</HintPath>
+    </Reference>
+    <Reference Include="System.ComponentModel.DataAnnotations" />
     <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
@@ -96,14 +97,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ConvergenceProgress.cs" />
-    <Compile Include="ConvergenceProgress.eto.cs" />
-    <Compile Include="Convergence_Progress_WinForms.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Convergence_Progress_WinForms.Designer.cs">
-      <DependentUpon>Convergence_Progress_WinForms.cs</DependentUpon>
-    </Compile>
+    <Compile Include="Pach_Properties.cs" />
     <Compile Include="Pach_SP_Measurement.cs" />
     <Compile Include="Resource1.Designer.cs">
       <AutoGen>True</AutoGen>
@@ -111,12 +105,6 @@
       <DependentUpon>Resource1.resx</DependentUpon>
     </Compile>
     <Compile Include="Sphere_Arbitrary.cs" />
-    <Compile Include="Pach_Absorption_Designer.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Pach_Absorption_Designer.Designer.cs">
-      <DependentUpon>Pach_Absorption_Designer.cs</DependentUpon>
-    </Compile>
     <Compile Include="SourcePowerMod.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -125,12 +113,6 @@
     </Compile>
     <Compile Include="Pach_Graphics.cs" />
     <Compile Include="Pach_Map_Receiver.cs" />
-    <Compile Include="Pach_Properties.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="Pach_Properties.Designer.cs">
-      <DependentUpon>Pach_Properties.cs</DependentUpon>
-    </Compile>
     <Compile Include="Classes_Absorption_Analytics.cs" />
     <Compile Include="Classes_Absorption_Matrices.cs" />
     <Compile Include="Classes_Balloons.cs" />
@@ -165,22 +147,12 @@
     </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SrfSources.cs" />
-    <Compile Include="VisualizeGraph.cs">
-      <SubType>Form</SubType>
-    </Compile>
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Convergence_Progress_WinForms.resx">
-      <DependentUpon>Convergence_Progress_WinForms.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Pach_Absorption_Designer.resx">
-      <DependentUpon>Pach_Absorption_Designer.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="Resource1.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resource1.Designer.cs</LastGenOutput>
@@ -188,20 +160,22 @@
     <EmbeddedResource Include="SourcePowerMod.resx">
       <DependentUpon>SourcePowerMod.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="Pach_Properties.resx">
-      <DependentUpon>Pach_Properties.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="ProgressBox.resx">
       <DependentUpon>ProgressBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="VisualizeGraph.resx">
-      <DependentUpon>VisualizeGraph.cs</DependentUpon>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\Hare\Hare.csproj">
       <Project>{681e37f0-fdb7-4d4d-b5dc-b6f5065170ff}</Project>
       <Name>Hare</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\ScottPlot\src\ScottPlot5\ScottPlot5 Controls\ScottPlot.Eto\ScottPlot.Eto.csproj">
+      <Project>{1c731aba-d5d4-4eec-850a-feb62bc0288a}</Project>
+      <Name>ScottPlot.Eto</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\ScottPlot\src\ScottPlot5\ScottPlot5\ScottPlot.csproj">
+      <Project>{a1060104-3e2f-438e-b8f6-605c5a5f5542}</Project>
+      <Name>ScottPlot</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
@@ -218,6 +192,13 @@
     <PostBuildEvent>
     </PostBuildEvent>
   </PropertyGroup>
+  <Import Project="..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\Eto.Forms.2.7.1\build\Eto.Forms.targets" Condition="Exists('..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\Eto.Forms.2.7.1\build\Eto.Forms.targets')" />
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\Eto.Forms.2.7.1\build\Eto.Forms.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\Eto.Forms.2.7.1\build\Eto.Forms.targets'))" />
+  </Target>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">

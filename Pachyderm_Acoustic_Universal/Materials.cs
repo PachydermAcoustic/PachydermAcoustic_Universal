@@ -45,7 +45,7 @@ namespace Pachyderm_Acoustic
             System.IO.StreamReader ML_Reader;
             try
             {
-                string MLPath = Pach_Properties.Instance.Lib_Path();
+                string MLPath = Pach_Properties.Instance.Lib_Path;
                 MLPath += "\\Pach_Materials_Library.txt";
                 ML_Reader = new System.IO.StreamReader(MLPath);
                 do
@@ -75,7 +75,7 @@ namespace Pachyderm_Acoustic
             System.IO.StreamReader IL_Reader;
             try
             {
-                string ILPath = Pach_Properties.Instance.Lib_Path();
+                string ILPath = Pach_Properties.Instance.Lib_Path;
                 ILPath += "\\Pach_Isolation_Library.txt";
                 IL_Reader = new System.IO.StreamReader(ILPath);
                 do
@@ -139,7 +139,7 @@ namespace Pachyderm_Acoustic
         public void Save_Abs_Library()
         {
             //Enter an external file saver here... 
-            string MLPath = Pach_Properties.Instance.Lib_Path();
+            string MLPath = Pach_Properties.Instance.Lib_Path;
             MLPath += "\\Pach_Materials_Library.txt";
 
             System.IO.StreamWriter Writer;
@@ -215,7 +215,7 @@ namespace Pachyderm_Acoustic
         public void Save_TL_Library()
         {
             //Enter an external file saver here... 
-            string MLPath = Pach_Properties.Instance.Lib_Path();
+            string MLPath = Pach_Properties.Instance.Lib_Path;
             MLPath += "\\Pach_Isolation_Library.txt";
 
             System.IO.StreamWriter Writer;

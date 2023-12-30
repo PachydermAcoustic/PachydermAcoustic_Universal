@@ -749,7 +749,7 @@ namespace Pachyderm_Acoustic
                 /////////////////
                 //Display Methods : Get Points and Pressure for display output
                 /////////////////
-                public void Pressure_Points(ref List<List<Hare.Geometry.Point>> Pts, ref List<List<double>> Pressure, int[] X, int[] Y, int[] Z, double Low_P, bool Volume, bool Vectored, bool Colored, bool Magnitude)
+                public void Pressure_Points(ref List<List<Hare.Geometry.Point>> Pts, ref List<List<double>> Pressure, int[] X, int[] Y, int[] Z, double Low_P, bool Volume, bool Vectored, bool Colored)
                 {
                     Pts = new List<List<Hare.Geometry.Point>>();
                     Pressure = new List<List<double>>();
@@ -852,7 +852,13 @@ namespace Pachyderm_Acoustic
                                 {
                                     lock (Pts)
                                     {
-                                        if (Colored) P.Add(PFrame[x][y][z].P);
+                                        try { if (Colored) P.Add(PFrame[x][y][z].P); }
+                                        catch 
+                                        {
+                                            if (x > PFrame.Length - 1) x = PFrame.Length - 1;
+                                            else if (y > PFrame[x].Length - 1)  y = PFrame[x].Length - 1;
+                                            if (Colored) P.Add(PFrame[x][y][z].P);
+                                        }
                                         //if (Vectored)
                                         //{
                                         //    PtList.Add((new Rhino.Geometry.Point3d(PFrame[x][y][z].Pt.x, PFrame[x][y][z].Pt.y, PFrame[x][y][z].Pt.z) + PFrame[x][y][z].VelocityDirection() * PFrame[x][y][z].P * 3 * dx));

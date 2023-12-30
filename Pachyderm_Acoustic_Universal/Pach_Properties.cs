@@ -16,13 +16,29 @@
 //'License along with Pachyderm-Acoustic; if not, write to the Free Software 
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
 
+using Eto.Forms;
 using System;
 using System.IO;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Windows.Forms.Automation;
+
 namespace Pachyderm_Acoustic
 {
     public partial class Pach_Properties
     {
         string SettingsPath;
+
+        int GeometrySystem;
+        int Processing;
+        int Thread_Spec;
+        int Spatial_Partition;
+
+        int VGDomain;
+        int OctDepth;
+        string LibraryPath;
+        bool Save;
+        int FiltPhase;
 
         private static Pach_Properties instance;
 
@@ -30,7 +46,7 @@ namespace Pachyderm_Acoustic
         {
             get
             {
-                if (instance == null || instance.IsDisposed)
+                if (instance == null)
                 {
                     instance = new Pach_Properties();
                 }
@@ -40,15 +56,26 @@ namespace Pachyderm_Acoustic
 
         private Pach_Properties()
         {
-            InitializeComponent();
-            Thread_Spec.Maximum = System.Environment.ProcessorCount;
-            Thread_Spec.Value = System.Environment.ProcessorCount;
-
             SettingsPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData) + "\\Pachyderm";
             if (!System.IO.Directory.Exists(SettingsPath)) System.IO.Directory.CreateDirectory(SettingsPath);
-
             SettingsPath += "\\Pach_Settings.pset";
 
+            //FileStream S = new FileStream(SettingsPath, FileMode.OpenOrCreate);
+            //BinaryReader Reader = new BinaryReader(S);
+            //BinaryWriter Writer = new BinaryWriter(S);
+
+            Recover_Settings();
+        }
+
+        public Pach_Properties(string Path_to_Settings_Folder)
+        {
+            SettingsPath = Path_to_Settings_Folder;
+            SettingsPath += "\\Pach_Settings.pset";
+            Recover_Settings();
+        }
+
+        private void Recover_Settings()
+        {
             FileStream S = new FileStream(SettingsPath, FileMode.OpenOrCreate);
             BinaryReader Reader = new BinaryReader(S);
             BinaryWriter Writer = new BinaryWriter(S);
@@ -59,66 +86,74 @@ namespace Pachyderm_Acoustic
                 if (p_version != Utilities.PachTools.Version()) newSettings(ref Reader, ref Writer);
 
                 //2. Geometry System(int)
-                switch (Reader.ReadInt32())
-                {
-                    case 1:
-                        GEO_NURBS.Checked = true;
-                        break;
-                    case 2:
-                        GEO_MESH.Checked = true;
-                        break;
-                    case 3:
-                        GEO_MR_MESH.Checked = true;
-                        break;
-                }
+                GeometrySystem = Reader.ReadInt32();
+
+                //switch (Reader.ReadInt32())
+                //{
+                //    case 1:
+                //        GEO_NURBS.Checked = true;
+                //        break;
+                //    case 2:
+                //        GEO_MESH.Checked = true;
+                //        break;
+                //    case 3:
+                //        GEO_MR_MESH.Checked = true;
+                //        break;
+                //}
 
                 //3. Processing
-                switch (Reader.ReadInt32())
-                {
-                    case 1:
-                        PR_Single.Checked = true;
-                        break;
-                    case 2:
-                        PR_MULTI_ALL.Checked = true;
-                        break;
-                    case 3:
-                        PR_MULTI_EXP.Checked = true;
-                        break;
-                }
+                Processing = Reader.ReadInt32();
+                //switch (Reader.ReadInt32())
+                //{
+                //    case 1:
+                //        PR_Single.Checked = true;
+                //        break;
+                //    case 2:
+                //        PR_MULTI_ALL.Checked = true;
+                //        break;
+                //    case 3:
+                //        PR_MULTI_EXP.Checked = true;
+                //        break;
+                //}
 
                 //4. ThreadCount(int)
-                Thread_Spec.Value = Reader.ReadInt32();
+                Thread_Spec = Reader.ReadInt32();
+                //Thread_Spec.Value = Reader.ReadInt32();
 
                 //5. Spatial Partition Selection (int)
-                switch (Reader.ReadInt32())
-                {
-                    case 1:
-                        VGSP_CHECK.Checked = true;
-                        break;
-                    case 2:
-                        OCT_CHECK.Checked = true;
-                        break;
-                }
+                Spatial_Partition = Reader.ReadInt32();
+                //switch (Reader.ReadInt32())
+                //{
+                //    case 1:
+                //        VGSP_CHECK.Checked = true;
+                //        break;
+                //    case 2:
+                //        OCT_CHECK.Checked = true;
+                //        break;
+                //}
                 //6. Voxel Grid Domain(int)
-                VGDOMAIN.Value = Reader.ReadInt32();
+
+                VGDomain = Reader.ReadInt32();
                 //7. Octree Depth(int)
-                OCT_DEPTH.Value = Reader.ReadInt32();
+                //OCT_DEPTH.Value = Reader.ReadInt32();
+                OctDepth = Reader.ReadInt32();
                 //8. Material Library Path
-                Library_Path.Text = Reader.ReadString();
+                LibraryPath = Reader.ReadString();
                 //9. Save Results after simulation?
-                Save_Results.Checked = Reader.ReadBoolean();
+                Save = Reader.ReadBoolean();
                 //10. Save Filter Method
-                switch (Reader.ReadInt32())
-                {
-                    case 1:
-                        Filt_LinearPhase.Checked = true;
-                        Audio.Pach_SP.Filter = new Audio.Pach_SP.Linear_Phase_System();
-                        break;
-                    case 2:
-                        Filt_MinPhase.Checked = true;
-                        Audio.Pach_SP.Filter = new Audio.Pach_SP.Minimum_Phase_System();
-                        break;
-                }
+                FiltPhase = Reader.ReadInt32();
+                //switch (Reader.ReadInt32())
+                //{
+                //    case 1:
+                //        Filt_LinearPhase.Checked = true;
+                //        Audio.Pach_SP.Filter = new Audio.Pach_SP.Linear_Phase_System();
+                //        break;
+                //    case 2:
+                //        Filt_MinPhase.Checked = true;
+                //        Audio.Pach_SP.Filter = new Audio.Pach_SP.Minimum_Phase_System();
+                //        break;
+                //}
                 Reader.Close();
                 Writer.Close();
             }
@@ -127,8 +162,9 @@ namespace Pachyderm_Acoustic
                 if (x is EndOfStreamException)
                 { newSettings(ref Reader, ref Writer); }
                 else
-                { System.Windows.Forms.MessageBox.Show(x.ToString()); }// "I'm not entirely sure, but I think you do not have write access permissions on Pachyderm Files. Go to your installation and check the security properties of all Pachyderm files. We recommend setting permissions on these files to 'Full Control' for all users.", "Some exception or another..."); }
+                { throw x; }
             }
+
         }
 
         /// <summary>
@@ -146,39 +182,46 @@ namespace Pachyderm_Acoustic
             //1. Plugin Version(string)
             Writer.Write(Utilities.PachTools.Version());
             //2. Geometry System(int)
+            GeometrySystem = 2;
             Writer.Write(2);
             //3. Processing(int)
+            Processing = 2;
             Writer.Write(2);
             //4. ThreadCount(int)
-            Writer.Write((int)Thread_Spec.Value);
+            Thread_Spec = System.Environment.ProcessorCount;
+            Writer.Write(System.Environment.ProcessorCount);
             //5. Spatial Partition Selection (int)
+            Spatial_Partition = 1;
             Writer.Write(1);
             //6. Voxel Grid Domain(int)
+            VGDomain = 7;
             Writer.Write(7);
             //7. Octree Depth(int)
+            OctDepth = 3;
             Writer.Write(3);
             //8. Material Library Path
-            string mlPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData) + "\\Pachyderm";
+            LibraryPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData) + "\\Pachyderm";
             //mlPath = System.IO.Path.GetDirectoryName(mlPath);
-            Library_Path.Text = mlPath;
-            Writer.Write(mlPath);
+            Writer.Write(LibraryPath);
             //9. Save Results after simulation?
+            Save = false;
             Writer.Write(false);
             //10. Save Filter Method
+            FiltPhase = 1;
             { Writer.Write(1); }
             Reader.Close();
             Writer.Close();
         }
 
         /// <summary>
-        /// Get the number of processors on the system.
+        /// Get the number of processors/threads to be used.
         /// </summary>
         /// <returns></returns>
         public int ProcessorCount()
         {
-            if (PR_Single.Checked) return 1;
-            if (PR_MULTI_ALL.Checked) return System.Environment.ProcessorCount;
-            if (PR_MULTI_EXP.Checked) return (int)Thread_Spec.Value;
+            if (Processing == 1) return 1;
+            else if (Processing == 2) return System.Environment.ProcessorCount;
+            else if (Processing == 3) return Thread_Spec;
             throw new Exception("Is there a new Processor Option that needs to be implemented?");
         }
 
@@ -188,80 +231,163 @@ namespace Pachyderm_Acoustic
         /// <returns></returns>
         public int Geometry_Spec()
         {
-            if (GEO_NURBS.Checked) return 0;
-            if (GEO_MESH.Checked) return 1;
-            if (GEO_MR_MESH.Checked) return 2;
+            if (GeometrySystem == 1) return 0; //NURBS
+            else if (GeometrySystem == 2) return 1; //MESH via Hare
+            else if (GeometrySystem == 3) return 2; // Unimplemented Multi-resolution system.
             throw new Exception("Is there a new Geometrical Option that needs to be implemented?");
         }
 
+        public int Processor_Choice
+        {
+            get 
+            {
+                return Processing; 
+            }
+            set 
+            {
+                Processing = value;
+                Commit_Settings();
+            }
+        }
+
         /// <summary>
-        /// Returns the user selected spatial partition
+        /// Specifies the geometry system... 1 is NURBS (rhino specific). 2 is Mesh. 3 is Multi-resolution mesh (not yet implemented).
+        /// </summary>
+        public int Geometry_System
+        {
+            get 
+            {
+                return GeometrySystem; 
+            }
+            set
+            {
+                GeometrySystem = value;
+                Commit_Settings();
+            }
+        }
+
+
+        /// <summary>
+        /// Returns the user selected spatial partition. 1 is for Voxel Grid. 2 is for Octree (not yet implemented.).
         /// </summary>
         /// <returns></returns>
-        public int SP_Spec()
+        public int Spatial_Optimization
         {
-            if (VGSP_CHECK.Checked) return 0;
-            if (OCT_CHECK.Checked) return 1;
-            throw new Exception("Is there a new spatial partition to be implemented?");
+            get
+            {
+                if (Spatial_Partition == 1) return 0;
+                if (Spatial_Partition == 2) return 1;
+                throw new Exception("Is there a new spatial partition to be implemented?");
+            }
+            set 
+            {
+                Spatial_Partition = value;
+                Commit_Settings();
+            }
         }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public int ThreadCount
+        {
+            get
+            {
+                return Thread_Spec;
+            }
+            set
+            {
+                Thread_Spec = value;
+                Commit_Settings();
+            }
+        }
+
+        /// <summary>
+        /// Filter Phase Regime. 
+        /// </summary>
+        public int FilterPhase
+        {
+            get
+            {
+                return FiltPhase;
+            }
+            set
+            {
+                FiltPhase = value;
+                if (FiltPhase == 1) Audio.Pach_SP.Filter = new Audio.Pach_SP.Linear_Phase_System();
+                else Audio.Pach_SP.Filter = new Audio.Pach_SP.Minimum_Phase_System();
+                
+                Commit_Settings();
+            }
+        }
+
+
+        /// <summary>
+        /// Returns the user selected domain of the voxel grid (how many times to subdivide voxels. Functionally 8^x voxels.)
+        /// </summary>
+        /// <returns></returns>
+        public int VoxelGrid_Domain
+        {
+            get
+            {
+                return (int)VGDomain;
+            }
+            set
+            {
+                VGDomain = value;
+                Commit_Settings();
+            }
+        }
+
 
         /// <summary>
         /// If octree is chosen, returns the depth of the octree (how many branches deep)
         /// </summary>
         /// <returns></returns>
-        public int Oct_Depth()
+        public int Oct_Depth
         {
-            return (int)OCT_DEPTH.Value;
+            get
+            {
+                return (int)OctDepth;
+            }
+            set 
+            {
+                OctDepth = value;
+                Commit_Settings();
+            }
         }
 
         /// <summary>
-        /// Gets the path to the material library
+        /// Gets the path to the material library.
         /// </summary>
         /// <returns></returns>
-        public string Lib_Path()
+        public string Lib_Path
         {
-            return Library_Path.Text;
-        }
-
-        public bool SaveResults()
-        {
-            return Save_Results.Checked;
+            get
+            {
+                return LibraryPath;
+            }
+            set 
+            {
+                LibraryPath = value;
+                Commit_Settings();
+            }
         }
 
         /// <summary>
-        /// Returns the user selected domain of the voxel grid (how many voxels in each dimension)
+        /// Determines whether Pachyderm will save results automatically upon starting a simulation.
         /// </summary>
-        /// <returns></returns>
-        public int VG_Domain()
+        public bool SaveResults
         {
-            return (int)VGDOMAIN.Value;
-        }
-
-        private void GEO_NURBS_CheckedChanged(object sender, EventArgs e)
-        {
-            //PR_Single.Checked = true;
-            //Processing_Select.Enabled = false;
-        }
-
-        private void GEO_MESH_CheckedChanged(object sender, EventArgs e)
-        {
-            //PR_MULTI_ALL.Checked = true;
-            //Processing_Select.Enabled = true;
-        }
-
-        private void GEO_MR_MESH_CheckedChanged(object sender, EventArgs e)
-        {
-            //PR_MULTI_EXP.Checked = true;
-            //Processing_Select.Enabled = true;
-        }
-
-        private void Browse_Material_Click(object sender, EventArgs e)
-        {
-            System.Windows.Forms.FolderBrowserDialog FBD = new System.Windows.Forms.FolderBrowserDialog();
-
-            if (FBD.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-            Library_Path.Text = FBD.SelectedPath;
-            Commit_Settings();
+            get
+            {
+                return Save;
+            }
+            set 
+            {
+                Save = value; 
+                Commit_Settings();
+            }
         }
 
         /// <summary>
@@ -275,41 +401,45 @@ namespace Pachyderm_Acoustic
             //1. Plugin Version(string)
             Writer.Write(Utilities.PachTools.Version());
             //2. Geometry System(int)
-            if (GEO_NURBS.Checked == true)
-            { Writer.Write(1); }
-            else if (GEO_MESH.Checked == true)
-            { Writer.Write(2); }
-            else
-            { Writer.Write(3); }
+            //if (GEO_NURBS.Checked == true)
+            //{ Writer.Write(1); }
+            //else if (GEO_MESH.Checked == true)
+            //{ Writer.Write(2); }
+            //else
+            //{ Writer.Write(3); }
+            Writer.Write(GeometrySystem);
 
             //3. Processing(int)
-            if (PR_Single.Checked == true)
-            { Writer.Write(1); }
-            else if (PR_MULTI_ALL.Checked == true)
-            { Writer.Write(2); }
-            else
-            { Writer.Write(3); }
+            //if (PR_Single.Checked == true)
+            //{ Writer.Write(1); }
+            //else if (PR_MULTI_ALL.Checked == true)
+            //{ Writer.Write(2); }
+            //else
+            //{ Writer.Write(3); }
+            Writer.Write(Processing);
 
             //4. ThreadCount(int)
-            Writer.Write((int)Thread_Spec.Value);
+            //Writer.Write((int)Thread_Spec.Value);
+            Writer.Write(Thread_Spec);
 
             //5. Spatial Partition Selection (int)
-            if (VGSP_CHECK.Checked == true)
-            { Writer.Write(1); }
-            else
-            { Writer.Write(2); }
+            //if (VGSP_CHECK.Checked == true)
+            //{ Writer.Write(1); }
+            //else
+            //{ Writer.Write(2); }
+            Writer.Write(Spatial_Partition);
 
             //6. Voxel Grid Domain(int)
-            Writer.Write((int)VGDOMAIN.Value);
+            Writer.Write(VGDomain);
             //7. Octree Depth(int)
-            Writer.Write((int)OCT_DEPTH.Value);
+            Writer.Write(OctDepth);
             //8. Material Library Path
-            Writer.Write(Library_Path.Text);
+            Writer.Write(LibraryPath);
             //9. Save Results after simulation?
-            Writer.Write(Save_Results.Checked);
+            Writer.Write(Save);
 
             //10. Save Filter Method
-            if (Filt_LinearPhase.Checked == true)
+            if (FiltPhase == 1)
             {
                 Audio.Pach_SP.Filter = new Audio.Pach_SP.Linear_Phase_System();
                 Writer.Write(1);
@@ -320,21 +450,6 @@ namespace Pachyderm_Acoustic
                 Writer.Write(2);
             }
             Writer.Close();
-        }
-
-        private void SettingsChanged(object sender, EventArgs e)
-        {
-            Commit_Settings();
-        }
-
-        private void SettingsChanged(object sender, System.Windows.Forms.MouseEventArgs e)
-        {
-            Commit_Settings();
-        }
-
-        private void SettingsChanged(object sender, System.Windows.Forms.KeyEventArgs e)
-        {
-            Commit_Settings();
         }
     }
 }
