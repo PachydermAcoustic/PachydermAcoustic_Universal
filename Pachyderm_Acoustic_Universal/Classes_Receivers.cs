@@ -24,6 +24,9 @@ using System.Runtime.Serialization;
 using MathNet.Numerics;
 using System.Windows.Media.Animation;
 using Pachyderm_Acoustic.Utilities;
+using System.Diagnostics;
+using Pachyderm_Acoustic.Pach_Graphics;
+using ZedGraph;
 
 namespace Pachyderm_Acoustic
 {
@@ -37,6 +40,8 @@ namespace Pachyderm_Acoustic
         {
             public Spherical_Receiver[] Rec_List;
             public Type Rec_Type;
+            public double[] SWL;
+            public string SrcType = "";
             public int SampleCT;
             public int SampleRate;
             public int RayCount;
@@ -44,6 +49,7 @@ namespace Pachyderm_Acoustic
             public Hare.Geometry.Point Min;
             public Hare.Geometry.Point Max;
             public int[] Oct_choice;
+            public double delay_ms;
 
             /// <summary>
             /// Specifies the kinds of receivers that can be placed in this receiver bank.
@@ -58,8 +64,10 @@ namespace Pachyderm_Acoustic
             {
             }
 
-            public Receiver_Bank(IList<Point> Pt, Point SrcPT, Scene Sc, int SampleRate_in, double COTime_in, Type Type)
+            public Receiver_Bank(IList<Point> Pt, Source SrcPT, Scene Sc, int SampleRate_in, double COTime_in, Type Type)
             {
+                SWL = SrcPT.SWL();
+                SrcType = SrcPT.Type();
                 SampleRate = SampleRate_in;
                 SampleCT = (int)Math.Floor(COTime_in * SampleRate_in / 1000);
                 this.CutOffTime = COTime_in;
@@ -71,8 +79,8 @@ namespace Pachyderm_Acoustic
 
                 for (int i = 0; i < arrPts.Length; i++)
                 {
-                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
-                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT, RayCount, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT.H_Origin(), Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT.H_Origin(), RayCount, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
 
                     if (arrPts[i].x > Max.x) Max.x = arrPts[i].x;
                     if (arrPts[i].y > Max.y) Max.y = arrPts[i].y;
@@ -85,9 +93,11 @@ namespace Pachyderm_Acoustic
 
             public virtual Receiver_Bank Duplicate(Source Src, Scene Room)
             {
+                SWL = Src.SWL();
+                SrcType = Src.Type();
                 List<Point> pts = new List<Point>();
                 foreach (Spherical_Receiver s in Rec_List) pts.Add(s.Origin);
-                return new Receiver_Bank(pts, Src.H_Origin(), Room, this.SampleRate, this.CO_Time, this.Rec_Type);
+                return new Receiver_Bank(pts, Src, Room, this.SampleRate, this.CO_Time, this.Rec_Type);
             }
 
             /// <summary>
@@ -122,8 +132,9 @@ namespace Pachyderm_Acoustic
             /// <param name="SampleRate_in">the simulation histogram sampling frequency</param>
             /// <param name="COTime_in">the Cut Off Time in ms.</param>
             /// <param name="Type">the type of receivers contained in this receiver bank</param>
-            public Receiver_Bank(IEnumerable<Point> Pt, Point SrcPT, Scene Sc, int SampleRate_in, double COTime_in, Type Type)
+            public Receiver_Bank(IEnumerable<Point> Pt, Source SrcPT, Scene Sc, int SampleRate_in, double COTime_in, Type Type)
             {
+                SWL = SrcPT.SWL();
                 SampleRate = SampleRate_in;
                 SampleCT = (int)Math.Floor(COTime_in * SampleRate_in / 1000);
                 this.CutOffTime = COTime_in;
@@ -135,8 +146,8 @@ namespace Pachyderm_Acoustic
 
                 for (int i = 0; i < arrPts.Length; i++)
                 {
-                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
-                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT, RayCount, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT.H_Origin(), Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT.H_Origin(), RayCount, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
 
                     if (arrPts[i].x > Max.x) Max.x = arrPts[i].x;
                     if (arrPts[i].y > Max.y) Max.y = arrPts[i].y;
@@ -329,7 +340,7 @@ namespace Pachyderm_Acoustic
             /// <param name="Rec_CT">The number of receivers</param>
             /// <param name="SampleRate">the histogram sampling frequency</param>
             /// <returns>a complete receiver bank</returns>
-            public static Receiver_Bank Read_Data(ref System.IO.BinaryReader BR, double[] SWL, int Rec_CT, IEnumerable<Hare.Geometry.Point> RecPts, double[] rho_c, double delayms, ref int SampleRate, string version)
+            public static Receiver_Bank Read_Data(ref System.IO.BinaryReader BR, double[] SWL, int Rec_CT, IEnumerable<Hare.Geometry.Point> RecPts, double[] rho_c, double delayms, ref int SampleRate, string version, IProgressFeedback VB)
             {
                 //2. Write the type of receivers used
                 Type Rec_typ = (Type)Enum.ToObject(typeof(Type), BR.ReadUInt32());
@@ -397,7 +408,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                Rec.Create_Filter();
+                Rec.Create_Filter(VB);
                 return Rec;
             }
 
@@ -562,7 +573,7 @@ namespace Pachyderm_Acoustic
                 Point[] b_pts = B.Origins();
                 if (A.Rec_Type != B.Rec_Type || a_pts.Length != b_pts.Length)
                 {
-                    System.Windows.Forms.MessageBox.Show("Data is for two different calculations. Simulations not Combined.");
+                    Eto.Forms.MessageBox.Show("Data is for two different calculations. Simulations not Combined.");
                     return null;
                 }
 
@@ -570,7 +581,7 @@ namespace Pachyderm_Acoustic
                 {
                     if (a_pts[i].GetHashCode() != b_pts[i].GetHashCode())
                     {
-                        System.Windows.Forms.MessageBox.Show("Data is for two different calculations. Simulations not Combined.");
+                        Eto.Forms.MessageBox.Show("Data is for two different calculations. Simulations not Combined.");
                         return null;
                     }
                 }
@@ -581,7 +592,7 @@ namespace Pachyderm_Acoustic
                     {
                         if (a == b)
                         {
-                            System.Windows.Forms.MessageBox.Show("Data Conflicts. Simulations not Combined.");
+                            Eto.Forms.MessageBox.Show("Data Conflicts. Simulations not Combined.");
                             return null;
                         }
                     }
@@ -598,22 +609,22 @@ namespace Pachyderm_Acoustic
                 return A;
             }
 
-            public virtual void Create_Filter()
+            public virtual void Create_Filter(IProgressFeedback VB)
             {
                 for (int rec = 0; rec < Rec_List.Length; rec++)
                 {
-                    Rec_List[rec].Create_Filter();
+                    Rec_List[rec].Create_Filter(VB);
                 }
             }
 
-            public double[] Create_Filter(double[] SWL, int Rec_ID, int dim)
+            public double[] Create_Filter(double[] SWL, int Rec_ID, int dim, IProgressFeedback VB)
             {
-                return Rec_List[Rec_ID].Create_Filter(SWL, dim);
+                return Rec_List[Rec_ID].Create_Filter(SWL, dim, VB);
             }
 
-            public double[][] Create_Filter(double[] SWL, int Rec_ID)
+            public double[][] Create_Filter(double[] SWL, int Rec_ID, IProgressFeedback VB)
             {
-                return Rec_List[Rec_ID].Create_Filter(SWL);
+                return Rec_List[Rec_ID].Create_Filter(SWL, VB);
             }
 
             public double[][] Filter_3Axis(int rec_id)
@@ -629,6 +640,18 @@ namespace Pachyderm_Acoustic
             public void Scale(int Ray_CT)
             {
                 for (int i = 0; i < Rec_List.Length; i++) Rec_List[i].Scale(Ray_CT);
+            }
+
+            /// <summary>
+            /// The direct sound outputs a power mod factor. This takes that function's place, since there is no direct sound for this simulation type.
+            /// </summary>
+            /// <param name="new_SWL"></param>
+            /// <returns></returns>
+            public double[] PowerModFactor(double[] new_SWL)
+            {
+                double[] factor = new double[8];
+                for (int i = 0; i < 8; i++) factor[i] = Utilities.AcousticalMath.Intensity_SPL(new_SWL[i]) / Utilities.AcousticalMath.Intensity_SPL(this.SWL[i]);
+                return factor;
             }
         }
 
@@ -946,19 +969,19 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            public virtual void Create_Filter()
+            public virtual void Create_Filter(IProgressFeedback VB)
             {
-                Recs.Create_Filter(Rho_C);
+                Recs.Create_Filter(Rho_C, VB);
             }
 
-            public virtual double[] Create_Filter(double[] SWL, int dim)
+            public virtual double[] Create_Filter(double[] SWL, int dim, IProgressFeedback VB)
             {
-                return Recs.Create_Filter(SWL, Rho_C, dim);
+                return Recs.Create_Filter(SWL, Rho_C, dim, VB);
             }
 
-            public virtual double[][] Create_Filter(double[] SWL)
+            public virtual double[][] Create_Filter(double[] SWL, IProgressFeedback VB)
             {
-                return Recs.Create_Filter(SWL, Rho_C);
+                return Recs.Create_Filter(SWL, Rho_C, VB);
             }
 
             public double[][] Filter3Axis()
@@ -1051,37 +1074,38 @@ namespace Pachyderm_Acoustic
                     Pressure[Octave][Sample] += Pressure_in;
                 }
 
-                public virtual void Create_Filter(double Rho_C)
+                public virtual void Create_Filter(double Rho_C, IProgressFeedback VB)
                 {
                     if (Energy[0].Length == 1)
                     {
                         return;
                     }
 
-                    F = Audio.Pach_SP.ETCToFilter(this.Pressure, new double[8] {120, 120, 120, 120, 120, 120, 120, 120 }, this.SampleRate, 44100, "Signal Progress...");
+                    F = Audio.Pach_SP.ETCToFilter(this.Pressure, new double[8] {120, 120, 120, 120, 120, 120, 120, 120 }, this.SampleRate, 44100, VB);
                     Array.Resize(ref F, F.Length - 4096);
                 }
 
-                public virtual double[][] Create_Filter(double[] SWL, double Rho_C)
+                public virtual double[][] Create_Filter(double[] SWL, double Rho_C, IProgressFeedback VB)
                 {
                     if (Energy[0].Length == 1)
                     {
                         return null;
                     }
 
-                    double[][] F = new double[1][] { Audio.Pach_SP.ETCToFilter(this.Pressure, SWL, this.SampleRate, 44100, "Signal Progress...") };
+
+                    double[][] F = new double[1][] { Audio.Pach_SP.ETCToFilter(this.Pressure, SWL, this.SampleRate, 44100, VB) };
                     Array.Resize(ref F[0], F[0].Length - 4096);
                     return F;
                 }
 
-                public virtual double[] Create_Filter(double[] SWL, double Rho_C, int dim)
+                public virtual double[] Create_Filter(double[] SWL, double Rho_C, int dim, IProgressFeedback VB)
                 {
                     if (Energy[0].Length == 1)
                     {
                         return null;
                     }
 
-                    double[] F = Audio.Pach_SP.ETCToFilter(this.Pressure, SWL, this.SampleRate, 44100, "Signal Progress...");
+                    double[] F = Audio.Pach_SP.ETCToFilter(this.Pressure, SWL, this.SampleRate, 44100, VB);
                     Array.Resize(ref F, F.Length - 4096);
                     return F;
                 }
@@ -1488,10 +1512,10 @@ namespace Pachyderm_Acoustic
                 /// <param name="SWL"></param>
                 /// <param name="Rho_C"></param>
                 /// <returns></returns>
-                public override double[][] Create_Filter(double[] SWL, double Rho_C)
+                public override double[][] Create_Filter(double[] SWL, double Rho_C, IProgressFeedback VB)
                 {
                     double[][] F_ = new double[7][];
-                    F_[0] = Audio.Pach_SP.ETCToFilter(this.Pressure, SWL, this.SampleRate, 44100, "Filter Progress: Creating Omnidirectional..");
+                    F_[0] = Audio.Pach_SP.ETCToFilter(this.Pressure, SWL, this.SampleRate, 44100, VB);
                     Array.Resize(ref F_[0], F_[0].Length - 4096);
 
                     for (int dir = 0; dir < 3; dir++)
@@ -1508,15 +1532,17 @@ namespace Pachyderm_Acoustic
                                 temp_ptcN[oct][t] = this.Energy[oct][t] == 0 ? 0 : this.Pressure[oct][t] * this.Dir_Rec_Neg[dir][oct][t] / this.Energy[oct][t];
                             }
                         }
-                        F_[2*dir+1] = Audio.Pach_SP.ETCToFilter(temp_ptcP, SWL, this.SampleRate, 44100, string.Format("Filter Progress: Creating Positive {0}.", new string[3] { "X", "Y", "Z" }[dir]));
+                        VB.change_title(string.Format("Filter Progress: Creating Positive {0}.", new string[3] { "X", "Y", "Z" }[dir]));
+                        F_[2 * dir + 1] = Audio.Pach_SP.ETCToFilter(temp_ptcP, SWL, this.SampleRate, 44100, VB); 
                         Array.Resize(ref F_[2 * dir + 1], F_[2 * dir + 1].Length - 4096);
-                        F_[2*dir+2] = Audio.Pach_SP.ETCToFilter(temp_ptcN, SWL, this.SampleRate, 44100, string.Format("Filter Progress: Creating Negative {0}.", new string[3] { "X", "Y", "Z" }[dir]));
+                        VB.change_title(string.Format("Filter Progress: Creating Negative {0}.", new string[3] { "X", "Y", "Z" }[dir]));
+                        F_[2 * dir + 2] = Audio.Pach_SP.ETCToFilter(temp_ptcN, SWL, this.SampleRate, 44100, VB);
                         Array.Resize(ref F_[2 * dir + 2], F_[2 * dir + 2].Length - 4096);
                     }
                     return F_;
                 }
 
-                public override double[] Create_Filter(double[] SWL, double Rho_C, int dim)
+                public override double[] Create_Filter(double[] SWL, double Rho_C, int dim, IProgressFeedback VB)
                 {
                     double[][] temp = new double[8][];
                     string msg;
@@ -1539,15 +1565,15 @@ namespace Pachyderm_Acoustic
                             }
                         }
                     }
-
-                    double[] F = Audio.Pach_SP.ETCToFilter(temp, SWL, this.SampleRate, 44100, msg);
+                    VB.change_title(msg);
+                    double[] F = Audio.Pach_SP.ETCToFilter(temp, SWL, this.SampleRate, 44100, VB);
                     Array.Resize(ref F, F.Length - 4096);
                     return F;
                 }
 
-                public override void Create_Filter(double Rho_C)
+                public override void Create_Filter(double Rho_C, IProgressFeedback VB)
                 {
-                    F = Audio.Pach_SP.ETCToFilter(this.Pressure, new double[8] {120, 120, 120, 120, 120, 120, 120, 120 }, this.SampleRate, 44100, "Filter Progress: Creating Omnidirectional..");
+                    F = Audio.Pach_SP.ETCToFilter(this.Pressure, new double[8] {120, 120, 120, 120, 120, 120, 120, 120 }, this.SampleRate, 44100, VB);
                     Array.Resize(ref F, F.Length - 4096);
                     Fdir = new double[6][];
                     //Fdir[0] = Audio.Pach_SP.ETCToFilter(this.Dir_Rec_Pos[0], new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }, this.CO_Time, this.SampleRate, 44100, Rho_C, "Filter Progress: Creating Positive X.");
@@ -1571,10 +1597,12 @@ namespace Pachyderm_Acoustic
                                 temp_ptcN[oct][t] = this.Energy[oct][t] == 0 ? 0 : this.Pressure[oct][t] * this.Dir_Rec_Neg[dir][oct][t] / this.Energy[oct][t];
                             }
                         }
-                        Fdir[2 * dir] = Audio.Pach_SP.ETCToFilter(temp_ptcP, new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }, this.SampleRate, 44100, string.Format("Filter Progress: Creating Positive {0}.", new string[3] { "X", "Y", "Z" }[dir]));
+                        VB.change_title(string.Format("Filter Progress: Creating Positive {0}.", new string[3] { "X", "Y", "Z" }[dir]));
+                        Fdir[2 * dir] = Audio.Pach_SP.ETCToFilter(temp_ptcP, new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }, this.SampleRate, 44100, VB);
                         Array.Resize(ref Fdir[2*dir], Fdir[2 * dir].Length - 4096);
-                        Fdir[2 * dir + 1] = Audio.Pach_SP.ETCToFilter(temp_ptcN, new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }, this.SampleRate, 44100, string.Format("Filter Progress: Creating Negative {0}.", new string[3] { "X", "Y", "Z" }[dir]));
-                        Array.Resize(ref Fdir[2*dir+1], Fdir[2 * dir + 1].Length - 4096);
+                        VB.change_title(string.Format("Filter Progress: Creating Negative {0}.", new string[3] { "X", "Y", "Z" }[dir]));
+                        Fdir[2 * dir + 1] = Audio.Pach_SP.ETCToFilter(temp_ptcN, new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }, this.SampleRate, 44100, VB);
+                        Array.Resize(ref Fdir[2 * dir + 1], Fdir[2 * dir + 1].Length - 4096);
                     }
                 }
 

@@ -16,12 +16,8 @@
 //'License along with Pachyderm-Acoustic; if not, write to the Free Software 
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
 
-using Eto.Forms;
 using System;
 using System.IO;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Windows.Forms.Automation;
 
 namespace Pachyderm_Acoustic
 {

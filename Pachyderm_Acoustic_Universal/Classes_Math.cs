@@ -22,6 +22,7 @@ using Pachyderm_Acoustic.Environment;
 using System.Linq;
 using System.Windows.Forms;
 using System.Runtime.CompilerServices;
+using Pachyderm_Acoustic.Pach_Graphics;
 
 namespace Pachyderm_Acoustic
 {
@@ -1582,7 +1583,7 @@ namespace Pachyderm_Acoustic
             /// <param name="Octave">the chosen octave band.</param>
             /// <param name="Rec_ID">the id of the selected receiver.</param>
             /// <returns></returns>
-            public static double[] Auralization_Filter(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, int Src_ID, int dim, bool Start_at_Zero, bool flat)
+            public static double[] Auralization_Filter(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, int Src_ID, int dim, bool Start_at_Zero, bool flat, IProgressFeedback VB)
             {
                 double[] SWL = Direct[Src_ID].SWL;
                 double[] F;
@@ -1590,7 +1591,7 @@ namespace Pachyderm_Acoustic
                 if (RTData[Src_ID] != null)
                 {
                     if (flat) RTData[Src_ID].GetFilter(Rec_ID, out F);
-                    else F = RTData[Src_ID].Create_Filter(Direct[Src_ID].SWL, Rec_ID, 0);
+                    else F = RTData[Src_ID].Create_Filter(Direct[Src_ID].SWL, Rec_ID, 0, VB);
                 }
                 else
                 {
@@ -1631,7 +1632,7 @@ namespace Pachyderm_Acoustic
                 return F;
             }
 
-            public static double[] Aurfilter_Directional(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double alt, double azi, bool degrees, bool flat)
+            public static double[] Aurfilter_Directional(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB)
             {
                 double[] Histogram;
                 if (RTData != null)
@@ -1643,7 +1644,7 @@ namespace Pachyderm_Acoustic
                     int SIGN = 1;
                     for (int i = 1; i < 2; i++) SIGN *= (ids[i] % 2 == 1) ? -1 : 1;
 
-                    double[][] hist_temp = flat ? RTData.Filter_3Axis(Rec_ID) : RTData.Create_Filter(Direct.SWL, Rec_ID);
+                    double[][] hist_temp = flat ? RTData.Filter_3Axis(Rec_ID) : RTData.Create_Filter(Direct.SWL, Rec_ID, VB);
                     Histogram = new double[hist_temp[0].Length];
                     for (int i = 0; i < hist_temp[0].Length; i++)
                     {
@@ -1997,7 +1998,7 @@ namespace Pachyderm_Acoustic
                 return Histogram;
             }
             
-            public static double[] Auralization_Filter(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, bool flat)
+            public static double[] Auralization_Filter(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, bool flat, IProgressFeedback VB)
             {
                 if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
                 if (ISData == null) ISData = new ImageSourceData[SrcIDs[SrcIDs.Count - 1] + 1];
@@ -2030,7 +2031,7 @@ namespace Pachyderm_Acoustic
 
                 foreach (int s in SrcIDs)
                 {
-                    double[] P = Auralization_Filter(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Rec_ID, s, 0, StartAtZero, flat);
+                    double[] P = Auralization_Filter(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Rec_ID, s, 0, StartAtZero, flat, VB);
                     for (int i = 0; i < P.Length; i++)
                     {
                         Histogram[i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += P[i];
@@ -2039,7 +2040,7 @@ namespace Pachyderm_Acoustic
                 return Histogram;
             }
 
-            public static double[] PressureTimeCurve(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, bool flat)
+            public static double[] PressureTimeCurve(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, bool flat, IProgressFeedback VB)
             {
                 if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
                 if (ISData == null) ISData = new ImageSourceData[SrcIDs[SrcIDs.Count - 1] + 1];
@@ -2081,7 +2082,7 @@ namespace Pachyderm_Acoustic
 
                 foreach (int s in SrcIDs)
                 {
-                    double[] P = Auralization_Filter(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Rec_ID, s, 0, StartAtZero, flat);
+                    double[] P = Auralization_Filter(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Rec_ID, s, 0, StartAtZero, flat, VB);
                     P = Audio.Pach_SP.Filter2Signal(P, Direct[s].SWL, Sampling_Frequency, 0);
                     for (int i = 0; i < P.Length; i++)
                     {
@@ -2332,7 +2333,7 @@ namespace Pachyderm_Acoustic
             }
 
 
-            public static double[] AurFilter_Directional(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat)
+            public static double[] AurFilter_Directional(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB)
             {
                 if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
                 if (ISData == null) ISData = new ImageSourceData[SrcIDs[SrcIDs.Count - 1] + 1];
@@ -2363,7 +2364,7 @@ namespace Pachyderm_Acoustic
 
                 foreach (int s in SrcIDs)
                 {
-                    double[] IR = Aurfilter_Directional(Direct.ElementAt<Direct_Sound>(s), ISData.ElementAt<ImageSourceData>(s), RTData.ElementAt<Receiver_Bank>(s), CO_Time_ms, Sampling_Frequency, Rec_ID, StartAtZero, alt, azi, degrees, flat);
+                    double[] IR = Aurfilter_Directional(Direct.ElementAt<Direct_Sound>(s), ISData.ElementAt<ImageSourceData>(s), RTData.ElementAt<Receiver_Bank>(s), CO_Time_ms, Sampling_Frequency, Rec_ID, StartAtZero, alt, azi, degrees, flat, VB);
                     for (int i = 0; i < IR.Length; i++)
                     {
                         Histogram[i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[i];

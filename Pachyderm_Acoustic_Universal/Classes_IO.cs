@@ -15,6 +15,7 @@
 //'You should have received a copy of the GNU General Public 
 //'License along with Pachyderm-Acoustic; if not, write to the Free Software 
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
+using Pachyderm_Acoustic.Pach_Graphics;
 using System;
 
 namespace Pachyderm_Acoustic
@@ -23,24 +24,23 @@ namespace Pachyderm_Acoustic
     {
         public class FileIO
         {
-            /// <summary>
-            /// Writes a Pac1 file. [Useable by scripts and interface components alike.]
-            /// </summary>
-            /// <param name="Direct_Data">Array of Completed Direct Sound Simulations Required</param>
-            /// <param name="IS_Data">Array of Completed Image Source Simulations. Enter null if opted out.</param>
-            /// <param name="Receiver">Array of Completed Ray-Tracing Simulation Receivers. Enter null if opted out.</param>
-            public static void Write_Pac1(Direct_Sound[] Direct_Data, ImageSourceData[] IS_Data = null, Environment.Receiver_Bank[] Receiver = null)
-            {
-                System.Windows.Forms.SaveFileDialog sf = new System.Windows.Forms.SaveFileDialog();
-                sf.DefaultExt = ".pac1";
-                sf.AddExtension = true;
-                sf.Filter = "Pachyderm Ray Data file (*.pac1)|*.pac1|" + "All Files|";
+            ///// <summary>
+            ///// Writes a Pac1 file. [Useable by scripts and interface components alike.]
+            ///// </summary>
+            ///// <param name="Direct_Data">Array of Completed Direct Sound Simulations Required</param>
+            ///// <param name="IS_Data">Array of Completed Image Source Simulations. Enter null if opted out.</param>
+            ///// <param name="Receiver">Array of Completed Ray-Tracing Simulation Receivers. Enter null if opted out.</param>
+            //public static void Write_Pac1(Direct_Sound[] Direct_Data, ImageSourceData[] IS_Data = null, Environment.Receiver_Bank[] Receiver = null)
+            //{
+            //    Eto.Forms.SaveFileDialog sf = new Eto.Forms.SaveFileDialog();
+            //    sf.CurrentFilter = ".pac1";
+            //    sf.Filters.Add("Pachyderm Ray Data file (*.pac1)|*.pac1|" + "All Files|");
 
-                if (sf.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-                {
-                    Write_Pac1(sf.FileName, Direct_Data, IS_Data, Receiver);
-                }
-            }
+            //    if (sf.ShowDialog() == Eto.Forms.DialogResult.Ok)
+            //    {
+            //        Write_Pac1(sf.FileName, Direct_Data, IS_Data, Receiver);
+            //    }
+            //}
 
             /// <summary>
             /// Writes a Pac1 file. [Useable by scripts and interface components alike.]
@@ -53,7 +53,7 @@ namespace Pachyderm_Acoustic
             {
                 if (Direct_Data == null && IS_Data == null && IS_Data == null && Receiver != null)
                 {
-                    System.Windows.Forms.MessageBox.Show("There is no simulated data to save.");
+                    Eto.Forms.MessageBox.Show("There is no simulated data to save.");
                     return;
                 }
 
@@ -123,18 +123,17 @@ namespace Pachyderm_Acoustic
             /// <param name="Direct_Data">Empty array of Direct Sound Simulations Required</param>
             /// <param name="IS_Data">Empty array of Image Source Simulations. Enter null if opted out.</param>
             /// <param name="Receiver">Empty array of Ray-Tracing Simulation Receivers. Enter null if opted out.</param>
-            public static bool Read_Pac1(ref Direct_Sound[] Direct_Data, ref ImageSourceData[] IS_Data, ref Environment.Receiver_Bank[] Receiver)
+            public static bool Read_Pac1(ref Direct_Sound[] Direct_Data, ref ImageSourceData[] IS_Data, ref Environment.Receiver_Bank[] Receiver, string filepath)
             {
-                    System.Windows.Forms.OpenFileDialog sf = new System.Windows.Forms.OpenFileDialog();
-                    sf.DefaultExt = ".pac1";
-                    sf.AddExtension = true;
-                    sf.Filter = "Pachyderm Simulation (*.pac1)|*.pac1|" + "All Files|";
-                    if (sf.ShowDialog() != System.Windows.Forms.DialogResult.OK) return false;
+                    Eto.Forms.OpenFileDialog sf = new Eto.Forms.OpenFileDialog();
+                    sf.CurrentFilter = ".pac1";
+                    sf.Filters.Add("Pachyderm Simulation (*.pac1)|*.pac1|" + "All Files|");
+                    //if (sf.ShowDialog(parent) != Eto.Forms.DialogResult.Ok) return false;
 
-                    return Read_Pac1(sf.FileName, ref Direct_Data, ref IS_Data, ref Receiver);
+                    return Read_Pac1(filepath, ref Direct_Data, ref IS_Data, ref Receiver);
             }
 
-            public static bool Read_Pac1(string filename, ref Direct_Sound[] Direct_Data, ref ImageSourceData[] IS_Data, ref Environment.Receiver_Bank[] Receiver)
+            public static bool Read_Pac1(string filename, ref Direct_Sound[] Direct_Data, ref ImageSourceData[] IS_Data, ref Environment.Receiver_Bank[] Receiver, IProgressFeedback VB = null)
             {
                 System.IO.BinaryReader sr = new System.IO.BinaryReader(System.IO.File.Open(filename, System.IO.FileMode.Open));
                 try
@@ -189,12 +188,12 @@ namespace Pachyderm_Acoustic
                                 break;
                             case "Image-Source_Data":
                                 //10. Read Image Source Sound Data
-                                IS_Data[ISCT] = ImageSourceData.Read_Data(ref sr, Recs.Length, Direct_Data[DDCT - 1], false, Rho_C, ISCT, Pach_version);
+                                IS_Data[ISCT] = ImageSourceData.Read_Data(ref sr, Recs.Length, Direct_Data[DDCT - 1], false, Rho_C, ISCT, Pach_version, VB);
                                 ISCT++;
                                 break;
                             case "Ray-Traced_Data":
                                 //11. Read Ray Traced Sound Data
-                                Receiver[RTCT] = Environment.Receiver_Bank.Read_Data(ref sr, Direct_Data[RTCT].SWL, Rec_Ct, Recs, Rho_C, Direct_Data[RTCT].Delay_ms, ref SampleRate, Pach_version);
+                                Receiver[RTCT] = Environment.Receiver_Bank.Read_Data(ref sr, Direct_Data[RTCT].SWL, Rec_Ct, Recs, Rho_C, Direct_Data[RTCT].Delay_ms, ref SampleRate, Pach_version, VB);
                                 RTCT++;
                                 break;
                             case "End":
@@ -207,7 +206,7 @@ namespace Pachyderm_Acoustic
                 catch (System.Exception X)
                 {
                     sr.Close();
-                    System.Windows.Forms.MessageBox.Show("File Read Failed...", String.Format("Results file was corrupt or incomplete. We apologize for this inconvenience. Please report this to the software author. It will be much appreciated. \r\n Exception Message: {0}. \r\n Method: {1}" , X.Message, X.TargetSite));
+                    Eto.Forms.MessageBox.Show("File Read Failed...", String.Format("Results file was corrupt or incomplete. We apologize for this inconvenience. Please report this to the software author. It will be much appreciated. \r\n Exception Message: {0}. \r\n Method: {1}" , X.Message, X.TargetSite));
                     return false;
                 }
             }
@@ -216,17 +215,16 @@ namespace Pachyderm_Acoustic
             /// Writes the map receiver to a file. 
             /// </summary>
             /// <param name="Rec_List">The list of receivers to be written.</param>
-            public static void Write_pachm(PachMapReceiver[] Rec_List)
-            {
-                System.Windows.Forms.SaveFileDialog sf = new System.Windows.Forms.SaveFileDialog();
-                sf.DefaultExt = ".pachm";
-                sf.AddExtension = true;
-                sf.Filter = "Pachyderm Mapping Data File (*.pachm)|*.pachm|" + "All Files|";
-                if (sf.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-                {
-                    Write_pachm(sf.FileName, Rec_List);
-                }
-            }
+            //public static void Write_pachm(PachMapReceiver[] Rec_List)
+            //{
+            //    Eto.Forms.SaveFileDialog sf = new Eto.Forms.SaveFileDialog();
+            //    sf.CurrentFilter = ".pachm";
+            //    sf.Filters.Add("Pachyderm Mapping Data File (*.pachm)|*.pachm|" + "All Files|");
+            //    if (sf.ShowDialog(parent) == Eto.Forms.DialogResult.Ok)
+            //    {
+            //        Write_pachm(sf.FileName, Rec_List);
+            //    }
+            //}
 
             /// <summary>
             /// Writes pachyderm mapping file.
@@ -338,20 +336,19 @@ namespace Pachyderm_Acoustic
                 sw.Close();
             }
 
-            public static bool Read_pachm(ref PachMapReceiver[] Map)
-            {
-                System.Windows.Forms.OpenFileDialog of = new System.Windows.Forms.OpenFileDialog();
-                of.DefaultExt = ".pachm";
-                of.AddExtension = true;
-                of.Filter = "Pachyderm Mapping Data File (*.pachm)|*.pachm|" + "All Files|";
-                if (of.ShowDialog() != System.Windows.Forms.DialogResult.OK)
-                {
-                    Map = null;
-                    return false;
-                }
+            //public static bool Read_pachm(ref PachMapReceiver[] Map, Eto.Forms.Control parent)
+            //{
+            //    Eto.Forms.OpenFileDialog of = new Eto.Forms.OpenFileDialog();
+            //    of.CurrentFilter = ".pachm";
+            //    of.Filters.Add("Pachyderm Mapping Data File (*.pachm)|*.pachm|" + "All Files|");
+            //    if (of.ShowDialog(parent) != Eto.Forms.DialogResult.Ok)
+            //    {
+            //        Map = null;
+            //        return false;
+            //    }
 
-                return Read_pachm(of.FileName, ref Map);
-            }
+            //    return Read_pachm(of.FileName, ref Map);
+            //}
 
             /// <summary>
             /// reads a file and populates the map receiver instance.

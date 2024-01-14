@@ -19,6 +19,7 @@
 using Hare.Geometry;
 using MathNet.Numerics.LinearAlgebra.Double;
 using Pachyderm_Acoustic.Environment;
+using Pachyderm_Acoustic.Pach_Graphics;
 using Pachyderm_Acoustic.Utilities;
 using System;
 using System.Collections.Generic;
@@ -1576,7 +1577,7 @@ namespace Pachyderm_Acoustic
         /// <param name="Rec_CT"></param>
         /// <param name="Direct"></param>
         /// <returns></returns>
-        public static ImageSourceData Read_Data(ref System.IO.BinaryReader BR, int Rec_CT, Direct_Sound Direct, bool Edges, double[] RhoC, int Src_ID, string version)
+        public static ImageSourceData Read_Data(ref System.IO.BinaryReader BR, int Rec_CT, Direct_Sound Direct, bool Edges, double[] RhoC, int Src_ID, string version, IProgressFeedback VB)
         {
             ImageSourceData IS = new ImageSourceData();
             IS.ValidPaths = new List<Deterministic_Reflection>[Rec_CT];
@@ -1750,7 +1751,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
             }
-            IS.Create_Filter(Direct.SWL, 4096);
+            IS.Create_Filter(Direct.SWL, 4096, VB);
             return IS;
         }
 
@@ -1762,24 +1763,23 @@ namespace Pachyderm_Acoustic
             }
         }
 
-        public void Create_Filter(double[] SWL, int length)
+        public void Create_Filter(double[] SWL, int length, IProgressFeedback VB)
         {
-            ProgressBox VB = new ProgressBox("Calculating pressure from deterministic reflections...");
-            VB.Show();
+            //Pachyderm_Acoustic.ProgressBox VB = new ProgressBox("Calculating pressure from deterministic reflections...");
+            //VB.Show();
             int reflections = 0;
             for (int i = 0; i < ValidPaths.Length; i++) reflections += ValidPaths[i].Count;
             if (reflections == 0) return;
             System.Threading.CountdownEvent CDE = new System.Threading.CountdownEvent(reflections);
             System.Threading.Thread T = new System.Threading.Thread((thread) =>
             {
-
                 for (int i = 0; i < Paths.Length; i++)
                 {
                     foreach (Deterministic_Reflection P in Paths[i])
                     {
                         P.Create_Filter(length, 0);
                         CDE.Signal();
-                        //VB.Populate((int)(100 * (1f - ((float)CDE.CurrentCount / (float)CDE.InitialCount))));
+                        VB.Report((int)(100 * (1f - ((float)CDE.CurrentCount / (float)CDE.InitialCount))));
                         //VB.Refresh();
                     }
                 }
@@ -1788,15 +1788,15 @@ namespace Pachyderm_Acoustic
 
             do
             {
-                VB.Populate((int)(100 * (1f - ((float)CDE.CurrentCount / (float)CDE.InitialCount))));
-                VB.Refresh();
+                VB.Report((int)(100 * (1f - ((float)CDE.CurrentCount / (float)CDE.InitialCount))));
+                //VB.Refresh();
                 if (CDE.IsSet)
                 {
                     break;
                 }
                 System.Threading.Thread.Sleep(500);
             } while (true);
-            VB.Close();
+            //VB.Close();
         }
 
         public Hare.Geometry.Vector[] Dir_Energy(int rec_id, int index, int Octave, double alt, double azi, bool degrees, bool Figure8 = false)

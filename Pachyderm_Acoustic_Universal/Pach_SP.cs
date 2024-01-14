@@ -24,6 +24,7 @@ using System.Linq;
 using MathNet.Numerics.Statistics;
 using System.ComponentModel.Design.Serialization;
 using Pachyderm_Acoustic.Utilities;
+using Pachyderm_Acoustic.Pach_Graphics;
 
 namespace Pachyderm_Acoustic
 {
@@ -1065,8 +1066,7 @@ namespace Pachyderm_Acoustic
                 return filter;
             }
 
-            //public static double[] ETCToFilter(double[][] Octave_ETC, double[] SWL, double CutOffTime, int sample_frequency_in, int sample_frequency_out, double Rho_C, string title)
-            public static double[] ETCToFilter(double[][] Octave_PRMS, double[] SWL, int sample_frequency_in = 44100, int sample_frequency_out = 44100, string title = "")
+            public static double[] ETCToFilter(double[][] Octave_PRMS, double[] SWL, int sample_frequency_in = 44100, int sample_frequency_out = 44100, IProgressFeedback VB = null)
             {
                 int length = 4096;
                 double BW = (double)sample_frequency_out / (double)sample_frequency_in;
@@ -1076,17 +1076,6 @@ namespace Pachyderm_Acoustic
                 for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
 
                 //Convert to Pressure & Interpolate full resolution IR
-                //int ct = 0;
-                //System.Threading.Semaphore S = new System.Threading.Semaphore(0, 1);
-                //S.Release(1);
-
-                //double[] time = new double[(int)Math.Floor(sample_frequency_out * CutOffTime) + (int)length];
-                //double dt = 1f / (float)sample_frequency_out;
-                //for (int i = 0; i < time.Length; i++)
-                //{
-                //    time[i] = i * dt;
-                //}
-
                 int proc = Pach_Properties.Instance.ProcessorCount();
                 double[][] output = new double[proc][];
                 double[][] samplep = new double[proc][];
@@ -1094,7 +1083,6 @@ namespace Pachyderm_Acoustic
                 int[] to = new int[proc];
                 int[] from = new int[proc];
 
-                //System.Threading.CountdownEvent CDE = new System.Threading.CountdownEvent(Octave_ETC[0].Length);
                 System.Threading.CountdownEvent CDE = new System.Threading.CountdownEvent(Octave_PRMS[0].Length);
 
                 for (int p = 0; p < proc; p++)
@@ -1127,23 +1115,17 @@ namespace Pachyderm_Acoustic
                     T[p].Start(p);
                 }
 
-                ProgressBox VB = new ProgressBox(title);
-                if (title != "") VB.Show();
                 do
                 {
                     if (CDE.IsSet)
                     {
                         break;
                     }
-                    if (title == "") VB.Populate((int)(100 * (1f - ((float)CDE.CurrentCount / (float)IR.Length))));
+                    if (VB != null) VB.Report((int)(100 * (1f - ((float)CDE.CurrentCount / (float)IR.Length))));
 
                     System.Threading.Thread.Sleep(500);
                 } while (true);
 
-                VB.Close();
-                //double[] SPLIR = AcousticalMath.SPL_Pressure_Signal(IR);
-                //Array.Resize(ref IR, IR.Length - length);
-                //SPLIR = AcousticalMath.SPL_Pressure_Signal(IR);
                 return IR;
             }
 
@@ -1270,7 +1252,7 @@ namespace Pachyderm_Acoustic
                 return signalout;
             }
 
-            public static double[] Filter_Interpolation(double[] SWL, double[][] ETC, int SampleRate_IN, int SampleRate_Out, double Rho_C)
+            public static double[] Filter_Interpolation(double[] SWL, double[][] ETC, int SampleRate_IN, int SampleRate_Out, double Rho_C, IProgressFeedback VB = null)
             {
                 double[][] SPLetc = new double[8][];
                 double[] Total_E = new double[8];
@@ -1310,7 +1292,11 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                return ETCToFilter(NewETC, SWL, SampleRate_Out, SampleRate_Out, "Interpolating to Pressure...");
+                if (VB != null)
+                {
+                    VB.change_title("Interpolating to Pressure...");
+                } 
+                return ETCToFilter(NewETC, SWL, SampleRate_Out, SampleRate_Out, VB);
             }
 
             public static class Wave
@@ -1441,8 +1427,8 @@ namespace Pachyderm_Acoustic
                     //The data chunk should be headed with "data" but occuasionally not. Read in as normal if so. Otherwise, ask the user.
                     if (str != "data")
                     {
-                        System.Windows.Forms.DialogResult DR = System.Windows.Forms.MessageBox.Show("This wavefile has an unsupported structure, which may lead to misread data. Try anyway?", "Invalid DATA chunk...", System.Windows.Forms.MessageBoxButtons.YesNo);
-                        if (DR == System.Windows.Forms.DialogResult.No) return new int[1][] { new int[1] { 0 } };
+                        Eto.Forms.DialogResult DR = Eto.Forms.MessageBox.Show("This wavefile has an unsupported structure, which may lead to misread data. Try anyway?", "Invalid DATA chunk...", Eto.Forms.MessageBoxButtons.YesNo);
+                        if (DR == Eto.Forms.DialogResult.No) return new int[1][] { new int[1] { 0 } };
                     }
                     long bytelength = wav.BaseStream.Length - wav.BaseStream.Position;
                     UInt32 ch_len = wav.ReadUInt32();
@@ -1463,22 +1449,22 @@ namespace Pachyderm_Acoustic
                     return data;
                 }
 
-                public static bool Write(float[][] Unit_signal, int sample_frequency, string Path = null, int bitrate = 32)
+                public static bool Write(float[][] Unit_signal, int sample_frequency, string Path, int bitrate = 32)
                 {
-                    if (Path == null)
-                    {
-                        //get a path from the user.
-                        System.Windows.Forms.SaveFileDialog GetWave = new System.Windows.Forms.SaveFileDialog();
-                        GetWave.Filter = " Wave Audio (*.wav) |*.wav";
-                        if (GetWave.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-                        {
-                            Path = GetWave.FileName;
-                        }
-                        else
-                        {
-                            return false;
-                        }
-                    }
+                    //if (Path == null)
+                    //{
+                    //    //get a path from the user.
+                    //    Eto.Forms.SaveFileDialog GetWave = new Eto.Forms.SaveFileDialog();
+                    //    GetWave.CurrentFilter = " Wave Audio (*.wav) |*.wav";
+                    //    if (GetWave.ShowDialog(parent) == Eto.Forms.DialogResult.Ok)
+                    //    {
+                    //        Path = GetWave.FileName;
+                    //    }
+                    //    else
+                    //    {
+                    //        return false;
+                    //    }
+                    //}
 
                     //bitrate /= 2;
 

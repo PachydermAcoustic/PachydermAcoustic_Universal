@@ -19,9 +19,6 @@
 using Pachyderm_Acoustic.Pach_Graphics;
 using System;
 using System.Collections.Generic;
-using System.Linq;
- using System.Threading.Tasks;
-using System.Windows.Forms.DataVisualization.Charting;
 
 namespace Pachyderm_Acoustic
 {

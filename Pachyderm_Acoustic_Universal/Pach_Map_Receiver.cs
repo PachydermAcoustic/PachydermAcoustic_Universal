@@ -32,8 +32,7 @@ namespace Pachyderm_Acoustic
     [Serializable]
     public class PachMapReceiver : Receiver_Bank
     {
-        public string SrcType = "";
-        public double[] SWL;
+        //public double[] SWL;
         public Hare.Geometry.Topology Map_Mesh;
         public AABB OBox;
         public int VoxelCtX, VoxelCtY, VoxelCtZ;
@@ -50,7 +49,6 @@ namespace Pachyderm_Acoustic
         public bool Mesh_Offset;
         public bool Time1Pt;
         public Hare.Geometry.Point Src;
-        public double delay_ms;
         Scene _Sc;
 
         /// <summary>
@@ -73,7 +71,7 @@ namespace Pachyderm_Acoustic
 
         public override Receiver_Bank Duplicate(Source Src, Scene Room)
         {
-
+            
             return new PachMapReceiver(Map_Mesh, Src, this.SampleRate, this.increment, Room, this.CutOffTime, this.Time1Pt, this.Z_Displacement, this.Directional, this.Rec_Vertex, this.Mesh_Offset );
         }
 
@@ -97,7 +95,6 @@ namespace Pachyderm_Acoustic
             Min = new Hare.Geometry.Point(Double.PositiveInfinity, Double.PositiveInfinity, Double.PositiveInfinity);
             Rec_List = Rec_Vertex ? new Map_Receiver[Map_Mesh.Vertex_Count] : new Map_Receiver[Map_Mesh.Polygon_Count];
         }
-
         private void Partition(Source Src_Pt)//, bool ProcessMesh)
         {
             int processorCt = Pach_Properties.Instance.ProcessorCount();
@@ -1392,18 +1389,6 @@ namespace Pachyderm_Acoustic
         public string Data_Type()
         {
             return Rec_List[0].Recs.Type();
-        }
-
-        /// <summary>
-        /// The direct sound outputs a power mod factor. This takes that function's place, since there is no direct sound for this simulation type.
-        /// </summary>
-        /// <param name="new_SWL"></param>
-        /// <returns></returns>
-        public double[] PowerModFactor(double[] new_SWL)
-        {
-            double[] factor = new double[8];
-            for (int i = 0; i < 8; i++) factor[i] = Utilities.AcousticalMath.Intensity_SPL(new_SWL[i]) / Utilities.AcousticalMath.Intensity_SPL(this.SWL[i]);
-            return factor;
         }
 
         /// <summary>

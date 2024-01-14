@@ -43,7 +43,6 @@ namespace Pachyderm_Acoustic
             protected double[] Area;
             protected Medium_Properties Env_Prop;
             protected double SplitRatio = 0.25;
-            public System.Windows.Forms.DialogResult Status = System.Windows.Forms.DialogResult.OK;
             public Random R_Seed;
             public bool Valid;
             public bool Custom_Method;
