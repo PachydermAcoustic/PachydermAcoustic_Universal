@@ -66,7 +66,7 @@ namespace Pachyderm_Acoustic
         /// <param name="octaveRange">Two values - the lowest octave to be calculated and the highest octave to be calculated - 0 being 62.5, and 7 being 8k.</param>
         /// <param name="isOrderIn">The highest order for which image source was calcualted. If no Image Source, then enter 0.</param>
         /// <param name="partitionedReceiver">Is the receiver partitioned... i.e., did you use a mapping receiver bank?</param>
-        public SplitRayTracer(Source sourceIn, Receiver_Bank receiverIn, Scene roomIn, double cutoffTime, int[] octaveRange, int isOrderIn, int rayCountIn)
+        public SplitRayTracer(Source sourceIn, Receiver_Bank receiverIn, Scene roomIn, double cutoffTime, int[] octaveRange, int isOrderIn, int rayCountIn, I_Conv_Progress Vis_Feedback)
         {
             IS_Order = isOrderIn;
             Room = roomIn;
@@ -160,8 +160,8 @@ namespace Pachyderm_Acoustic
                         }
                     }
                 }
-                check = (rayCountIn < 0) ? new Convergence_Check[2] { T_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, T_id, h_oct, 0), F_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, F_id, h_oct, 1) }
-                : new Convergence_Check[2] { T_id < 0 ? null : new Detailed_Convergence_Check(receiverIn, T_id, h_oct, 0), F_id < 0 ? null : new Detailed_Convergence_Check(receiverIn, F_id, h_oct, 1) };
+                check = (rayCountIn < 0) ? new Convergence_Check[2] { T_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, T_id, h_oct, 0, Vis_Feedback), F_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, F_id, h_oct, 1, Vis_Feedback) }
+                : new Convergence_Check[2] { T_id < 0 ? null : new Detailed_Convergence_Check(receiverIn, T_id, h_oct, 0, Vis_Feedback), F_id < 0 ? null : new Detailed_Convergence_Check(receiverIn, F_id, h_oct, 1, Vis_Feedback) };
                 //Pachyderm_Acoustic.UI.Convergence_Progress.Instance.Show();
             }
             else check = null;
@@ -926,16 +926,17 @@ namespace Pachyderm_Acoustic
             public delegate void PlotHandler(double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr);
             public event PlotHandler On_Convergence_Check;
 
-            public Convergence_Check(Receiver_Bank R, int id, int _oct, int check_id)
+            public Convergence_Check(Receiver_Bank R, int id, int _oct, int check_id, I_Conv_Progress Vis_Feedback)
             {
                 oct = _oct;
                 RunningSim = R.Rec_List[id].Recs.Energy[oct];
                 check_no = check_id;
+                On_Convergence_Check += Vis_Feedback.Populate;
             }
 
             protected void Plot_Feedback(double[] diff, double conv, double ConvInf, int ID, int count, double corr)
             {
-                On_Convergence_Check(diff, conv, ConvInf, ID, count, corr);
+                if (On_Convergence_Check != null) On_Convergence_Check(diff, conv, ConvInf, ID, count, corr);
             }
 
             public abstract bool Check();
@@ -955,8 +956,8 @@ namespace Pachyderm_Acoustic
             double[] diff;
             double conv;
 
-            public Detailed_Convergence_Check(Receiver_Bank R, int id, int _oct, int check_id)
-                : base(R, id, _oct, check_id)
+            public Detailed_Convergence_Check(Receiver_Bank R, int id, int _oct, int check_id, I_Conv_Progress Vis_Feedback)
+                : base(R, id, _oct, check_id, Vis_Feedback)
             {
                 step = (R.SampleRate / 1000);
                 binct = RunningSim.Length / step;
@@ -1031,8 +1032,8 @@ namespace Pachyderm_Acoustic
             double[] Schr_old;
             double conv1, conv2, convinf, r;
 
-            public Minimum_Convergence_Check(Source S, Scene Sc, Receiver_Bank R, int id, int _oct, int check_id)
-                : base(R, id, _oct, check_id)
+            public Minimum_Convergence_Check(Source S, Scene Sc, Receiver_Bank R, int id, int _oct, int check_id, I_Conv_Progress Vis_Feedback)
+                : base(R, id, _oct, check_id, Vis_Feedback)
             {
                 SampleStart = (int)Math.Floor((S.H_Origin() - R.Origin(id)).Length() / Sc.Sound_speed(R.Origin(id)) * R.SampleRate);
                 Sample50 = (int)Math.Floor(50.0 * R.SampleRate / 1000) + SampleStart;
@@ -1148,6 +1149,11 @@ namespace Pachyderm_Acoustic
                 return false;
             }
         }
+    }
+
+    public interface I_Conv_Progress
+    {
+        void Populate(double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr);
     }
 
     public class RayQueue<T> : ConcurrentQueue<T>

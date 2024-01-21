@@ -159,7 +159,7 @@ namespace Pachyderm_Acoustic
 
             public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
-                BroadRay B = Directions(index, thread, ref random);
+                BroadRay B = Directions(thread, ref random);
                 //B.Octaves = Octaves;
                 return B;
             }

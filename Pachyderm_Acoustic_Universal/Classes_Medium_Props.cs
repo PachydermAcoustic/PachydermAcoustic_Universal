@@ -51,7 +51,7 @@ namespace Pachyderm_Acoustic
             protected double[] Calculate_Attenuation(int Air_Choice, double Pa, double Tk, double hr, bool Third_Octave, bool EdgeCorrection)
             {
                 double[] Freq = Third_Octave ? new double[23] { 50, 62.5, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 3150, 4000, 5000, 6300, 8000, 10000 } : new double[8] { 62.5, 125, 250, 500, 1000, 2000, 4000, 8000 };
-                double[] Att_Coef = new double[8];
+                double[] Att_Coef = new double[Freq.Length];
 
                 if (Air_Choice == 0)
                 {
