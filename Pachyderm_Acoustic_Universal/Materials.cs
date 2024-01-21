@@ -149,14 +149,14 @@ namespace Pachyderm_Acoustic
             {
                 string Entry = Abs_List[i].Name + ':';
                 int[] sct = new int[8];
-                int[] abs = new int[8];
+                int[] abs = new int[Abs_List[i].Values.Length];
                 int[] trns = new int[1];
-                for (int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < Abs_List[i].Values.Length; oct++)
                 {
                     abs[oct] = (int)(Abs_List[i].Values[oct] * 1000.0);
                 }
                 string Abs_Code = Utilities.PachTools.EncodeAcoustics(abs, sct, trns);
-                Entry += Abs_Code.Substring(0, 24);
+                Entry += Abs_Code.Substring(0, Abs_List[i].Values.Length * 3);
                 Writer.WriteLine(Entry);
             }
             Writer.Close();

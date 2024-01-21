@@ -96,7 +96,6 @@ namespace Pachyderm_Acoustic
                 public abstract Complex[] Spectrum(double[] Octave_Pessure, int SampleFrequency, int LengthStartToFinish, int Threadid);
             }
 
-
             public class Minimum_Phase_System : DSP_System
             {
                 public override double[] Signal(double[] OctavePressure, int SampleFrequency, int LengthStartToFinish, int Threadid)
@@ -120,6 +119,7 @@ namespace Pachyderm_Acoustic
                     return Minimum_Phase_Spectrum(Octave_Pessure, SampleFrequency, LengthStartToFinish, Threadid);
                 }
             }
+
             public class Linear_Phase_System : DSP_System
             {
                 public override double[] Signal(double[] OctavePressure, int SampleFrequency, int LengthStartToFinish, int Threadid)
@@ -240,6 +240,62 @@ namespace Pachyderm_Acoustic
                     }
                 }
                 return output;
+            }
+
+            public static double[] FIR_Third_Bandpass(double[] h, int octave_index, int Sample_Freq, int thread)
+            {
+                int length = h.Length;
+
+                if (length != 4096)
+                {
+                    Array.Resize(ref h, (int)Math.Pow(2, Math.Ceiling(Math.Log(h.Length, 2)) + 1));
+                }
+
+                double ctr = 50 * Math.Pow(2, (double)octave_index/3.0);
+                double freq_l = 1.09 * ctr / Utilities.Numerics.rt2;
+                double freq_u = 0.92 * ctr * Utilities.Numerics.rt2;
+                //int idl = (int)Math.Round((h.Length * freq_l) / (Sample_Freq));
+                //int idu = (int)Math.Round((h.Length * freq_u) / (Sample_Freq));
+
+                //(double[] A, double[] B) = MathNet.Filtering.Butterworth.IirCoefficients.BandPass(freq_l * .8/22050d, freq_l/22050d, freq_u/22050d, freq_u / 0.8/22050d, .1, 100);
+                //Complex[] Ac = new Complex[A.Length], Bc = new Complex[B.Length];
+                double[] freq = new double[h.Length / 2];
+                //for (int i = 0; i < A.Length; i++) Ac[i] = new Complex(A[i],0);
+                //for (int i = 0; i < B.Length; i++) Bc[i] = new Complex(B[i], 0);
+                for (int i = 0; i < h.Length / 2; i++) freq[i] = i * (double)Sample_Freq / h.Length;
+                //Complex[] magspec = Pach_SP.IIR_Design.AB_FreqResponse(Bc.ToList(), Ac.ToList(), freq);
+                //Complex[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(freq, 10, freq_l, freq_u);
+                //double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq,h.Length);
+                double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq, h.Length / 2);
+
+                /////////////Use Zero Phase Bandpass//////////////////////
+                //Array.Resize(ref magspec, h.Length / 2);
+                System.Numerics.Complex[] filter = Mirror_Spectrum(magspec);
+
+                //double[] f_r = new double[filter.Length];
+                //double[] f_i = new double[filter.Length];
+                //double[] f_m = new double[filter.Length];
+
+                //for (int i = 0; i < filter.Length; i++) { f_r[i] = filter[i].Real; f_i[i] = filter[i].Imaginary; f_m[i] = filter[i].Magnitude; }
+
+                /////////////Minimum Phase Bandpass///////////////////////
+                //double[] response = Minimum_Phase_Response(magspec, 44100, 0);
+                //filter = FFT_General(response, 0);
+
+                //Convolve signal with Bandpass Filter.
+                Complex[] freq_h = FFT_General(h, thread);
+
+                for (int i = 0; i < freq_h.Length; i++)
+                {
+                    freq_h[i] *= filter[i];
+                }
+
+                double[] h_oct = IFFT_Real_General(freq_h, thread);
+                Scale(ref h_oct);
+
+                Array.Resize(ref h_oct, length);
+
+                return h_oct;
             }
 
             public static double[] FIR_Bandpass(double[] h, int octave_index, int Sample_Freq, int thread)
@@ -700,46 +756,66 @@ namespace Pachyderm_Acoustic
             public static double[] Magnitude_Filter(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
                 int spec_length = length_starttofinish / 2;
-
                 List<double> f = new List<double>();
-                f.Add(0);
-
-                for (int oct = 0; oct < 9; oct++)
-                {
-                    f.Add(62.5 * Math.Pow(2, oct) / Utilities.Numerics.rt2);
-                    f.Add(62.5 * Math.Pow(2, oct) * .8);
-                    f.Add(62.5 * Math.Pow(2, oct));
-                    f.Add(62.5 * Math.Pow(2, oct) * 1.2);
-                }
-                f.Add(sample_frequency / 2);
-
                 List<double> pr = new List<double>();
-                pr.Add(Octave_pressure[0] * 0.0000000001);
-                pr.Add(Octave_pressure[0] * 0.00000001);
-                pr.Add(Octave_pressure[0] * 0.001);
-                pr.Add(Octave_pressure[0]);
-                pr.Add(Octave_pressure[0]);
 
-                for (int oct = 1; oct < 7; oct++)
+                if (Octave_pressure.Length == 8)
                 {
-                    double min = Math.Min(Octave_pressure[oct], pr.Last());
-                    double max = Math.Max(Octave_pressure[oct], pr.Last());
-                    pr.Add((max*.95 + min*.05));
-                    pr.Add(Octave_pressure[oct]);
-                    pr.Add(Octave_pressure[oct]);
-                    pr.Add(Octave_pressure[oct]);
-                }
-                if (pr.Count < f.Count) pr.Add(Octave_pressure[7]);//8k
-                if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .9);//10k
-                if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .5);//12k
-                if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .25);//16k
-                int mod = 0;
-                while (pr.Count < f.Count)
-                {
-                    mod++;
-                    pr.Add(Octave_pressure[7] * .125 * Math.Pow(.5, mod));
-                }
+                    f.Add(0);
 
+                    for (int oct = 0; oct < 9; oct++)
+                    {
+                        f.Add(62.5 * Math.Pow(2, oct) / Utilities.Numerics.rt2);
+                        f.Add(62.5 * Math.Pow(2, oct) * .8);
+                        f.Add(62.5 * Math.Pow(2, oct));
+                        f.Add(62.5 * Math.Pow(2, oct) * 1.2);
+                    }
+                    f.Add(sample_frequency / 2);
+
+                    pr.Add(Octave_pressure[0] * 0.0000000001);
+                    pr.Add(Octave_pressure[0] * 0.00000001);
+                    pr.Add(Octave_pressure[0] * 0.001);
+                    pr.Add(Octave_pressure[0]);
+                    pr.Add(Octave_pressure[0]);
+
+                    for (int oct = 1; oct < 7; oct++)
+                    {
+                        double min = Math.Min(Octave_pressure[oct], pr.Last());
+                        double max = Math.Max(Octave_pressure[oct], pr.Last());
+                        pr.Add((max * .95 + min * .05));
+                        pr.Add(Octave_pressure[oct]);
+                        pr.Add(Octave_pressure[oct]);
+                        pr.Add(Octave_pressure[oct]);
+                    }
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7]);//8k
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .9);//10k
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .5);//12k
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .25);//16k
+                    int mod = 0;
+                    while (pr.Count < f.Count)
+                    {
+                        mod++;
+                        pr.Add(Octave_pressure[7] * .125 * Math.Pow(.5, mod));
+                    }
+                }
+                else if (Octave_pressure.Length == 24)
+                {
+                    if (Octave_pressure.Length == 8)
+                    {
+                        f.Add(20);
+                        pr.Add(Octave_pressure[0] * 0.0001);
+
+                        for (int oct = 0; oct < 24; oct++)
+                        {
+                            f.Add(20 * Math.Pow(2, 1 + oct / 3.0));
+                            pr.Add(Octave_pressure[oct]);
+                        }
+                        f.Add(sample_frequency / 2);
+                        pr.Add(Octave_pressure[23] * 0.0001);
+
+                    }
+                }
+                else throw new Exception();
                 //MathNet.Numerics.Interpolation.CubicSpline prm = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaSorted(f.ToArray(), pr.ToArray(),);
                 MathNet.Numerics.Interpolation.LinearSpline prm = MathNet.Numerics.Interpolation.LinearSpline.InterpolateSorted(f.ToArray(), pr.ToArray());
 
@@ -827,7 +903,6 @@ namespace Pachyderm_Acoustic
 
                 //return p_i;
             }
-
 
             public static System.Numerics.Complex[] Minimum_Phase_Spectrum(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {

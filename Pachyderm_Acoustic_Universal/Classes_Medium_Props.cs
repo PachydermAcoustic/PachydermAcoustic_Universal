@@ -48,9 +48,9 @@ namespace Pachyderm_Acoustic
                 return (Pa / (Rd * Tk)) * (1 - 0.378*Pv/Pa); //kg/cubic meter
             }
 
-            protected double[] Calculate_Attenuation(int Air_Choice, double Pa, double Tk, double hr, bool EdgeCorrection)
+            protected double[] Calculate_Attenuation(int Air_Choice, double Pa, double Tk, double hr, bool Third_Octave, bool EdgeCorrection)
             {
-                double[] Freq = new double[8] { 62.5, 125, 250, 500, 1000, 2000, 4000, 8000};
+                double[] Freq = Third_Octave ? new double[23] { 50, 62.5, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 3150, 4000, 5000, 6300, 8000, 10000 } : new double[8] { 62.5, 125, 250, 500, 1000, 2000, 4000, 8000 };
                 double[] Att_Coef = new double[8];
 
                 if (Air_Choice == 0)
@@ -78,7 +78,7 @@ namespace Pachyderm_Acoustic
                     //double h = (Psat / 101.325) / (Pa / 101.325);
                     double h = hr * Math.Pow(10, -6.8346 * Math.Pow(273.16 / Tk, 1.261) + 4.6151) / (Pa / 101.325);
 
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < Freq.Length; oct++)
                     {
                         double frO = (Pa / 101.325) * (24 + 4.04 * Math.Pow(10, 4) * h * ((0.02 + h) / (0.391 + h)));
                         double frN = (Pa / 101.325) * Math.Pow(Tk / 293.15, -1 / 2) * (9 + 280 * h * Math.Exp(-4.170 * (Math.Pow((Tk / 293.15), (-1 / 3)) - 1)));
@@ -236,6 +236,7 @@ namespace Pachyderm_Acoustic
         public class Uniform_Medium: Medium_Properties
         {
             double[] Atten_Coef;
+            double[] Atten_Coef_3rd;
             double C_Sound;
             double rho; //Density
             double Zmed;
@@ -275,7 +276,7 @@ namespace Pachyderm_Acoustic
 
             /// <summary>
             /// 
-            /// </summary>
+            /// </summary>a
             /// <param name="Air_Choice"></param>
             /// <param name="Pa">in Pascals</param>
             /// <param name="Tk">in kelvins</param>
@@ -283,11 +284,13 @@ namespace Pachyderm_Acoustic
             /// <param name="EdgeCorrection"></param>
             public Uniform_Medium(int Air_Choice, double Pa, double Tk, double hr, bool EdgeCorrection)
             {
+                rho = Calculate_Density(Tk, Pa*100, hr); //note - (*100?)
+                Atten_Coef = Calculate_Attenuation(Air_Choice, Pa/10, Tk, hr, false, EdgeCorrection);
+                Atten_Coef_3rd = Calculate_Attenuation(Air_Choice, Pa / 10, Tk, hr, true, EdgeCorrection);
                 this.Pa = Pa;
                 this.Tk = Tk;
                 this.hr = hr;
-                rho = Calculate_Density(Tk, Pa, hr);
-                Atten_Coef = Calculate_Attenuation(Air_Choice, Pa/10, Tk, hr, EdgeCorrection);
+
                 for (int i = 0; i < Atten_Coef.Length; i++) Atten_Coef[i] *= 0.1151;
                 C_Sound = Utilities.AcousticalMath.SoundSpeed(Tk-273.15);
                 Zmed = rho * C_Sound;
@@ -344,6 +347,7 @@ namespace Pachyderm_Acoustic
         {
             double[] C_Sound;
             double[][] Atten_Coef;
+            double[][] Atten_Coef_3rd;
             double[] rho;
             double[] Zmed;
             int Xdom, Ydom, Zdom, XYTot;
@@ -378,7 +382,8 @@ namespace Pachyderm_Acoustic
                         for(int z = 0; z < Zdom; z++)
                         {
                             int code = XYTot * z + Ydom * x + y;
-                            Atten_Coef[code] = Calculate_Attenuation(Air_Choice, Pa[x,y,z], TC[x,y,z], hr[x,y,z], EdgeCorrection);
+                            Atten_Coef[code] = Calculate_Attenuation(Air_Choice, Pa[x,y,z], TC[x,y,z], hr[x,y,z], false, EdgeCorrection);
+                            Atten_Coef[code] = Calculate_Attenuation(Air_Choice, Pa[x, y, z], TC[x, y, z], hr[x, y, z], true, EdgeCorrection);
                             rho[code] = Calculate_Density(TC[x,y,z], Pa[x,y,z], hr[x,y,z]);//TODO - check input
                             C_Sound[code] = Utilities.AcousticalMath.SoundSpeed(TC[x,y,z] - 273.15);
                             Zmed[code] = rho[code] * C_Sound[code];
