@@ -2768,13 +2768,13 @@ namespace Pachyderm_Acoustic
                     {
                         Temp = "xxx";
                     }
-                    else if (Absorption[q] < 100)
-                    {
-                        Temp = string.Concat("0", Absorption[q]);
-                    }
                     else if (Absorption[q] < 10)
                     {
                         Temp = string.Concat("00", Absorption[q]);
+                    }
+                    else if (Absorption[q] < 100)
+                    {
+                        Temp = string.Concat("0", Absorption[q]);
                     }
                     else
                     {
@@ -2902,12 +2902,11 @@ namespace Pachyderm_Acoustic
                     {
                         string Temp = string.Concat(Code[2 * q], Code[2 * q + 1]);
                         if (Temp == "xx")
-                        {
-                            Absorption[q] = 1;
+                        { 
                         }
                         else
                         {
-                            Absorption[q] = Double.Parse(Temp)/100;
+                            Absorption[q] = Double.Parse(Temp) / 100;
                         }
                     }
                     else if (Code.Length == 56 || Code.Length == 40)
