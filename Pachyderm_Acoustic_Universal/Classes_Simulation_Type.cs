@@ -30,7 +30,7 @@ namespace Pachyderm_Acoustic
         public abstract string ProgressMsg();
         public abstract System.Threading.ThreadState ThreadState();
         public abstract void Combine_ThreadLocal_Results();
-        public abstract void Abort_Calculation();
+        //public abstract void Abort_Calculation();
     }
 
     /// <summary>

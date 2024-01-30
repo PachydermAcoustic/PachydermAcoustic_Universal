@@ -1202,10 +1202,10 @@ namespace Pachyderm_Acoustic
                     throw new NotImplementedException();
                 }
 
-                public override void Abort_Calculation()
-                {
-                    throw new NotImplementedException();
-                }
+                //public override void Abort_Calculation()
+                //{
+                //    throw new NotImplementedException();
+                //}
 
                 public override void Combine_ThreadLocal_Results()
                 {

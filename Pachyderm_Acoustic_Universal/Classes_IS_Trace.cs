@@ -96,13 +96,13 @@ namespace Pachyderm_Acoustic
         /// <summary>
         /// Aborts all threads, effectively ending the simulation.
         /// </summary>
-        public override void Abort_Calculation()
-        {
-            foreach (System.Threading.Thread T in T_List)
-            {
-                T.Abort();
-            }
-        }
+        //public override void Abort_Calculation()
+        //{
+        //    foreach (System.Threading.Thread T in T_List)
+        //    {
+        //        T.Abort();
+        //    }
+        //}
 
         /// <summary>
         /// Called by each thread from the begin method.

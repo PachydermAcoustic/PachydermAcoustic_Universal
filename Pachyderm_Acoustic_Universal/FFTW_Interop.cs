@@ -469,7 +469,7 @@ namespace FFTWSharp
 	/// <summary>
 	/// Contains the Basic Interface FFTW functions for double-precision (double) operations
 	/// </summary>
-	public class fftw
+	public class FFTW
 	{
 		/// <summary>
 		/// Allocates FFTW-optimized unmanaged memory

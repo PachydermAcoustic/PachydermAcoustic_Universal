@@ -20,8 +20,6 @@ using System.Collections.Generic;
 using System;
 using Pachyderm_Acoustic.Environment;
 using System.Linq;
-using System.Windows.Forms;
-using System.Runtime.CompilerServices;
 using Pachyderm_Acoustic.Pach_Graphics;
 
 namespace Pachyderm_Acoustic
@@ -2753,7 +2751,7 @@ namespace Pachyderm_Acoustic
                 return -1;
             }
 
-            public static System.Drawing.Color HsvColor(double h, double S, double V)
+            public static Eto.Drawing.Color HsvColor(double h, double S, double V)
             {
                 // ######################################################################
                 // T. Nathan Mundhenk
@@ -2836,7 +2834,7 @@ namespace Pachyderm_Acoustic
                 int r = (int)(R * 255.0);
                 int g = (int)(G * 255.0);
                 int b = (int)(B * 255.0);
-                return System.Drawing.Color.FromArgb(255, r<0?0:r>255?255:r, g<0?0:g>255?255:g, b<0?0:b>255?255:b);
+                return Eto.Drawing.Color.FromArgb(255, r<0?0:r>255?255:r, g<0?0:g>255?255:g, b<0?0:b>255?255:b);
             }
 
             /// <summary>
@@ -3148,7 +3146,7 @@ namespace Pachyderm_Acoustic
                 new double[][]{new double[]{41.022542,10.013879,67,7546.65902,-8.870177,-17396,7.899209,16181.8,2.526152,-7828.632535,-5.314462,2085.468458,2.344913,-290.816544,-0.435913,16.614043,0.03005},
                 new double[]{41.022542,10.013879,56,7546.65902,-8.870177,-17396,7.899209,16181.8,2.526152,-7828.632535,-5.314462,2085.468458,2.344913,-290.816544,-0.435913,16.614043,0.03005}}}};
 
-            public enum pavement { Average_DGAC_PCC = 0,
+            public enum Pavement { Average_DGAC_PCC = 0,
                 DGAC_Asphalt = 1,
                 PCC_Concrete = 2,
                 OGAC_OpenGradedAsphalt = 3}

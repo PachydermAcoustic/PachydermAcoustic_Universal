@@ -24,8 +24,6 @@ using System.Linq;
 using System.Threading;
 using System.Collections.Concurrent;
 using Pachyderm_Acoustic.Utilities;
-using System.ComponentModel;
-using System.Windows.Forms;
 
 namespace Pachyderm_Acoustic
 {
@@ -245,16 +243,16 @@ namespace Pachyderm_Acoustic
             return System.Threading.ThreadState.Stopped;
         }
 
-        /// <summary>
-        /// Aborts all threads, effectively ending the simulation.
-        /// </summary>
-        public override void Abort_Calculation()
-        {
-            foreach (System.Threading.Thread T in _tlist)
-            {
-                T.Abort();
-            }
-        }
+        ///// <summary>
+        ///// Aborts all threads, effectively ending the simulation.
+        ///// </summary>
+        //public override void Abort_Calculation()
+        //{
+        //    foreach (System.Threading.Thread T in _tlist)
+        //    {
+        //        T.Abort();
+        //    }
+        //}
 
         public void Conclude_Simulation()
         {
@@ -324,6 +322,8 @@ namespace Pachyderm_Acoustic
 
             ///Homogeneous media only...
             LastRays = new BlockingCollection<OctaveRay>[_processorCt];
+            
+
             Random rnd = new Random((int)seed);
             _st = DateTime.Now;
             //Thread[] lastraytracers = new Thread[_processorCt];
@@ -869,8 +869,7 @@ namespace Pachyderm_Acoustic
                     c.Update();
                     //if (!c.Check(this._currentRay.Sum())||conclude) continue;
                     if (!conclude) break;
-                    this.Abort_Calculation();
-                    //Convergence_Progress_WinForms.Instance.Hide();
+                    //this.Abort_Calculation();
                     return "Concluding Simulation...";
                 }
 
@@ -941,7 +940,6 @@ namespace Pachyderm_Acoustic
 
             public abstract bool Check();
             public abstract bool Check(int No_of_Rays);
-
             public abstract bool Update();
         }
 

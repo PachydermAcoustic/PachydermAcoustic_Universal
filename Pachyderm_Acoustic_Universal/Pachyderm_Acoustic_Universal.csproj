@@ -1,189 +1,45 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{95032BC9-057A-42E1-A698-82A64DB1A360}</ProjectGuid>
+    <TargetFrameworks>net7.0;net48</TargetFrameworks>
     <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Pachyderm_Acoustic</RootNamespace>
-    <AssemblyName>Pachyderm_Acoustic_Universal</AssemblyName>
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <TargetFrameworkProfile />
-    <NuGetPackageImportStamp>
-    </NuGetPackageImportStamp>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!--<UseWPF>false</UseWPF>-->
+    <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
-    <DebugSymbols>true</DebugSymbols>
     <OutputPath>bin\x64\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <DebugType>full</DebugType>
-    <PlatformTarget>x64</PlatformTarget>
-    <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
     <OutputPath>bin\x64\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <Optimize>true</Optimize>
-    <DebugType>pdbonly</DebugType>
-    <PlatformTarget>x64</PlatformTarget>
-    <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Eto, Version=2.7.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\Eto.Forms.2.7.1\lib\netstandard2.0\Eto.dll</HintPath>
-    </Reference>
-    <Reference Include="LibOptimization, Version=1.14.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\LibOptimization.1.14.0\lib\net48\LibOptimization.dll</HintPath>
-    </Reference>
-    <Reference Include="MathNet.Numerics, Version=5.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\MathNet.Numerics.5.0.0\lib\net48\MathNet.Numerics.dll</HintPath>
-    </Reference>
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
-    <Reference Include="System" />
-    <Reference Include="System.ComponentModel.Annotations, Version=4.2.1.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
-      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\System.ComponentModel.Annotations.5.0.0\lib\net461\System.ComponentModel.Annotations.dll</HintPath>
-    </Reference>
-    <Reference Include="System.ComponentModel.DataAnnotations" />
-    <Reference Include="System.Configuration" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Numerics" />
-    <Reference Include="System.Runtime.Serialization" />
-    <Reference Include="System.ValueTuple, Version=4.0.3.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
-      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\System.ValueTuple.4.5.0\lib\net47\System.ValueTuple.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Web.Extensions" />
-    <Reference Include="System.Xaml" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Xml" />
-    <Reference Include="UIAutomationProvider" />
-    <Reference Include="WindowsBase" />
-    <Reference Include="WindowsFormsIntegration" />
-    <Reference Include="ZedGraph, Version=5.1.7.430, Culture=neutral, PublicKeyToken=02a83cbd123fcd60, processorArchitecture=MSIL">
-      <HintPath>..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\ZedGraph.5.1.7\lib\net35-Client\ZedGraph.dll</HintPath>
+    <ProjectReference Include="..\..\..\Hare\Hare.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MathNet.Numerics" Version="6.0.0-beta1" />
+    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
+    <PackageReference Include="System.Data.DataSetExtensions" Version="4.5.0" />
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Classes_Complete_Trace-PachydermNest.cs" />
+    <Compile Remove="Pach_Absorption_Designer.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="Resources\CLF_Read.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Eto">
+      <HintPath>..\..\..\..\..\..\..\..\Program Files\Rhino 8\System\Eto.dll</HintPath>
     </Reference>
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="Pach_Properties.cs" />
-    <Compile Include="Pach_SP_Measurement.cs" />
-    <Compile Include="Resource1.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-      <DependentUpon>Resource1.resx</DependentUpon>
-    </Compile>
-    <Compile Include="Sphere_Arbitrary.cs" />
-    <Compile Include="Pach_Graphics.cs" />
-    <Compile Include="Pach_Map_Receiver.cs" />
-    <Compile Include="Classes_Absorption_Analytics.cs" />
-    <Compile Include="Classes_Absorption_Matrices.cs" />
-    <Compile Include="Classes_Balloons.cs" />
-    <Compile Include="Classes_Compact_FDTD.cs" />
-    <Compile Include="Classes_Compact_FDTD_Boundaries.cs" />
-    <Compile Include="Classes_Complete_Trace.cs" />
-    <Compile Include="Classes_Direct.cs" />
-    <Compile Include="Classes_Edges.cs" />
-    <Compile Include="Classes_ImageSource.cs" />
-    <Compile Include="Classes_IO.cs" />
-    <Compile Include="Classes_IS_Trace.cs" />
-    <Compile Include="Classes_Materials.cs" />
-    <Compile Include="Classes_Math.cs" />
-    <Compile Include="Classes_Medium_Props.cs" />
-    <Compile Include="Classes_Rays.cs" />
-    <Compile Include="Classes_Receivers.cs" />
-    <Compile Include="Classes_Scenes.cs" />
-    <Compile Include="Classes_Simulation_Type.cs" />
-    <Compile Include="Classes_Sources.cs" />
-    <Compile Include="Classes_VoxelGrid_PolyRefractive.cs" />
-    <Compile Include="FFTW_Interop.cs" />
-    <Compile Include="FFTW_Managed.cs" />
-    <Compile Include="LineSources.cs" />
-    <Compile Include="Materials.cs" />
-    <Compile Include="Pach_SP.cs" />
-    <Compile Include="Pach_SP_IIR.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="SrfSources.cs" />
+  <ItemGroup Condition="'$(TargetFramework)' == 'net7.0'">
+    <PackageReference Include="System.Windows.Extensions">
+      <Version>7.0.0</Version>
+    </PackageReference>
   </ItemGroup>
-  <ItemGroup>
-    <None Include="app.config" />
-    <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="Resource1.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resource1.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\Hare\Hare.csproj">
-      <Project>{681e37f0-fdb7-4d4d-b5dc-b6f5065170ff}</Project>
-      <Name>Hare</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\ScottPlot\src\ScottPlot5\ScottPlot5 Controls\ScottPlot.Eto\ScottPlot.Eto.csproj">
-      <Project>{1c731aba-d5d4-4eec-850a-feb62bc0288a}</Project>
-      <Name>ScottPlot.Eto</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\ScottPlot\src\ScottPlot5\ScottPlot5\ScottPlot.csproj">
-      <Project>{a1060104-3e2f-438e-b8f6-605c5a5f5542}</Project>
-      <Name>ScottPlot</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\libfftw3-3.dll" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\Pach_Materials_Library.txt" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\CLF_Read.dll" />
-  </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <PropertyGroup>
-    <PostBuildEvent>
-    </PostBuildEvent>
-  </PropertyGroup>
-  <Import Project="..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\Eto.Forms.2.7.1\build\Eto.Forms.targets" Condition="Exists('..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\Eto.Forms.2.7.1\build\Eto.Forms.targets')" />
-  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
-    <PropertyGroup>
-      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
-    </PropertyGroup>
-    <Error Condition="!Exists('..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\Eto.Forms.2.7.1\build\Eto.Forms.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\..\..\PachydermAcoustic_BigBang\Pachyderm_Whole\packages\Eto.Forms.2.7.1\build\Eto.Forms.targets'))" />
-  </Target>
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
+  <PropertyGroup />
 </Project>

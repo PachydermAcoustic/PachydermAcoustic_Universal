@@ -24,7 +24,6 @@ using Pachyderm_Acoustic.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Windows.Documents;
 
 namespace Pachyderm_Acoustic
 {
@@ -246,10 +245,10 @@ namespace Pachyderm_Acoustic
         /// <summary>
         /// Aborts all threads, effectively ending the simulation.
         /// </summary>
-        public override void Abort_Calculation()
-        {
-            foreach (System.Threading.Thread T in T_List) T.Abort();
-        }
+        //public override void Abort_Calculation()
+        //{
+        //    foreach (System.Threading.Thread T in T_List) T.Abort();
+        //}
 
         /// <summary>
         /// Consolidates output from all threads into a single set of output.

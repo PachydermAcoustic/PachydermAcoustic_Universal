@@ -68,7 +68,7 @@ namespace FFTWSharp
         public fftwf_complexarray(Complex[] data)
         {
             this.length = data.Length;
-            this.handle = fftw.malloc(this.length * 16);
+            this.handle = FFTW.malloc(this.length * 16);
 
             this.SetData(data);
         }
@@ -377,7 +377,7 @@ namespace FFTWSharp
         public fftw_complexarray(int length)
         {
             this.length = length;
-            this.handle = fftw.malloc(this.length * 16);
+            this.handle = FFTW.malloc(this.length * 16);
         }
 
         /// <summary>
@@ -387,7 +387,7 @@ namespace FFTWSharp
         public fftw_complexarray(double[] data)
         {
             this.length = data.Length / 2;
-            this.handle = fftw.malloc(this.length * 16);
+            this.handle = FFTW.malloc(this.length * 16);
 
             this.SetData(data);
         }
@@ -399,7 +399,7 @@ namespace FFTWSharp
         public fftw_complexarray(Complex[] data)
         {
             this.length = data.Length;
-            this.handle = fftw.malloc(this.length * 16);
+            this.handle = FFTW.malloc(this.length * 16);
 
             this.SetData(data);
         }
@@ -504,7 +504,7 @@ namespace FFTWSharp
 
         ~fftw_complexarray()
         {
-            fftw.free(handle);
+            FFTW.free(handle);
             GC.RemoveMemoryPressure(this.length * 16);
         }
     }
@@ -522,12 +522,12 @@ namespace FFTWSharp
 
         public void Execute()
         {
-            fftw.execute(handle);
+            FFTW.execute(handle);
         }
 
         ~fftw_plan()
         {
-            fftw.destroy_plan(handle);
+            FFTW.destroy_plan(handle);
         }
 
         #region Plan Creation
@@ -536,7 +536,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.dft_1d(n, input.Handle, output.Handle, direction, flags);
+            p.handle = FFTW.dft_1d(n, input.Handle, output.Handle, direction, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -546,7 +546,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.dft_2d(nx, ny, input.Handle, output.Handle, direction, flags);
+            p.handle = FFTW.dft_2d(nx, ny, input.Handle, output.Handle, direction, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -556,7 +556,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.dft_3d(nx, ny, nz, input.Handle, output.Handle, direction, flags);
+            p.handle = FFTW.dft_3d(nx, ny, nz, input.Handle, output.Handle, direction, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -566,7 +566,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.dft(rank, n, input.Handle, output.Handle, direction, flags);
+            p.handle = FFTW.dft(rank, n, input.Handle, output.Handle, direction, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -577,7 +577,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.dft_r2c_1d(n, input.Handle, output.Handle, flags);
+            p.handle = FFTW.dft_r2c_1d(n, input.Handle, output.Handle, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -587,7 +587,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.dft_r2c_2d(nx, ny, input.Handle, output.Handle, flags);
+            p.handle = FFTW.dft_r2c_2d(nx, ny, input.Handle, output.Handle, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -597,7 +597,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.dft_r2c_3d(nx, ny, nz, input.Handle, output.Handle, flags);
+            p.handle = FFTW.dft_r2c_3d(nx, ny, nz, input.Handle, output.Handle, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -607,7 +607,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.dft_r2c(rank, n, input.Handle, output.Handle, flags);
+            p.handle = FFTW.dft_r2c(rank, n, input.Handle, output.Handle, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -618,7 +618,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.dft_c2r_1d(n, input.Handle, output.Handle, flags);
+            p.handle = FFTW.dft_c2r_1d(n, input.Handle, output.Handle, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -628,7 +628,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.dft_c2r_2d(nx, ny, input.Handle, output.Handle, flags);
+            p.handle = FFTW.dft_c2r_2d(nx, ny, input.Handle, output.Handle, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -638,7 +638,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.dft_c2r_3d(nx, ny, nz, input.Handle, output.Handle, flags);
+            p.handle = FFTW.dft_c2r_3d(nx, ny, nz, input.Handle, output.Handle, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -648,7 +648,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.dft_c2r(rank, n, input.Handle, output.Handle, flags);
+            p.handle = FFTW.dft_c2r(rank, n, input.Handle, output.Handle, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -659,7 +659,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.r2r_1d(n, input.Handle, output.Handle, kind, flags);
+            p.handle = FFTW.r2r_1d(n, input.Handle, output.Handle, kind, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -669,7 +669,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.r2r_2d(nx, ny, input.Handle, output.Handle, kindx, kindy, flags);
+            p.handle = FFTW.r2r_2d(nx, ny, input.Handle, output.Handle, kindx, kindy, flags);
             FFTW_Lock.ReleaseMutex();
 
             return p;
@@ -680,7 +680,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.r2r_3d(nx, ny, nz, input.Handle, output.Handle,
+            p.handle = FFTW.r2r_3d(nx, ny, nz, input.Handle, output.Handle,
                 kindx, kindy, kindz, flags);
             FFTW_Lock.ReleaseMutex();
 
@@ -692,7 +692,7 @@ namespace FFTWSharp
         {
             FFTW_Lock.WaitOne();
             fftw_plan p = new fftw_plan();
-            p.handle = fftw.r2r(rank, n, input.Handle, output.Handle,
+            p.handle = FFTW.r2r(rank, n, input.Handle, output.Handle,
                 kind, flags);
             FFTW_Lock.ReleaseMutex();
 

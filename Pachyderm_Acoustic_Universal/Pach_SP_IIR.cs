@@ -24,7 +24,7 @@ using System.ComponentModel.Design;
 using MathNet.Numerics;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.Integration;
-using LibOptimization.BenchmarkFunction;
+//using LibOptimization.BenchmarkFunction;
 using System.ComponentModel;
 using FFTWSharp;
 

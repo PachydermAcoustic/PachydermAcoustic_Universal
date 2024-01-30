@@ -692,10 +692,10 @@ namespace Pachyderm_Acoustic
         /// <summary>
         /// Aborts all threads, effectively ending the simulation.
         /// </summary>
-        public override void Abort_Calculation()
-        {
-            T.Abort();
-        }
+        //public override void Abort_Calculation()
+        //{
+        //    T.Abort();
+        //}
 
         /// <summary>
         /// Called by Pach_RunSim_Command. Indicates whether or not the simulation has completed.

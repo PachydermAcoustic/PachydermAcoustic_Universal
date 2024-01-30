@@ -16,8 +16,8 @@
 //'License along with Pachyderm-Acoustic; if not, write to the Free Software 
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
 
-using System.Drawing;
 using Pachyderm_Acoustic.Utilities;
+using Eto.Drawing;
 
 namespace Pachyderm_Acoustic
 {
@@ -41,7 +41,7 @@ namespace Pachyderm_Acoustic
         /// <summary>
         /// Colorscale base class.
         /// </summary>
-        public abstract class colorscale
+        public abstract class Colorscale
         {
             public Bitmap PIC;
             public abstract Color GetValue(double Value, double VMin, double VMax);
@@ -50,7 +50,7 @@ namespace Pachyderm_Acoustic
         /// <summary>
         /// Hue Saturation Value based colorscale.
         /// </summary>
-        public class HSV_colorscale:colorscale
+        public class HSV_colorscale:Colorscale
         {            
             double H_OFFSET;
             double H_BREADTH;
@@ -71,8 +71,8 @@ namespace Pachyderm_Acoustic
                 V_BREADTH = V_BREADTHin;
                 Discretized = Discretize;
                 Steps = Stepsin;
-                PIC = new Bitmap(Wd, Ht);
-                Graphics g = Graphics.FromImage(PIC);
+                PIC = new Bitmap(new Size(Wd, Ht), PixelFormat.Format32bppRgb);
+                Graphics g = new Graphics(PIC);
                     
                 if (Discretized)
                 {
@@ -92,6 +92,9 @@ namespace Pachyderm_Acoustic
                         g.DrawLine(new Pen(c, 1), 0, y, Ht, y);
                     }
                 }
+
+                g.DrawImage(PIC, Wd, Ht);
+
                 g.Dispose();
             }
 
@@ -143,7 +146,7 @@ namespace Pachyderm_Acoustic
         }
 
         //For best results, only use this without a need for false color interpolation...
-        public class Explicit_colorscale : colorscale
+        public class Explicit_colorscale : Colorscale
         {
             Color[] C_Bounds;
             double[] R_f;
@@ -198,7 +201,6 @@ namespace Pachyderm_Acoustic
                     }
                 }
             }
-
 
             public override Color GetValue(double Value, double VMin, double VMax)
             {

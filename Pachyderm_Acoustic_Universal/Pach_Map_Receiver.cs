@@ -563,14 +563,14 @@ namespace Pachyderm_Acoustic
         /// <param name="V_OFFSET">V value offset (HSV Color system.)</param>
         /// <param name="V_BREADTH">V value breadth (HSV Color system.)</param>
         /// <returns>the array of color assignments which fit neatly into the mesh </returns>
-        public static System.Drawing.Color[] SetColors(double[] Values, double[] Bounds, Pach_Graphics.colorscale c)
+        public static Eto.Drawing.Color[] SetColors(double[] Values, double[] Bounds, Pach_Graphics.Colorscale c)
         {
-            System.Drawing.Color[] Mesh_Colors = new System.Drawing.Color[Values.Length];
+            Eto.Drawing.Color[] Mesh_Colors = new Eto.Drawing.Color[Values.Length];
             double Scale_Breadth = Bounds[1] - Bounds[0];
 
             for (int i = 0; i < Values.Length; i++)
             {
-                System.Drawing.Color color = c.GetValue(Values[i], Bounds[0], Bounds[1]);
+                Eto.Drawing.Color color = c.GetValue(Values[i], Bounds[0], Bounds[1]);
                 Mesh_Colors[i] = color;
             }
             return Mesh_Colors;

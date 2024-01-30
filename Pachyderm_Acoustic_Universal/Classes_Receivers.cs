@@ -20,13 +20,8 @@ using System;
 using System.Collections.Generic;
 using Hare.Geometry;
 using System.Linq;
-using System.Runtime.Serialization;
 using MathNet.Numerics;
-using System.Windows.Media.Animation;
-using Pachyderm_Acoustic.Utilities;
-using System.Diagnostics;
 using Pachyderm_Acoustic.Pach_Graphics;
-using ZedGraph;
 
 namespace Pachyderm_Acoustic
 {
