@@ -52,7 +52,7 @@ namespace Pachyderm_Acoustic
         private int[] _octaves;
         private Convergence_Check[] check;
         private bool conclude = false;
-
+        private I_Conv_Progress Vis_Feedback;
         /// <summary>
         /// Constructor for the general case ray tracer.
         /// </summary>
@@ -66,6 +66,7 @@ namespace Pachyderm_Acoustic
         /// <param name="partitionedReceiver">Is the receiver partitioned... i.e., did you use a mapping receiver bank?</param>
         public SplitRayTracer(Source sourceIn, Receiver_Bank receiverIn, Scene roomIn, double cutoffTime, int[] octaveRange, int isOrderIn, int rayCountIn, I_Conv_Progress Vis_Feedback)
         {
+            this.Vis_Feedback = Vis_Feedback;
             IS_Order = isOrderIn;
             Room = roomIn;
             RecMain = receiverIn;
@@ -237,7 +238,7 @@ namespace Pachyderm_Acoustic
         {
             foreach (System.Threading.Thread T in _tlist)
             {
-                if (!(T == null) && (T.ThreadState == System.Threading.ThreadState.Running || T.ThreadState == System.Threading.ThreadState.WaitSleepJoin)) 
+                if (!(T == null) && (T.ThreadState == System.Threading.ThreadState.Running || T.ThreadState == System.Threading.ThreadState.WaitSleepJoin))
                     return System.Threading.ThreadState.Running;
             }
             return System.Threading.ThreadState.Stopped;
@@ -322,7 +323,7 @@ namespace Pachyderm_Acoustic
 
             ///Homogeneous media only...
             LastRays = new BlockingCollection<OctaveRay>[_processorCt];
-            
+
 
             Random rnd = new Random((int)seed);
             _st = DateTime.Now;
@@ -350,7 +351,7 @@ namespace Pachyderm_Acoustic
             do
             {
                 rev++;
-                if (conclude) 
+                if (conclude)
                     break;
                 for (int P_I = 0; P_I < _processorCt; P_I++)
                 {
@@ -379,7 +380,7 @@ namespace Pachyderm_Acoustic
                 {
                     Thread.Sleep(100);
                     int completed = 0;
-                    for (int r = 0; r < _currentRay.Length; r++) completed +=_currentRay[r];
+                    for (int r = 0; r < _currentRay.Length; r++) completed += _currentRay[r];
                     if (completed < 80 * rev) continue;
                     int remainder = 0;
                     int j;
@@ -397,7 +398,7 @@ namespace Pachyderm_Acoustic
             } while (!conv);
 
             Conclude_Simulation();
-            foreach (Thread t in _tlist) t.Join();
+            for (int j = 1; j < _tlist.Length; j++) _tlist[j].Join();
 
             while (LastRays[0].Count > 0)
             {
@@ -497,7 +498,7 @@ namespace Pachyderm_Acoustic
                 //OR.Decimation = Threshold_Power_3[o];
                 Rays.Enqueue(OR);
             };//Split all rays into individual octaves.
-            Do_Scattered:
+        Do_Scattered:
 
             if (Rays.Count > 0)
             {
@@ -550,7 +551,7 @@ namespace Pachyderm_Acoustic
                 }
                 while (Rays.Count > 0);
             }
-            
+
             if (LastRays[ThreadID].Count > 0)
             {
                 OctaveRay OR;
@@ -863,6 +864,7 @@ namespace Pachyderm_Acoustic
             }
             else
             {
+                if (this.Vis_Feedback != null) Vis_Feedback.Populate();
                 foreach (Convergence_Check c in check)
                 {
                     if (c == null) break;
@@ -930,7 +932,7 @@ namespace Pachyderm_Acoustic
                 oct = _oct;
                 RunningSim = R.Rec_List[id].Recs.Energy[oct];
                 check_no = check_id;
-                On_Convergence_Check += Vis_Feedback.Populate;
+                On_Convergence_Check += Vis_Feedback.Fill;
             }
 
             protected void Plot_Feedback(double[] diff, double conv, double ConvInf, int ID, int count, double corr)
@@ -1059,8 +1061,8 @@ namespace Pachyderm_Acoustic
                 }
 
                 double[] Schr_new = AcousticalMath.Log10Data(AcousticalMath.Schroeder_Integral(RunningSim), -70);
-                
-                r = Schr_old == null? 0 : MathNet.Numerics.Statistics.Correlation.Spearman(Schr_new, Schr_old);
+
+                r = Schr_old == null ? 0 : MathNet.Numerics.Statistics.Correlation.Spearman(Schr_new, Schr_old);
                 //MathNet.Numerics.Statistics.Correlation.Pearson(Schr_new, Schr_old);
 
                 Schr_old = Schr_new;
@@ -1151,7 +1153,8 @@ namespace Pachyderm_Acoustic
 
     public interface I_Conv_Progress
     {
-        void Populate(double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr);
+        void Populate();
+        void Fill(double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr);
     }
 
     public class RayQueue<T> : ConcurrentQueue<T>
@@ -1172,10 +1175,10 @@ namespace Pachyderm_Acoustic
             Ray_Loaded.Set();
         }
 
-        public new bool TryDequeue(out T item) 
+        public new bool TryDequeue(out T item)
         {
             if (Count < ProcessorCt) Rays_dwindling.Set();
-                Rays_dwindling.Set();
+            Rays_dwindling.Set();
             return base.TryDequeue(out item);
         }
     }

@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Hare.Geometry;
 using Pachyderm_Acoustic.Utilities;
 
@@ -94,10 +95,12 @@ namespace Pachyderm_Acoustic
                 }
                 else
                 {
+                    SourcePower = new double[8];
+
                     for (int i = 0; i < 8; i++)
                     {
                         SPL[i] = power_In_db[i];
-                        SourcePower = new double[8];
+                        SourcePower[i] = 1E-12 * Math.Pow(10, .1 * SPL[i]);
                     }
                 }
             }
@@ -381,12 +384,17 @@ namespace Pachyderm_Acoustic
                 return new BroadRay(H_Center, P, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID()); //Provides divided Power[stochastic]
             }
 
+            object ctlock = new object();
             public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
-                Hare.Geometry.Point Pt = T.Polys[rayct % T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
+                Hare.Geometry.Point Pt;
+                lock (ctlock)
+                {
+                    Pt = T.Polys[rayct % T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
+                    rayct++;
+                }
                 Hare.Geometry.Vector P = new Vector(Pt.x, Pt.y, Pt.z);
                 P.Normalize();
-                rayct++;
 
                 return new BroadRay(H_Center, P, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID(), Octaves); //Provides divided Power[stochastic]
             }

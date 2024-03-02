@@ -83,12 +83,15 @@ namespace Pachyderm_Acoustic
                     try
                     {
                         string Material = IL_Reader.ReadLine();
-                        string[] D_Mat = Material.Split(new char[] { ':' });
-                        string Name = D_Mat[0].Trim();
-                        string TL_Code = D_Mat[1].Trim();
-                        //TL_Code += "0;0;0;0;0;0;0;0";
-                        double[] TL = Utilities.PachTools.DecodeTransmissionLoss(TL_Code);
-                        this.Add_Unique_TL(Name, TL);
+                        if (Material != null)
+                        {
+                            string[] D_Mat = Material.Split(new char[] { ':' });
+                            string Name = D_Mat[0].Trim();
+                            string TL_Code = D_Mat[1].Trim();
+                            //TL_Code += "0;0;0;0;0;0;0;0";
+                            double[] TL = Utilities.PachTools.DecodeTransmissionLoss(TL_Code);
+                            this.Add_Unique_TL(Name, TL);
+                        }
                     }
                     catch (System.Exception)
                     { continue; }

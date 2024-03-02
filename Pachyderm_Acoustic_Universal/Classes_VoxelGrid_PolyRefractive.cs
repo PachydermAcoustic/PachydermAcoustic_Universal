@@ -69,6 +69,7 @@ namespace Pachyderm_Acoustic
             /// <returns> Indicates whether or not an intersection was found. </returns>
             public override bool Shoot(Ray R, int top_index, out X_Event Ret_Event)//, On3dPoint EndPt, int Octave_in)
             {
+                uint RayId = this.assign_id();
                 int X, Y, Z;
                 ////////////////////////
                 double VPrev = 0;
@@ -158,9 +159,9 @@ namespace Pachyderm_Acoustic
                     //Check all polygons in the current voxel...
                     foreach (int i in Voxel_Inv[X, Y, Z, top_index])
                     {
-                        if (Poly_Ray_ID[R.ThreadID, top_index][i] != R.Ray_ID)
+                        if (Poly_Ray_ID[top_index, RayId][i] != R.Ray_ID)
                         {
-                            Poly_Ray_ID[R.ThreadID, top_index][i] = R.Ray_ID;
+                            Poly_Ray_ID[top_index, RayId][i] = R.Ray_ID;
                             Point Pt; double u=0, v=0, t=0;
                             if (Model[top_index].intersect(i, R, out Pt, out u, out v, out t) && t > 0.0000000001) X_LIST.Add(Pt); ulist.Add(u); vlist.Add(v); tlist.Add(t); pidlist.Add(i);
                         }

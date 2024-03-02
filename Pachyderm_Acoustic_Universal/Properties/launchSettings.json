@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Pachyderm_Acoustic_Universal": {
+      "commandName": "Project",
+      "nativeDebugging": false
+    }
+  }
+}

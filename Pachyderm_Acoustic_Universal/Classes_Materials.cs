@@ -941,7 +941,7 @@ namespace Pachyderm_Acoustic
                     Cos_Theta *= -1;
                 }
 
-                foreach (int oct in Ray.Octaves)
+                foreach (int oct in Ray.Freq_Bands)
                 {
                     // 3. Apply Scattering.
                     //// a. Create new source for scattered energy (E * Scattering).

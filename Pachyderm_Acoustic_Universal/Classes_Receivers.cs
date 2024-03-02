@@ -609,11 +609,11 @@ namespace Pachyderm_Acoustic
                 return A;
             }
 
-            public virtual void Create_Filter(IProgressFeedback VB)
+            public virtual async void Create_Filter(IProgressFeedback VB)
             {
                 for (int rec = 0; rec < Rec_List.Length; rec++)
                 {
-                    Rec_List[rec].Create_Filter(VB);
+                    await new System.Threading.Tasks.Task(() => { Rec_List[rec].Create_Filter(VB); });
                 }
             }
 
