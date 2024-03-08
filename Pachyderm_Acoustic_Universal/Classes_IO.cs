@@ -15,6 +15,7 @@
 //'You should have received a copy of the GNU General Public 
 //'License along with Pachyderm-Acoustic; if not, write to the Free Software 
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
+using Eto.Forms;
 using Pachyderm_Acoustic.Pach_Graphics;
 using System;
 
@@ -127,9 +128,10 @@ namespace Pachyderm_Acoustic
             /// <param name="Receiver">Empty array of Ray-Tracing Simulation Receivers. Enter null if opted out.</param>
             public static bool Read_Pac1(ref Direct_Sound[] Direct_Data, ref ImageSourceData[] IS_Data, ref Environment.Receiver_Bank[] Receiver, string filepath)
             {
-                    Eto.Forms.OpenFileDialog sf = new Eto.Forms.OpenFileDialog();
-                    sf.CurrentFilter = ".pac1";
-                    sf.Filters.Add("Pachyderm Simulation (*.pac1)|*.pac1|" + "All Files|");
+                Eto.Forms.OpenFileDialog sf = new Eto.Forms.OpenFileDialog();
+                sf.Filters.Add(new FileFilter("Pachyderm Simulation (*.pac1)", ".pac1"));
+                sf.Filters.Add(new FileFilter("All", ".*"));
+                sf.CurrentFilter = new FileFilter("Pachyderm Simulation (*.pac1)" ,".pac1");
                     //if (sf.ShowDialog(parent) != Eto.Forms.DialogResult.Ok) return false;
 
                     return Read_Pac1(filepath, ref Direct_Data, ref IS_Data, ref Receiver);
@@ -324,12 +326,12 @@ namespace Pachyderm_Acoustic
                                 {
                                     Hare.Geometry.Vector DirPos = Rec_List[s].Directions_Pos(Octave, e, i);
                                     Hare.Geometry.Vector DirNeg = Rec_List[s].Directions_Neg(Octave, e, i);
-                                    sw.Write(DirPos.x);
-                                    sw.Write(DirPos.y);
-                                    sw.Write(DirPos.z);
-                                    sw.Write(DirNeg.x);
-                                    sw.Write(DirNeg.y);
-                                    sw.Write(DirNeg.z);
+                                    sw.Write(DirPos.dx);
+                                    sw.Write(DirPos.dy);
+                                    sw.Write(DirPos.dz);
+                                    sw.Write(DirNeg.dx);
+                                    sw.Write(DirNeg.dy);
+                                    sw.Write(DirNeg.dz);
                                 }
                             }
                         }

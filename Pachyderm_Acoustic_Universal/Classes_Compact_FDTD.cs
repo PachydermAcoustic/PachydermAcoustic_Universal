@@ -103,8 +103,8 @@ namespace Pachyderm_Acoustic
                     }
                     else if (GT == GridType.Terrain)
                     {
-                        Hare.Geometry.Point origin = (Rm_in.Max() + Rm.Min()) / 2;
-                        Build_ScatteringLaboratory_FVM13(ref xDim, ref yDim, ref zDim, PML, origin, mindimx, mindimy, mindimz);
+                        Hare.Geometry.Point Origin = (Rm_in.Max() + Rm.Min()) / 2;
+                        Build_ScatteringLaboratory_FVM13(ref xDim, ref yDim, ref zDim, PML, Origin, mindimx, mindimy, mindimz);
                         SD.Connect_Grid_Laboratory(PFrame, Bounds, dx, dy, dz, tmax, dt, no_of_Layers);
                         Mic.Connect_Grid_UniqueOnly_Laboratory(PFrame, Bounds, dx, tmax, dt, no_of_Layers);
                     }
@@ -118,7 +118,7 @@ namespace Pachyderm_Acoustic
                     double dydz = Rm.Sound_speed(0) / fmax * .1;
                     dx = 2 * dydz / Math.Sqrt(2);
 
-                    Bounds = new AABB(Rm.Min() - new Point(.05 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.05 * dx, .05 * dydz, .05 * dydz));
+                    Bounds = new AABB(Rm.Min() - new Vector(.05 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.05 * dx, .05 * dydz, .05 * dydz));
 
                     no_of_Layers = 0;
                     double max_Layer = 0;
@@ -192,7 +192,9 @@ namespace Pachyderm_Acoustic
                     int yDimt = yDim;
                     int zDimt = zDim;
 
-                    MinPt -= new Point(2 * dx * no_of_Layers, 2 * dy * no_of_Layers, 2 * dz * no_of_Layers);
+                    MinPt.x -= 2 * dx * no_of_Layers;
+                    MinPt.y -= 2 * dy * no_of_Layers; 
+                    MinPt.z -= 2 * dz * no_of_Layers;
                     Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
 
                     //System.Threading.Tasks.Parallel.For(0, xDim, (x) =>
@@ -257,7 +259,7 @@ namespace Pachyderm_Acoustic
                     double dydz = Rm.Sound_speed(0) / fmax * .1;
                     dx = 2 * dydz / Math.Sqrt(2);
 
-                    Bounds = new AABB(Rm.Min() - new Point(.025 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.025 * dx, .05 * dydz, .05 * dydz));
+                    Bounds = new AABB(Rm.Min() - new Vector(.025 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.025 * dx, .05 * dydz, .05 * dydz));
 
                     no_of_Layers = 0;
                     double max_Layer = 0;
@@ -338,7 +340,8 @@ namespace Pachyderm_Acoustic
                     int threadct = System.Environment.ProcessorCount;
                     List<System.Threading.Thread> T = new List<System.Threading.Thread>();
 
-                    MinPt -= new Point(x_length / 2, y_length / 2, 0);
+                    MinPt.x -= x_length / 2;
+                    MinPt.y -= y_length / 2;
                     MinPt.z = 0;
                     Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
 
@@ -429,7 +432,7 @@ namespace Pachyderm_Acoustic
                     double dydz = Rm.Sound_speed(0) / fmax * .1;
                     dx = 2 * dydz / Math.Sqrt(2);
 
-                    Bounds = new AABB(Rm.Min() - new Point(.05 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.05 * dx, .05 * dydz, .05 * dydz));
+                    Bounds = new AABB(Rm.Min() - new Vector(.05 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.05 * dx, .05 * dydz, .05 * dydz));
 
                     no_of_Layers = 0;
                     double max_Layer = 0;
@@ -502,7 +505,9 @@ namespace Pachyderm_Acoustic
                     int yDimt = yDim;
                     int zDimt = zDim;
 
-                    MinPt -= new Point(2 * dx * no_of_Layers, 2 * dy * no_of_Layers, 2 * dz * no_of_Layers);
+                    MinPt.x -= 2 * dx * no_of_Layers;
+                    MinPt.y -= 2 * dy * no_of_Layers;
+                    MinPt.z -= 2 * dz * no_of_Layers;
                     Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
 
                     //System.Threading.Tasks.Parallel.For(0, xDim, (x) =>
@@ -1631,7 +1636,7 @@ namespace Pachyderm_Acoustic
                         }
                         else
                         { 
-                            Loc.Add(Loc_in[i].H_Origin());
+                            Loc.Add(Loc_in[i].Origin);
                             SWL.Add(Loc_in[i].SoundPower);
                         }
                     }

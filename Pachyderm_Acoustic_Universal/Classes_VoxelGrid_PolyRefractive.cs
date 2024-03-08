@@ -76,9 +76,9 @@ namespace Pachyderm_Acoustic
                 ////////////////////////
                 //Identify whether the Origin is inside the voxel grid...
                 //Identify which voxel the Origin point is located in...
-                X = (int)Math.Floor((R.origin.x - OBox.Min_PT.x) / VoxelDims.x);
-                Y = (int)Math.Floor((R.origin.y - OBox.Min_PT.y) / VoxelDims.y);
-                Z = (int)Math.Floor((R.origin.z - OBox.Min_PT.z) / VoxelDims.z);
+                X = (int)Math.Floor((R.x - OBox.Min_PT.x) / VoxelDims.x);
+                Y = (int)Math.Floor((R.y - OBox.Min_PT.y) / VoxelDims.y);
+                Z = (int)Math.Floor((R.z - OBox.Min_PT.z) / VoxelDims.z);
 
                 double tDeltaX, tDeltaY, tDeltaZ;
                 double tMaxX = 0, tMaxY = 0, tMaxZ = 0;
@@ -88,59 +88,59 @@ namespace Pachyderm_Acoustic
 
                 if (X < 0 || X >= VoxelCtX || Y < 0 || Y >= VoxelCtY || Z < 0 || Z >= VoxelCtZ) //return false;
                 {
-                    if (!OBox.Intersect(R, ref t_start, ref R.origin))
+                    if (!OBox.Intersect(ref R, ref t_start))
                     {
                         Ret_Event = new X_Event();
                         return false; 
                     }
-                    X = (int)Math.Floor((R.origin.x - OBox.Min_PT.x + R.direction.x) / VoxelDims.x);
-                    Y = (int)Math.Floor((R.origin.y - OBox.Min_PT.y + R.direction.y) / VoxelDims.y);
-                    Z = (int)Math.Floor((R.origin.z - OBox.Min_PT.z + R.direction.z) / VoxelDims.z);
+                    X = (int)Math.Floor((R.x - OBox.Min_PT.x + R.dx) / VoxelDims.x);
+                    Y = (int)Math.Floor((R.y - OBox.Min_PT.y + R.dy) / VoxelDims.y);
+                    Z = (int)Math.Floor((R.z - OBox.Min_PT.z + R.dz) / VoxelDims.z);
                 }
 
-                if (R.direction.x < 0)
+                if (R.dx < 0)
                 {
                     OutX = -1;
                     stepX = -1;
-                    tMaxX = (float)((Voxels[X, Y, Z].Min_PT.x - R.origin.x) / R.direction.x);
-                    tDeltaX = (float)(VoxelDims.x / R.direction.x * stepX);
+                    tMaxX = (float)((Voxels[X, Y, Z].Min_PT.x - R.x) / R.dx);
+                    tDeltaX = (float)(VoxelDims.x / R.dx * stepX);
                 }
                 else
                 {
                     OutX = VoxelCtX;
                     stepX = 1;
-                    tMaxX = (float)((Voxels[X, Y, Z].Max_PT.x - R.origin.x) / R.direction.x);
-                    tDeltaX = (float)(VoxelDims.x / R.direction.x * stepX);
+                    tMaxX = (float)((Voxels[X, Y, Z].Max_PT.x - R.x) / R.dx);
+                    tDeltaX = (float)(VoxelDims.x / R.dx * stepX);
                 }
 
-                if (R.direction.y < 0)
+                if (R.dy < 0)
                 {
                     OutY = -1;
                     stepY = -1;
-                    tMaxY = (float)((Voxels[X, Y, Z].Min_PT.y - R.origin.y) / R.direction.y);
-                    tDeltaY = (float)(VoxelDims.y / R.direction.y * stepY);
+                    tMaxY = (float)((Voxels[X, Y, Z].Min_PT.y - R.y) / R.dy);
+                    tDeltaY = (float)(VoxelDims.y / R.dy * stepY);
                 }
                 else
                 {
                     OutY = VoxelCtY;
                     stepY = 1;
-                    tMaxY = (float)((Voxels[X, Y, Z].Max_PT.y - R.origin.y) / R.direction.y);
-                    tDeltaY = (float)(VoxelDims.y / R.direction.y * stepY);
+                    tMaxY = (float)((Voxels[X, Y, Z].Max_PT.y - R.y) / R.dy);
+                    tDeltaY = (float)(VoxelDims.y / R.dy * stepY);
                 }
 
-                if (R.direction.z < 0)
+                if (R.dz < 0)
                 {
                     OutZ = -1;
                     stepZ = -1;
-                    tMaxZ = (float)((Voxels[X, Y, Z].Min_PT.z - R.origin.z) / R.direction.z);
-                    tDeltaZ = (float)(VoxelDims.z / R.direction.z * stepZ);
+                    tMaxZ = (float)((Voxels[X, Y, Z].Min_PT.z - R.z) / R.dz);
+                    tDeltaZ = (float)(VoxelDims.z / R.dz * stepZ);
                 }
                 else
                 {
                     OutZ = VoxelCtZ;
                     stepZ = 1;
-                    tMaxZ = (float)((Voxels[X, Y, Z].Max_PT.z - R.origin.z) / R.direction.z);
-                    tDeltaZ = (float)(VoxelDims.z / R.direction.z * stepZ);
+                    tMaxZ = (float)((Voxels[X, Y, Z].Max_PT.z - R.z) / R.dz);
+                    tDeltaZ = (float)(VoxelDims.z / R.dz * stepZ);
                 }
 
                 List<double> t_list = new List<double>();
@@ -169,7 +169,7 @@ namespace Pachyderm_Acoustic
 
                     for (int c = 0; c < X_LIST.Count; c++)
                     {
-                        if (this.Voxels[X, Y, Z].IsPointInBox(X_LIST[c]))
+                        if (this.Voxels[X, Y, Z].IsPointInBox(X_LIST[c].x, X_LIST[c].y, X_LIST[c].z))
                         {
                             int choice = c;
                             //Ret_Event = X_LIST[c];
@@ -209,20 +209,25 @@ namespace Pachyderm_Acoustic
                             tMaxX += tDeltaX;
                             if (VPrev != Velocities[X, Y, Z])
                             {
-                                R.direction = XRefraction(R.direction, VPrev, Velocities[X, Y, Z]);
-                                if (R.direction.x < 0) { stepX = -1; }
+                                Vector XR = XRefraction(R.dx, R.dy, R.dz, VPrev, Velocities[X, Y, Z]);
+                                R.dx = XR.dx;
+                                R.dy = XR.dy;
+                                R.dz = XR.dz;
+                                if (R.dx < 0) { stepX = -1; }
                                 else { stepX = 1; }
-                                if (R.direction.y < 0) { stepY = -1; }
+                                if (R.dy < 0) { stepY = -1; }
                                 else { stepY = 1; }
-                                if (R.direction.z < 0) { stepZ = -1; }
+                                if (R.dz < 0) { stepZ = -1; }
                                 else { stepZ = 1; }
-                                tDeltaX = (float)(VoxelDims.x / R.direction.x * stepX);
-                                tDeltaY = (float)(VoxelDims.y / R.direction.y * stepY);
-                                tDeltaZ = (float)(VoxelDims.z / R.direction.z * stepZ);
+                                tDeltaX = (float)(VoxelDims.x / R.dx * stepX);
+                                tDeltaY = (float)(VoxelDims.y / R.dy * stepY);
+                                tDeltaZ = (float)(VoxelDims.z / R.dz * stepZ);
                                 t_list.Add(tDeltaX);
                                 Codes.Add(VoxelCode(X,Y,Z));
-                                R.origin += R.direction * tDeltaX;
-                                Path_pts.Add(R.origin);
+                                R.x += R.dx * tDeltaX;
+                                R.y += R.dy * tDeltaX;
+                                R.z += R.dz * tDeltaX;
+                                Path_pts.Add(new Point(R.x, R.y, R.z));
                                 X_LIST.Clear();
                             }
                         }
@@ -238,19 +243,21 @@ namespace Pachyderm_Acoustic
                             tMaxZ += tDeltaZ;
                             if (VPrev != Velocities[X, Y, Z])
                             {
-                                R.direction = ZRefraction(R.direction, VPrev, Velocities[X, Y, Z]);
-                                if (R.direction.x < 0) { stepX = -1; }
+                                Vector ZR = ZRefraction(R.dx, R.dy, R.dz, VPrev, Velocities[X, Y, Z]);
+                                if (R.dx < 0) { stepX = -1; }
                                 else { stepX = 1; }
-                                if (R.direction.y < 0) { stepY = -1; }
+                                if (R.dy < 0) { stepY = -1; }
                                 else { stepY = 1; }
-                                if (R.direction.z < 0) { stepZ = -1; }
+                                if (R.dz < 0) { stepZ = -1; }
                                 else { stepZ = 1; }
-                                tDeltaX = (float)(VoxelDims.x / R.direction.x * stepX);
-                                tDeltaY = (float)(VoxelDims.y / R.direction.y * stepY);
-                                tDeltaZ = (float)(VoxelDims.z / R.direction.z * stepZ);
+                                tDeltaX = (float)(VoxelDims.x / R.dx * stepX);
+                                tDeltaY = (float)(VoxelDims.y / R.dy * stepY);
+                                tDeltaZ = (float)(VoxelDims.z / R.dz * stepZ);
                                 t_list.Add(tDeltaZ);
-                                R.origin += R.direction * tDeltaZ;
-                                Path_pts.Add(R.origin);
+                                R.x += R.dx * tDeltaZ;
+                                R.y += R.dy * tDeltaZ;
+                                R.z += R.dz * tDeltaZ;
+                                Path_pts.Add(new Point(R.x, R.y, R.z));
                                 X_LIST.Clear();
                             }
                         }
@@ -268,19 +275,21 @@ namespace Pachyderm_Acoustic
                             tMaxY += tDeltaY;
                             if (VPrev != Velocities[X, Y, Z])
                             {
-                                R.direction = YRefraction(R.direction, VPrev, Velocities[X, Y, Z]);
-                                if (R.direction.x < 0) { stepX = -1; }
+                                Vector YR = YRefraction(R.dx, R.dy, R.dz, VPrev, Velocities[X, Y, Z]);
+                                if (R.dx < 0) { stepX = -1; }
                                 else { stepX = 1; }
-                                if (R.direction.y < 0) { stepY = -1; }
+                                if (R.dy < 0) { stepY = -1; }
                                 else { stepY = 1; }
-                                if (R.direction.z < 0) { stepZ = -1; }
+                                if (R.dz < 0) { stepZ = -1; }
                                 else { stepZ = 1; }
-                                tDeltaX = (float)(VoxelDims.x / R.direction.x * stepX);
-                                tDeltaY = (float)(VoxelDims.y / R.direction.y * stepY);
-                                tDeltaZ = (float)(VoxelDims.z / R.direction.z * stepZ);
+                                tDeltaX = (float)(VoxelDims.x / R.dx * stepX);
+                                tDeltaY = (float)(VoxelDims.y / R.dy * stepY);
+                                tDeltaZ = (float)(VoxelDims.z / R.dz * stepZ);
                                 t_list.Add(tDeltaY);
-                                R.origin += R.direction * tDeltaY;
-                                Path_pts.Add(R.origin);
+                                R.x += R.dx * tDeltaY;
+                                R.y += R.dy * tDeltaY;
+                                R.z += R.dz * tDeltaY;
+                                Path_pts.Add(new Point(R.x, R.y, R.z));
                                 X_LIST.Clear();
                             }
                         }
@@ -296,19 +305,21 @@ namespace Pachyderm_Acoustic
 
                             if (VPrev != Velocities[X, Y, Z])
                             {
-                                R.direction = ZRefraction(R.direction, VPrev, Velocities[X, Y, Z]);
-                                if (R.direction.x < 0) { stepX = -1; }
+                                Vector ZR = ZRefraction(R.dx, R.dy, R.dz, VPrev, Velocities[X, Y, Z]);
+                                if (R.dx < 0) { stepX = -1; }
                                 else { stepX = 1; }
-                                if (R.direction.y < 0) { stepY = -1; }
+                                if (R.dy < 0) { stepY = -1; }
                                 else { stepY = 1; }
-                                if (R.direction.z < 0) { stepZ = -1; }
+                                if (R.dz < 0) { stepZ = -1; }
                                 else { stepZ = 1; }
-                                tDeltaX = (float)(VoxelDims.x / R.direction.x * stepX);
-                                tDeltaY = (float)(VoxelDims.y / R.direction.y * stepY);
-                                tDeltaZ = (float)(VoxelDims.z / R.direction.z * stepZ);
+                                tDeltaX = (float)(VoxelDims.x / R.dx * stepX);
+                                tDeltaY = (float)(VoxelDims.y / R.dy * stepY);
+                                tDeltaZ = (float)(VoxelDims.z / R.dz * stepZ);
                                 t_list.Add(tDeltaZ);
-                                R.origin += R.direction * tDeltaZ;
-                                Path_pts.Add(R.origin);
+                                R.x += R.dx * tDeltaZ;
+                                R.y += R.dy * tDeltaZ;
+                                R.z += R.dz * tDeltaZ;
+                                Path_pts.Add(new Point(R.x, R.y, R.z));
                                 X_LIST.Clear();
                             }
                         }
@@ -316,44 +327,44 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            private Vector XRefraction(Vector V_in, double VPrev, double V)
+            private Vector XRefraction(double dx, double dy, double dz, double VPrev, double V)
             {
-                Vector V_out = new Vector( 0, -V_in.z, V_in.y);
+                Vector V_out = new Vector( 0, -dz, dy);
                 double V_fract = VPrev/V;
-                return V_fract * new Vector(0, V_out.z, -V_out.y) - new Vector(Math.Sqrt(1 - V_fract * V_fract * Hare_math.Dot(V_out, V_out)), 0, 0);
+                return V_fract * new Vector(0, V_out.dz, -V_out.dy) - new Vector(Math.Sqrt(1 - V_fract * V_fract * Hare_math.Dot(V_out, V_out)), 0, 0);
             }
 
-            private Vector YRefraction(Vector V_in, double VPrev, double V)
+            private Vector YRefraction(double dx, double dy, double dz, double VPrev, double V)
             {
-                Vector V_out = new Vector(V_in.z, 0, -V_in.x);
+                Vector V_out = new Vector(dz, 0, -dx);
                 double V_fract = VPrev / V;
-                return V_fract * new Vector(-V_out.z, 0, V_out.x) - new Vector(0, Math.Sqrt(1 - V_fract * V_fract * Hare_math.Dot(V_out, V_out)), 0);
+                return V_fract * new Vector(-V_out.dz, 0, V_out.dx) - new Vector(0, Math.Sqrt(1 - V_fract * V_fract * Hare_math.Dot(V_out, V_out)), 0);
             }
 
-            private Vector ZRefraction(Vector V_in, double VPrev, double V)
+            private Vector ZRefraction(double dx, double dy, double dz, double VPrev, double V)
             {
-                Vector V_out = new Vector(V_in.y, V_in.x, 0);
+                Vector V_out = new Vector(dy, dx, 0);
                 double V_fract = VPrev / V;
-                return V_fract * new Vector(-V_out.y, -V_out.x, 0) - new Vector(0, 0, Math.Sqrt(1 - V_fract * V_fract * Hare_math.Dot(V_out, V_out)));
+                return V_fract * new Vector(-V_out.dy, -V_out.dx, 0) - new Vector(0, 0, Math.Sqrt(1 - V_fract * V_fract * Hare_math.Dot(V_out, V_out)));
             }
 
             private double intersect_XPlane(double x_intersect, Point p, Vector d, ref Point q)
             {
-                double t = (x_intersect - p.x) / d.x;
+                double t = (x_intersect - p.x) / d.dx;
                 q = p + t * d; 
                 return t;
             }
 
             private double intersect_YPlane(double y_intersect, Point p, Vector d, ref Point q)
             {
-                double t = (y_intersect - p.y) / d.y;
+                double t = (y_intersect - p.y) / d.dy;
                 q = p + t * d;
                 return t;
             }
 
             private double intersect_ZPlane(double z_intersect, Point p, Vector d, ref Point q)
             {
-                double t = (z_intersect - p.z) / d.z;
+                double t = (z_intersect - p.z) / d.dz;
                 q = p + t * d;
                 return t;
             }

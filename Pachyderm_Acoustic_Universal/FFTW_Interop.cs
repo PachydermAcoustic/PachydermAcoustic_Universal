@@ -46,7 +46,7 @@ namespace FFTWSharp
 		/// Rarely used. Specifies that the algorithm may not impose any unusual alignment requirements on the input/output 
 		/// arrays (i.e. no SIMD). This flag is normally not necessary, since the planner automatically detects 
 		/// misaligned arrays. The only use for this flag is if you want to use the guru interface to execute a given 
-		/// plan on a different array that may not be aligned like the original. 
+		/// plan on a different array that may not be aligned like the Original. 
 		/// </summary>
 		Unaligned=2,
 		/// <summary>

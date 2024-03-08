@@ -116,7 +116,7 @@ namespace Pachyderm_Acoustic
             /// <summary>
             /// cast a ray within the model.
             /// </summary>
-            /// <param name="R">A ray, complete with origin point and direction...</param>
+            /// <param name="R">A ray, complete with Origin point and direction...</param>
             /// <param name="u">optional surface coordinate</param>
             /// <param name="v">optional surface coordinate</param>
             /// <param name="Poly_ID">the polygon of intersection</param>
@@ -127,7 +127,7 @@ namespace Pachyderm_Acoustic
             /// <summary>
             /// cast a ray within the model.
             /// </summary>
-            /// <param name="R">A ray, complete with origin point and direction...</param>
+            /// <param name="R">A ray, complete with Origin point and direction...</param>
             /// <param name="u">optional surface coordinate</param>
             /// <param name="v">optional surface coordinate</param>
             /// <param name="Poly_ID">the polygon of intersection</param>
@@ -139,7 +139,7 @@ namespace Pachyderm_Acoustic
             /// <summary>
             /// cast a ray within the model.
             /// </summary>
-            /// <param name="R">A ray, complete with origin point and direction...</param>
+            /// <param name="R">A ray, complete with Origin point and direction...</param>
             /// <param name="top_id">the topology id (for multi-res models, or alternate universes...)</param>
             /// <param name="X_PT">the point of intersection</param>
             /// <returns>true if successful, false if no hit</returns>
@@ -147,13 +147,13 @@ namespace Pachyderm_Acoustic
             /// <summary>
             /// cast a ray within the model.
             /// </summary>
-            /// <param name="R">A ray, complete with origin point and direction...</param>
+            /// <param name="R">A ray, complete with Origin point and direction...</param>
             /// <param name="top_id">the topology id (for multi-res models, or alternate universes...)</param>
             /// <param name="X_PT">the point of intersection</param>
-            /// <param name="poly_origin1">the surface the ray is coming from</param>
-            /// <param name="poly_origin2">the surface the ray is coming from</param>
+            /// <param name="poly_Origin1">the surface the ray is coming from</param>
+            /// <param name="poly_Origin2">the surface the ray is coming from</param>
             /// <returns>true if successful, false if no hit</returns>
-            public abstract bool shoot(Hare.Geometry.Ray R, int top_id, out Hare.Geometry.X_Event X, int poly_origin1, int poly_origin2 = -1);
+            public abstract bool shoot(Hare.Geometry.Ray R, int top_id, out Hare.Geometry.X_Event X, int poly_Origin1, int poly_Origin2 = -1);
 
             /// <summary>
             /// The local normal of a surface.
@@ -249,7 +249,7 @@ namespace Pachyderm_Acoustic
                 List<Hare.Geometry.Point> HS = new List<Hare.Geometry.Point>();
                 List<Hare.Geometry.Point> HR = new List<Hare.Geometry.Point>();
 
-                foreach (Source SPT in S) HS.Add(SPT.Origin());
+                foreach (Source SPT in S) HS.Add(SPT.Origin);
                 foreach (Point RPT in R.Origins()) HR.Add(RPT);
 
                 Register_Edges(HS, HR);
@@ -392,13 +392,19 @@ namespace Pachyderm_Acoustic
             public virtual void ReflectRay(ref OctaveRay RayDirect, ref double u, ref double v, ref int x)
             {
                 Vector local_N = Normal(x, u, v);
-                RayDirect.direction -= local_N * Hare_math.Dot(RayDirect.direction, local_N) * 2;
+                double dot2 = Hare_math.Dot(RayDirect.dx, RayDirect.dy, RayDirect.dz, local_N.dx, local_N.dy, local_N.dz) * 2;
+                RayDirect.dx -= local_N.dx * dot2;
+                RayDirect.dy -= local_N.dy * dot2;
+                RayDirect.dz -= local_N.dz * dot2;
             }
 
             public virtual void ReflectRay(ref BroadRay RayDirect, ref double u, ref double v, ref int x)
             {
                 Vector local_N = Normal(x, u, v);
-                RayDirect.direction -= local_N * Hare_math.Dot(RayDirect.direction, local_N) * 2;
+                double dot2 = Hare_math.Dot(RayDirect.dx, RayDirect.dy, RayDirect.dz, local_N.dx, local_N.dy, local_N.dz) * 2;
+                RayDirect.dx -= local_N.dx * dot2;
+                RayDirect.dy -= local_N.dy * dot2;
+                RayDirect.dz -= local_N.dz * dot2;
             }
 
             public abstract Hare.Geometry.Point Min();
@@ -803,9 +809,9 @@ namespace Pachyderm_Acoustic
                 if (SP.Shoot(R, top_id, out X)) return true;
                 return false;
             }
-            public override bool shoot(Hare.Geometry.Ray R, int top_id, out Hare.Geometry.X_Event X, int poly_origin1, int poly_origin2)
+            public override bool shoot(Hare.Geometry.Ray R, int top_id, out Hare.Geometry.X_Event X, int poly_Origin1, int poly_Origin2)
             {
-                if (SP.Shoot(R, top_id, out X, poly_origin1, poly_origin2)) return true;
+                if (SP.Shoot(R, top_id, out X, poly_Origin1, poly_Origin2)) return true;
                 return false;
             }
 
@@ -889,7 +895,7 @@ namespace Pachyderm_Acoustic
 
             public override void EdgeFrame_Tangents(Hare.Geometry.Point Origin, Vector Normal, int[] PlaneIDs, ref List<double> dist2, List<Vector> Dir, List<int> EdgeIDs)
             {
-                double d = Hare_math.Dot(Normal, Origin);
+                double d = Hare_math.Dot(Normal.dx, Normal.dy, Normal.dz, Origin.x, Origin.y, Origin.z);
                 //for (int i = 0; i < PlaneCount; i++)
                 foreach(int i in EdgeIDs)
                 {
@@ -906,7 +912,7 @@ namespace Pachyderm_Acoustic
                         for (int k = 0, h = 1; k < vtx.Length; k++, h++)
                         {
                             Vector ab = vtx[h % vtx.Length] - vtx[k];
-                            double t = (d - Hare_math.Dot(Normal, vtx[k])) / Hare_math.Dot(Normal, ab);
+                            double t = (d - Hare_math.Dot(Normal.dx, Normal.dy, Normal.dz, vtx[k].x, vtx[k].y, vtx[k].z)) / Hare_math.Dot(Normal, ab);
 
                             // If t in [0..1] compute and return intersection point
                             if (t >= 0.0f && t <= 1.0f)
@@ -919,8 +925,8 @@ namespace Pachyderm_Acoustic
                         }
                         foreach (Hare.Geometry.Point p in temp)
                         {
-                            Hare.Geometry.Point v = Origin - p;
-                            double tmp = v.x * v.x + v.y * v.y + v.z * v.z;
+                            double vx = Origin.x - p.x, vy = Origin.y - p.y, vz = Origin.z - p.z;
+                            double tmp = vx * vx + vy * vy + vz * vz;
                             if (tmp > d_max)
                             {
                                 Pts[1] = p;
@@ -1179,7 +1185,7 @@ namespace Pachyderm_Acoustic
                 return false;
             }
 
-            public override bool shoot(Ray R, int top_id, out X_Event Xpt, int poly_origin1, int poly_origin2 = -1)
+            public override bool shoot(Ray R, int top_id, out X_Event Xpt, int poly_Origin1, int poly_Origin2 = -1)
             {
                 Xpt = new X_Event(new Hare.Geometry.Point(), -1, -1, -1, -1);
                 return false;

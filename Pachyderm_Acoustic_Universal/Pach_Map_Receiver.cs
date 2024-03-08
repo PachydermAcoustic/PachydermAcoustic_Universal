@@ -23,6 +23,7 @@ using Pachyderm_Acoustic.Environment;
 using Pachyderm_Acoustic.Utilities;
 using System.Linq;
 using System.CodeDom.Compiler;
+using MathNet.Numerics;
 
 namespace Pachyderm_Acoustic
 {
@@ -38,7 +39,7 @@ namespace Pachyderm_Acoustic
         public int VoxelCtX, VoxelCtY, VoxelCtZ;
         public AABB[,,] Voxels;
         public List<int>[,,] Voxel_Inv;
-        public Hare.Geometry.Point BoxDims;
+        public Hare.Geometry.Vector BoxDims;
         public Hare.Geometry.Point BoxDims_Inv;
         public Hare.Geometry.Point VoxelDims;
         public Hare.Geometry.Point VoxelDims_Inv;
@@ -79,7 +80,7 @@ namespace Pachyderm_Acoustic
         {
             _Sc = Sc;
             SWL = new double[8] { Src_Pt.SWL(0), Src_Pt.SWL(1), Src_Pt.SWL(2), Src_Pt.SWL(3), Src_Pt.SWL(4), Src_Pt.SWL(5), Src_Pt.SWL(6), Src_Pt.SWL(7) };
-            Src = Src_Pt.Origin();
+            Src = Src_Pt.Origin;
             SrcType = Src_Pt.Type();
             CutOffTime = Cutoff_time;
             SampleRate = SampleRate_in;
@@ -101,10 +102,10 @@ namespace Pachyderm_Acoustic
 
             //if (ProcessMesh)
             //{
-                Point p;
+            Point p;
             if (Z_Displacement)
             {
-                Hare.Geometry.Point V = new Hare.Geometry.Point(0, 0, increment * .5);
+                Hare.Geometry.Vector V = new Hare.Geometry.Vector(0, 0, increment * .5);
                 if (Rec_Vertex)
                 {
                     for (int i = 0; i < Map_Mesh.Vertex_Count; i++)
@@ -169,9 +170,9 @@ namespace Pachyderm_Acoustic
                     for (int i = 0; i < Map_Mesh.Vertex_Count; i++)
                     {
                         Vector V = Map_Mesh.Vertex_Normals[i] * increment;
-                        Map_Mesh[i].x = Map_Mesh[i].x + V.x;
-                        Map_Mesh[i].y = Map_Mesh[i].y + V.y;
-                        Map_Mesh[i].z = Map_Mesh[i].z + V.z;
+                        Map_Mesh[i].x = Map_Mesh[i].x + V.dx;
+                        Map_Mesh[i].y = Map_Mesh[i].y + V.dy;
+                        Map_Mesh[i].z = Map_Mesh[i].z + V.dz;
                     }
                 }
             }
@@ -197,9 +198,9 @@ namespace Pachyderm_Acoustic
             Voxel_Inv = new List<int>[VoxelCtX, VoxelCtY, VoxelCtZ];
 
             BoxDims = (Max - Min);
-            VoxelDims = new Hare.Geometry.Point(BoxDims.x / VoxelCtX, BoxDims.y / VoxelCtY, BoxDims.z / VoxelCtZ);
+            VoxelDims = new Hare.Geometry.Point(BoxDims.dx / VoxelCtX, BoxDims.dy / VoxelCtY, BoxDims.dz / VoxelCtZ);
             VoxelDims_Inv = new Hare.Geometry.Point(1 / VoxelDims.x, 1 / VoxelDims.y, 1 / VoxelDims.z);
-            BoxDims_Inv = new Hare.Geometry.Point(1 / BoxDims.x, 1 / BoxDims.y, 1 / BoxDims.z);
+            BoxDims_Inv = new Hare.Geometry.Point(1 / BoxDims.dx, 1 / BoxDims.dy, 1 / BoxDims.dz);
 
             for (int x = 0; x < VoxelCtX; x++)
             {
@@ -216,8 +217,10 @@ namespace Pachyderm_Acoustic
                         {
                             //Check for intersection between voxel x,y,z with Receiver i...
                             Hare.Geometry.Point PT = Box.ClosestPt(Rec_List[i].Origin);
-                            PT -= Rec_List[i].Origin;
-                            if ((PT.x * PT.x + PT.y * PT.y + PT.z * PT.z) < Rec_List[i].Radius2)
+                            double PTx = PT.x - Rec_List[i].Origin.x;
+                            double PTy = PT.y - Rec_List[i].Origin.y;
+                            double PTz = PT.z - Rec_List[i].Origin.z;
+                            if ((PTx * PTx + PTy * PTy + PTz * PTz) < Rec_List[i].Radius2)
                             {
                                 Voxel_Inv[x, y, z].Add(i);
                             }
@@ -236,7 +239,7 @@ namespace Pachyderm_Acoustic
         {
             for (int i = 0; i < Rec_List.Length; i++)
             {
-                Vector dir = S.H_Origin() - Rec_List[i].Origin;
+                Vector dir = S.Origin - Rec_List[i].Origin;
                 dir.Normalize();
                 for (int oct = 0; oct < 8; oct++)
                 {
@@ -1068,17 +1071,17 @@ namespace Pachyderm_Acoustic
             //Identify whether the Origin is inside the voxel grid...
             //double Sumlength = R.t_sum;
 
-            Point temp_origin = new Point(R.origin.x, R.origin.y, R.origin.z);
-            if (!OBox.IsPointInBox(R.origin))
+            if (!OBox.IsPointInBox(R.x, R.y, R.z))
             {
                 double t0 = 0;
-                if (!OBox.Intersect(R, ref t0, ref temp_origin)) return;
+                Point temp = new Point(R.x, R.y, R.z);
+                if (!OBox.Intersect(R, ref t0, ref temp)) return;
             }
 
             //Identify where the ray enters the voxel grid...
-            X = (int)Math.Floor((temp_origin.x - OBox.Min_PT.x) / VoxelDims.x);
-            Y = (int)Math.Floor((temp_origin.y - OBox.Min_PT.y) / VoxelDims.y);
-            Z = (int)Math.Floor((temp_origin.z - OBox.Min_PT.z) / VoxelDims.z);
+            X = (int)Math.Floor((R.x - OBox.Min_PT.x) / VoxelDims.x);
+            Y = (int)Math.Floor((R.y - OBox.Min_PT.y) / VoxelDims.y);
+            Z = (int)Math.Floor((R.z - OBox.Min_PT.z) / VoxelDims.z);
 
             Xend = (int)Math.Floor((EndPt.x - OBox.Min_PT.x) / VoxelDims.x);
             Yend = (int)Math.Floor((EndPt.y - OBox.Min_PT.y) / VoxelDims.y);
@@ -1098,54 +1101,54 @@ namespace Pachyderm_Acoustic
             if (Z >= VoxelCtZ) Z = VoxelCtZ - 1;
 
             ///
-            if ((R.direction.x < 0 && X < Xend) || (R.direction.x >= 0 && X > Xend)) return;
-            if ((R.direction.y < 0 && Y < Yend) || (R.direction.y >= 0 && Y > Yend)) return;
-            if ((R.direction.z < 0 && Z < Zend) || (R.direction.z >= 0 && Z > Zend)) return;
+            if ((R.x < 0 && X < Xend) || (R.x >= 0 && X > Xend)) return;
+            if ((R.y < 0 && Y < Yend) || (R.y >= 0 && Y > Yend)) return;
+            if ((R.z < 0 && Z < Zend) || (R.z >= 0 && Z > Zend)) return;
             ///
 
-            if (R.direction.x < 0)
+            if (R.x < 0)
             {
                 OutX = -1;
                 stepX = -1;
-                tMaxX = (Voxels[X, Y, Z].Min_PT.x - temp_origin.x) / R.direction.x;
-                tDeltaX = VoxelDims.x / R.direction.x * stepX;
+                tMaxX = (Voxels[X, Y, Z].Min_PT.x - R.x) / R.x;
+                tDeltaX = VoxelDims.x / R.x * stepX;
             }
             else
             {
                 OutX = VoxelCtX;
                 stepX = 1;
-                tMaxX = (Voxels[X, Y, Z].Max_PT.x - temp_origin.x) / R.direction.x;
-                tDeltaX = VoxelDims.x / R.direction.x * stepX;
+                tMaxX = (Voxels[X, Y, Z].Max_PT.x - R.x) / R.x;
+                tDeltaX = VoxelDims.x / R.x * stepX;
             }
 
-            if (R.direction.y < 0)
+            if (R.y < 0)
             {
                 OutY = -1;
                 stepY = -1;
-                tMaxY = (Voxels[X, Y, Z].Min_PT.y - temp_origin.y) / R.direction.y;
-                tDeltaY = VoxelDims.y / R.direction.y * stepY;
+                tMaxY = (Voxels[X, Y, Z].Min_PT.y - R.y) / R.y;
+                tDeltaY = VoxelDims.y / R.y * stepY;
             }
             else
             {
                 OutY = VoxelCtY;
                 stepY = 1;
-                tMaxY = (Voxels[X, Y, Z].Max_PT.y - temp_origin.y) / R.direction.y;
-                tDeltaY = VoxelDims.y / R.direction.y * stepY;
+                tMaxY = (Voxels[X, Y, Z].Max_PT.y - R.y) / R.y;
+                tDeltaY = VoxelDims.y / R.y * stepY;
             }
 
-            if (R.direction.z < 0)
+            if (R.z < 0)
             {
                 OutZ = -1;
                 stepZ = -1;
-                tMaxZ = (Voxels[X, Y, Z].Min_PT.z - temp_origin.z) / R.direction.z;
-                tDeltaZ = VoxelDims.z / R.direction.z * stepZ;
+                tMaxZ = (Voxels[X, Y, Z].Min_PT.z - R.z) / R.z;
+                tDeltaZ = VoxelDims.z / R.z * stepZ;
             }
             else
             {
                 OutZ = VoxelCtZ;
                 stepZ = 1;
-                tMaxZ = (Voxels[X, Y, Z].Max_PT.z - temp_origin.z) / R.direction.z;
-                tDeltaZ = VoxelDims.z / R.direction.z * stepZ;
+                tMaxZ = (Voxels[X, Y, Z].Max_PT.z - R.z) / R.z;
+                tDeltaZ = VoxelDims.z / R.z * stepZ;
             }
 
             do
@@ -1203,20 +1206,20 @@ namespace Pachyderm_Acoustic
             //Identify whether the Origin is inside the voxel grid...
             //double Sumlength = R.t_sum;
 
-            Point temp_origin = new Point(R.origin.x, R.origin.y, R.origin.z);
+            Point temp_Origin = new Point(R.x, R.y, R.z);
 
-            if (!OBox.IsPointInBox(R.origin))
+            if (!OBox.IsPointInBox(R.x, R.y, R.z))
             {
                 double t0 = 0;
-                if (!OBox.Intersect(R, ref t0, ref temp_origin)) return;
+                if (!OBox.Intersect(R, ref t0, ref temp_Origin)) return;
             }
 
             //Identify which voxel the Origin point is located in...
 
             //Identify where the ray enters the voxel grid...
-            X = (int)Math.Floor((temp_origin.x - OBox.Min_PT.x) / VoxelDims.x);
-            Y = (int)Math.Floor((temp_origin.y - OBox.Min_PT.y) / VoxelDims.y);
-            Z = (int)Math.Floor((temp_origin.z - OBox.Min_PT.z) / VoxelDims.z);
+            X = (int)Math.Floor((temp_Origin.x - OBox.Min_PT.x) / VoxelDims.x);
+            Y = (int)Math.Floor((temp_Origin.y - OBox.Min_PT.y) / VoxelDims.y);
+            Z = (int)Math.Floor((temp_Origin.z - OBox.Min_PT.z) / VoxelDims.z);
 
             Xend = (int)Math.Floor((EndPt.x - OBox.Min_PT.x) / VoxelDims.x);
             Yend = (int)Math.Floor((EndPt.y - OBox.Min_PT.y) / VoxelDims.y);
@@ -1235,54 +1238,54 @@ namespace Pachyderm_Acoustic
             if (Z >= VoxelCtZ) Z = VoxelCtZ - 1;
 
             ///
-            if ((R.direction.x < 0 && X < Xend) || (R.direction.x >= 0 && X > Xend)) return;
-            if ((R.direction.y < 0 && Y < Yend) || (R.direction.y >= 0 && Y > Yend)) return;
-            if ((R.direction.z < 0 && Z < Zend) || (R.direction.z >= 0 && Z > Zend)) return;
+            if ((R.dx < 0 && X < Xend) || (R.dx >= 0 && X > Xend)) return;
+            if ((R.dy < 0 && Y < Yend) || (R.dy >= 0 && Y > Yend)) return;
+            if ((R.dz < 0 && Z < Zend) || (R.dz >= 0 && Z > Zend)) return;
             ///
 
-            if (R.direction.x < 0)
+            if (R.dx < 0)
             {
                 OutX = -1;
                 stepX = -1;
-                tMaxX = (Voxels[X, Y, Z].Min_PT.x - temp_origin.x) / R.direction.x;
-                tDeltaX = VoxelDims.x / R.direction.x * stepX;
+                tMaxX = (Voxels[X, Y, Z].Min_PT.x - temp_Origin.x) / R.dx;
+                tDeltaX = VoxelDims.x / R.dx * stepX;
             }
             else
             {
                 OutX = VoxelCtX;
                 stepX = 1;
-                tMaxX = (Voxels[X, Y, Z].Max_PT.x - temp_origin.x) / R.direction.x;
-                tDeltaX = VoxelDims.x / R.direction.x * stepX;
+                tMaxX = (Voxels[X, Y, Z].Max_PT.x - temp_Origin.x) / R.dx;
+                tDeltaX = VoxelDims.x / R.dx * stepX;
             }
 
-            if (R.direction.y < 0)
+            if (R.dy < 0)
             {
                 OutY = -1;
                 stepY = -1;
-                tMaxY = (Voxels[X, Y, Z].Min_PT.y - temp_origin.y) / R.direction.y;
-                tDeltaY = VoxelDims.y / R.direction.y * stepY;
+                tMaxY = (Voxels[X, Y, Z].Min_PT.y - temp_Origin.y) / R.dy;
+                tDeltaY = VoxelDims.y / R.dy * stepY;
             }
             else
             {
                 OutY = VoxelCtY;
                 stepY = 1;
-                tMaxY = (Voxels[X, Y, Z].Max_PT.y - temp_origin.y) / R.direction.y;
-                tDeltaY = VoxelDims.y / R.direction.y * stepY;
+                tMaxY = (Voxels[X, Y, Z].Max_PT.y - temp_Origin.y) / R.dy;
+                tDeltaY = VoxelDims.y / R.dy * stepY;
             }
 
-            if (R.direction.z < 0)
+            if (R.dz < 0)
             {
                 OutZ = -1;
                 stepZ = -1;
-                tMaxZ = (Voxels[X, Y, Z].Min_PT.z - temp_origin.z) / R.direction.z;
-                tDeltaZ = VoxelDims.z / R.direction.z * stepZ;
+                tMaxZ = (Voxels[X, Y, Z].Min_PT.z - temp_Origin.z) / R.dz;
+                tDeltaZ = VoxelDims.z / R.dz * stepZ;
             }
             else
             {
                 OutZ = VoxelCtZ;
                 stepZ = 1;
-                tMaxZ = (Voxels[X, Y, Z].Max_PT.z - temp_origin.z) / R.direction.z;
-                tDeltaZ = VoxelDims.z / R.direction.z * stepZ;
+                tMaxZ = (Voxels[X, Y, Z].Max_PT.z - temp_Origin.z) / R.dz;
+                tDeltaZ = VoxelDims.z / R.dz * stepZ;
             }
 
             do
@@ -1440,8 +1443,8 @@ namespace Pachyderm_Acoustic
                 Radius2 = Radius * Radius;
                 this.Rho_C = rho * Sound_Speed;
                 this.SizeMod = 1 / (Math.PI * Radius2);
-                Point L1 = Src.Origin() - Origin;
-                Direct_Time = Math.Sqrt(L1.x * L1.x + L1.y * L1.y + L1.z * L1.z) / C_Sound;
+                double L1x = Src.Origin.x - Origin.x, L1y = Src.Origin.y - Origin.y, L1z = Src.Origin.z - Origin.z;
+                Direct_Time = Math.Sqrt(L1x * L1x + L1y * L1y + L1z * L1z) / C_Sound;
 
                 if (!Time1Pt)
                 {
@@ -1472,27 +1475,26 @@ namespace Pachyderm_Acoustic
             /// <param name="endPt">The point at which the ray intersects the model after potential receiver intersection.</param>
             public override void CheckBroadbandRay(BroadRay r, Hare.Geometry.Point endPt)
             {
-                Vector m = r.origin - Origin;
-                double b = Hare_math.Dot(m, r.direction);
-                double c = Hare_math.Dot(m, m) - Radius2;
+                double mx = r.x - Origin.x, my = r.y - Origin.y, mz = r.z - Origin.z;
+                double b = Hare_math.Dot(mx, my, mz, r.dx, r.dy, r.dz);
+                double c = Hare_math.Dot(mx, my, mz, mx, my, mz) - Radius2;
                 if (c > 0 && b > 0) return;
                 double discr = b * b - c;
                 if (discr < 0) return;
                 double t1 = -b - Math.Sqrt(discr);
                 double t2 = -b + Math.Sqrt(discr);
                 double t = (t1 + t2) / 2;
-                if (t > 0 && t * t < SqDistance(endPt, r.origin))
+                if (t > 0 && t * t < SqDistance(endPt.x, endPt.y, endPt.z, r.x, r.y, r.z))
                 {
                     double raydist = t / C_Sound + r.t_sum - Direct_Time;
-                    Vector dir = r.direction * -1;
-                    Recs.Add(raydist, r.Energy[0] * Math.Pow(10, -.1 * Atten[0] * raydist) * SizeMod, dir, Rho_C, 0);
-                    Recs.Add(raydist, r.Energy[1] * Math.Pow(10, -.1 * Atten[1] * raydist) * SizeMod, dir, Rho_C, 1);
-                    Recs.Add(raydist, r.Energy[2] * Math.Pow(10, -.1 * Atten[2] * raydist) * SizeMod, dir, Rho_C, 2);
-                    Recs.Add(raydist, r.Energy[3] * Math.Pow(10, -.1 * Atten[3] * raydist) * SizeMod, dir, Rho_C, 3);
-                    Recs.Add(raydist, r.Energy[4] * Math.Pow(10, -.1 * Atten[4] * raydist) * SizeMod, dir, Rho_C, 4);
-                    Recs.Add(raydist, r.Energy[5] * Math.Pow(10, -.1 * Atten[5] * raydist) * SizeMod, dir, Rho_C, 5);
-                    Recs.Add(raydist, r.Energy[6] * Math.Pow(10, -.1 * Atten[6] * raydist) * SizeMod, dir, Rho_C, 6);
-                    Recs.Add(raydist, r.Energy[7] * Math.Pow(10, -.1 * Atten[7] * raydist) * SizeMod, dir, Rho_C, 7);
+                    Recs.Add(raydist, r.Energy[0] * Math.Pow(10, -.1 * Atten[0] * raydist) * SizeMod, -r.dx, -r.dy, -r.dz, Rho_C, 0);
+                    Recs.Add(raydist, r.Energy[1] * Math.Pow(10, -.1 * Atten[1] * raydist) * SizeMod, -r.dx, -r.dy, -r.dz, Rho_C, 1);
+                    Recs.Add(raydist, r.Energy[2] * Math.Pow(10, -.1 * Atten[2] * raydist) * SizeMod, -r.dx, -r.dy, -r.dz, Rho_C, 2);
+                    Recs.Add(raydist, r.Energy[3] * Math.Pow(10, -.1 * Atten[3] * raydist) * SizeMod, -r.dx, -r.dy, -r.dz, Rho_C, 3);
+                    Recs.Add(raydist, r.Energy[4] * Math.Pow(10, -.1 * Atten[4] * raydist) * SizeMod, -r.dx, -r.dy, -r.dz, Rho_C, 4);
+                    Recs.Add(raydist, r.Energy[5] * Math.Pow(10, -.1 * Atten[5] * raydist) * SizeMod, -r.dx, -r.dy, -r.dz, Rho_C, 5);
+                    Recs.Add(raydist, r.Energy[6] * Math.Pow(10, -.1 * Atten[6] * raydist) * SizeMod, -r.dx, -r.dy, -r.dz, Rho_C, 6);
+                    Recs.Add(raydist, r.Energy[7] * Math.Pow(10, -.1 * Atten[7] * raydist) * SizeMod, -r.dx, -r.dy, -r.dz, Rho_C, 7);
                 }
             }
 
@@ -1503,19 +1505,19 @@ namespace Pachyderm_Acoustic
             /// <param name="endPt">The point at which the ray intersects the model after potential receiver intersection.</param>
             public override void CheckRay(OctaveRay R, Hare.Geometry.Point endPt)
             {
-                Vector m = R.origin - Origin;
-                double b = Hare_math.Dot(m, R.direction);
-                double c = Hare_math.Dot(m, m) - Radius2;
+                double mx = R.x - Origin.x, my = R.y - Origin.y, mz = R.z - Origin.z;
+                double b = Hare_math.Dot(mx, my, mz, R.dx, R.dy, R.dz);
+                double c = Hare_math.Dot(mx, my, mz, mx, my, mz) - Radius2;
                 if (c > 0 && b > 0) return;
                 double discr = b * b - c;
                 if (discr < 0) return;
                 double t1 = -b - Math.Sqrt(discr);
                 double t2 = -b + Math.Sqrt(discr);
                 double t = (t1 + t2) / 2;
-                if (t > 0 && t * t < SqDistance(endPt, R.origin))
+                if (t > 0 && t * t < SqDistance(endPt.x, endPt.y, endPt.z, R.x, R.y, R.z))
                 {
                     double raydist = t / C_Sound + R.t_sum - Direct_Time;
-                    Recs.Add(raydist, R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * raydist) * SizeMod, R.direction * -1, Rho_C, R.Octave);// / (1.33333333333333 * Math.PI * Min_Radius2 * Min_Radius), EndPt - R.origin, R.Octave);//R.Scat_Mod * // - Direct_Time
+                    Recs.Add(raydist, R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * raydist) * SizeMod, -R.dx, -R.dy, -R.dz, Rho_C, R.Octave);// / (1.33333333333333 * Math.PI * Min_Radius2 * Min_Radius), EndPt - R.Origin, R.Octave);//R.Scat_Mod * // - Direct_Time
                 }
             }
         

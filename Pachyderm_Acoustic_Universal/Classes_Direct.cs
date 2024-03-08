@@ -317,7 +317,7 @@ namespace Pachyderm_Acoustic
             dir.Normalize();
 
             //No screen contribution needed if receiver is visible.
-            //if (!OcclusionCheck(Src.H_Origin(), Receiver[rec_id], 0, ref Rnd)) return false;
+            //if (!OcclusionCheck(Src.Origin, Receiver[rec_id], 0, ref Rnd)) return false;
             //for (int edge = 0; edge < (Room as Polygon_Scene).Raw_Edge.Length; edge++)
             System.Threading.Tasks.Parallel.For(0, (Room as Polygon_Scene).Raw_Edge.Length, (edge) =>
             {
@@ -547,12 +547,12 @@ namespace Pachyderm_Acoustic
         //    List<Hare.Geometry.Point[]> Paths = new List<Hare.Geometry.Point[]>();
         //    List<double> d_ex = new List<double>();
         //    double[] f = new double[8] { 62.5, 125, 250, 500, 1000, 2000, 4000, 8000 };
-        //    double d_length = (Receiver[rec_id] - Src.H_Origin()).Length();
+        //    double d_length = (Receiver[rec_id] - Src.Origin).Length();
         //    Random Rnd = new Random();
         //    object LOCKED = new object();
 
         //    //No screen contribution needed if receiver is visible.
-        //    //if (!OcclusionCheck(Src.H_Origin(), Receiver[rec_id], 0, ref Rnd)) return false;
+        //    //if (!OcclusionCheck(Src.Origin, Receiver[rec_id], 0, ref Rnd)) return false;
         //    //for (int edge = 0; edge < (Room as Polygon_Scene).Raw_Edge.Length; edge++)
         //    System.Threading.Tasks.Parallel.For(0, (Room as Polygon_Scene).Raw_Edge.Length, (edge) =>
         //    {
@@ -562,15 +562,15 @@ namespace Pachyderm_Acoustic
         //        if (omit) return;
 
         //        Hare.Geometry.Point pt;
-        //        if (ClosestPtSegmentSegment(Src.H_Origin(), Receiver[rec_id], (Room as Polygon_Scene).Raw_Edge[edge], out pt))
+        //        if (ClosestPtSegmentSegment(Src.Origin, Receiver[rec_id], (Room as Polygon_Scene).Raw_Edge[edge], out pt))
         //        {
-        //            if (!(OcclusionCheck(Src.H_Origin(), pt, 0, ref Rnd) && OcclusionCheck(Receiver[rec_id], pt, 0, ref Rnd)))
+        //            if (!(OcclusionCheck(Src.Origin, pt, 0, ref Rnd) && OcclusionCheck(Receiver[rec_id], pt, 0, ref Rnd)))
         //            {
         //                // Edge point is unoccluded. Register as a reflection.
         //                lock (LOCKED)
         //                {
-        //                    d_ex.Add((Src.H_Origin() - pt).Length() + (Receiver[rec_id] - pt).Length());
-        //                    Paths.Add(new Point[3] { Src.H_Origin(), pt, Receiver[rec_id] });
+        //                    d_ex.Add((Src.Origin - pt).Length() + (Receiver[rec_id] - pt).Length());
+        //                    Paths.Add(new Point[3] { Src.Origin, pt, Receiver[rec_id] });
         //                }
         //            }
         //        }
@@ -605,7 +605,9 @@ namespace Pachyderm_Acoustic
                 if (Room.shoot(R, 0, out X) && Room.IsTransmissive[X.Poly_id])
                 {
                     ///The ray hit something transparent. Account for this...
-                    R.origin = X.X_Point;
+                    R.x = X.X_Point.x;
+                    R.y = X.X_Point.y;
+                    R.z = X.X_Point.z;
                     R.Ray_ID = Rnd.Next();
                     L2 += X.t;
                     continue;
@@ -685,7 +687,7 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            pt = edge.a + d2 * t;
+            pt = new Point(edge.a.x + d2.dx * t, edge.a.y + d2.dy * t, edge.a.z + d2.dz* t);
             return true;
         }
 
@@ -721,10 +723,10 @@ namespace Pachyderm_Acoustic
         /// <param name="rnd">Random number, used to instantiate a ray.</param>
         private void Check_Validity(int rec_id, int rnd, out double[] TransMod)
         {
-            Vector d = Receiver[rec_id] - Src.H_Origin();
+            Vector d = Receiver[rec_id] - Src.Origin;
             double dist = d.Length();
             d.Normalize();
-            Ray R = new Ray(Src.H_Origin(), d, 0, rnd);
+            Ray R = new Ray(Src.Origin, d, 0, rnd);
             double x1 = 0, x2 = 0;
             double t;
             int x3 = 0;
@@ -738,7 +740,9 @@ namespace Pachyderm_Acoustic
                     if (!Validity[rec_id] && Room.IsTransmissive[x3]) 
                     {
                         for(int oct = 0; oct < 8; oct++) TransMod[oct] *= Room.TransmissionValue[x3][oct];
-                        R.origin = x4;
+                        R.x = x4.x;
+                        R.y = x4.y;
+                        R.z = x4.z;
                         continue;
                     }
                     break;
@@ -790,9 +794,8 @@ namespace Pachyderm_Acoustic
 
                      Rho_C[i] = Room.Rho_C(Receiver[i]);
 
-                     double Length = (Src.Origin() - Receiver[i]).Length();
-                     Vector dir = Receiver[i] - Src.H_Origin();
-                     dir.Normalize();
+                     double Length = (Src.Origin - Receiver[i]).Length();
+                    Vector dir = Receiver[i] - Src.Origin;
 
                      double[] Power = Src.DirPower(0, rnd.Next(), dir);
 
@@ -800,7 +803,7 @@ namespace Pachyderm_Acoustic
                     {
                         Hare.Geometry.Point[] path = new Point[0];
                         double dist = 0;
-                        double[] Atten = Process_Screen_Attenuation(Src.H_Origin(), i, ref path, ref dist);
+                        double[] Atten = Process_Screen_Attenuation(Src.Origin, i, ref path, ref dist);
 
                         for (int oct = 0; oct < 8; oct++)
                         {
@@ -827,9 +830,9 @@ namespace Pachyderm_Acoustic
                      for (int oct = 0; oct < 8; oct++)
                      {
                          Vector V = dir * Io[i][oct][0];
-                         if (V.x > 0) Dir_Rec_Pos[i][oct][0][0] += (float)V.x; else Dir_Rec_Neg[i][oct][0][0] += (float)V.x;
-                         if (V.y > 0) Dir_Rec_Pos[i][oct][0][1] += (float)V.y; else Dir_Rec_Neg[i][oct][0][1] += (float)V.y;
-                         if (V.z > 0) Dir_Rec_Pos[i][oct][0][2] += (float)V.z; else Dir_Rec_Neg[i][oct][0][2] += (float)V.z;
+                         if (V.dx > 0) Dir_Rec_Pos[i][oct][0][0] += (float)V.dx; else Dir_Rec_Neg[i][oct][0][0] += (float)V.dx;
+                         if (V.dy > 0) Dir_Rec_Pos[i][oct][0][1] += (float)V.dy; else Dir_Rec_Neg[i][oct][0][1] += (float)V.dy;
+                         if (V.dz > 0) Dir_Rec_Pos[i][oct][0][2] += (float)V.dz; else Dir_Rec_Neg[i][oct][0][2] += (float)V.dz;
                      }
 
                      Time_Pt[i] = Length / C_Sound + Delay_ms;
@@ -851,9 +854,9 @@ namespace Pachyderm_Acoustic
                     Vn.Normalize();
                     for (int j = 0; j < 4096; j++)
                     {
-                        Fn[i] = Vn.x * ((Vn.x > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
-                                Vn.y * ((Vn.y > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
-                                Vn.z * ((Vn.z > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);
+                        Fn[i] = Vn.dx * ((Vn.dx > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
+                                Vn.dy * ((Vn.dy > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
+                                Vn.dz * ((Vn.dz > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);
                     }
                 }
             }
@@ -862,9 +865,9 @@ namespace Pachyderm_Acoustic
                 Vector D = new Vector(1, 0, 0);//new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
                 Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
                 Vn.Normalize();
-                for (int i = 0; i < 4096; i++) Fn[i] = Vn.x * ((Vn.x > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
-                                                           Vn.y * ((Vn.y > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
-                                                           Vn.z * ((Vn.z > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);//F[Rec_ID][i] * Vn.x;
+                for (int i = 0; i < 4096; i++) Fn[i] = Vn.dx * ((Vn.dx > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
+                                                           Vn.dy * ((Vn.dy > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
+                                                           Vn.dz * ((Vn.dz > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);//F[Rec_ID][i] * Vn.x;
             }
             return Fn;
         }
@@ -879,7 +882,7 @@ namespace Pachyderm_Acoustic
                 for (int i = 0; i < F_dir_temp[0].Length; i++)
                 {
                     Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Vector(F_dir_temp[0][i] - F_dir_temp[1][i], F_dir_temp[2][i] - F_dir_temp[3][i], F_dir_temp[4][i] - F_dir_temp[5][i]), azi, 0, degrees), 0, alt, degrees);
-                    Fn[i] = new double[3] { Vn.x, Vn.y, Vn.z };
+                    Fn[i] = new double[3] { Vn.dx, Vn.dy, Vn.dz };
                 }
             }
             else
@@ -897,15 +900,15 @@ namespace Pachyderm_Acoustic
 
                         for (int j = 0; j < 4096; j++)
                         {
-                            Fn[i + j][0] += Vn.x * ((Vn.x > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
-                                            Vn.y * ((Vn.y > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
-                                            Vn.z * ((Vn.z > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);
-                            Fn[i + j][1] += Vn.y * ((Vn.x > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
-                                            Vn.x * ((Vn.y > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
-                                            Vn.z * ((Vn.z > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);
-                            Fn[i + j][2] += Vn.z * ((Vn.x > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
-                                            Vn.y * ((Vn.y > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
-                                            Vn.x * ((Vn.z > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]); ;
+                            Fn[i + j][0] += Vn.dx * ((Vn.dx > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
+                                            Vn.dy * ((Vn.dy > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
+                                            Vn.dz * ((Vn.dz > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);
+                            Fn[i + j][1] += Vn.dy * ((Vn.dx > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
+                                            Vn.dx * ((Vn.dy > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
+                                            Vn.dz * ((Vn.dz > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);
+                            Fn[i + j][2] += Vn.dz * ((Vn.dx > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
+                                            Vn.dy * ((Vn.dy > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
+                                            Vn.dx * ((Vn.dz > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]); ;
                         }
                     }
                 }
@@ -915,9 +918,9 @@ namespace Pachyderm_Acoustic
                     Vector D = new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
                     Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
                     Vn.Normalize();
-                    if (Vn.x > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][0] = F[Rec_ID][i] * Vn.x;
-                    if (Vn.y > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][1] = F[Rec_ID][i] * Vn.y;
-                    if (Vn.z > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][2] = F[Rec_ID][i] * Vn.z;
+                    if (Vn.dx > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][0] = F[Rec_ID][i] * Vn.dx;
+                    if (Vn.dy > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][1] = F[Rec_ID][i] * Vn.dy;
+                    if (Vn.dz > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][2] = F[Rec_ID][i] * Vn.dz;
                 }
             }
             return Fn;
@@ -1030,7 +1033,7 @@ namespace Pachyderm_Acoustic
         {
             get 
             {
-                return Src.Origin();
+                return Src.Origin;
             }
         }
 
@@ -1101,32 +1104,32 @@ namespace Pachyderm_Acoustic
 
         public virtual Vector[] Directions_Pos(int Octave, int Rec_Index, Vector V)
         {
-            double l = Math.Sqrt(V.z * V.z + V.x * V.x);
-            double azi = Math.Asin(V.y / l);
-            double alt = Math.Atan2(V.x, V.z);
+            double l = Math.Sqrt(V.dz * V.dz + V.dx * V.dx);
+            double azi = Math.Asin(V.dy / l);
+            double alt = Math.Atan2(V.dx, V.dz);
             return Directions_Pos(Octave, Rec_Index, alt, azi, false);
         }
 
         public virtual Vector[] Directions_Neg(int Octave, int Rec_Index, Vector V)
         {
-            double l = Math.Sqrt(V.z * V.z + V.x * V.x);
-            double azi = Math.Asin(V.y / l);
-            double alt = Math.Atan2(V.x, V.z);
+            double l = Math.Sqrt(V.dz * V.dz + V.dx * V.dx);
+            double azi = Math.Asin(V.dy / l);
+            double alt = Math.Atan2(V.dx, V.dz);
             return Directions_Neg(Octave, Rec_Index, alt, azi, false);
         }
 
         public double Dir_Energy(int Octave, int Rec_ID, int dir)
         {
-            Vector Dir = Receiver[Rec_ID] - Src.H_Origin();
+            Vector Dir = Receiver[Rec_ID] - Src.Origin;
             Dir.Normalize();
             switch (dir)
             {
                 case 0:
-                    return Dir.x * this.Io[Rec_ID][Octave][0];
+                    return Dir.dx * this.Io[Rec_ID][Octave][0];
                 case 1:
-                    return Dir.y * this.Io[Rec_ID][Octave][0];
+                    return Dir.dy * this.Io[Rec_ID][Octave][0];
                 case 2:
-                    return Dir.z * this.Io[Rec_ID][Octave][0];
+                    return Dir.dz * this.Io[Rec_ID][Octave][0];
                 default:
                     throw new Exception("indexed directions must conform to 0 = x, 1 = y and 2 = z");
             }
@@ -1166,17 +1169,17 @@ namespace Pachyderm_Acoustic
 
         public Vector[] Dir_Energy(int Octave, int Rec_ID, Vector V)
         {
-            double l = Math.Sqrt(V.z * V.z + V.x * V.x);
-            double azi = Math.Asin(V.y / l);
-            double alt = Math.Atan2(V.x, V.z);
+            double l = Math.Sqrt(V.dz * V.dz + V.dx * V.dx);
+            double azi = Math.Asin(V.dy / l);
+            double alt = Math.Atan2(V.dx, V.dz);
             return Dir_Energy(Octave, Rec_ID, alt, azi, false);
         }
 
         public Vector[] Dir_Energy_Sum(int Rec_ID, Vector V)
         {
-            double l = Math.Sqrt(V.z * V.z + V.x * V.x);
-            double azi = Math.Asin(V.y / l);
-            double alt = Math.Atan2(V.x, V.z);
+            double l = Math.Sqrt(V.dz * V.dz + V.dx * V.dx);
+            double azi = Math.Asin(V.dy / l);
+            double alt = Math.Atan2(V.dx, V.dz);
             
             Vector[] D = new Vector[Dir_Rec_Pos[Rec_ID][0].Length];
             for (int o = 0; o < 8; o++)
@@ -1288,7 +1291,7 @@ namespace Pachyderm_Acoustic
                     }
 
                     //6th order normalization:
-                    double length = Math.Sqrt(vpos.x * vpos.x + vneg.x * vneg.x + vpos.y * vpos.y + vneg.y * vneg.y + vpos.z * vpos.z + vneg.z * vneg.z);
+                    double length = Math.Sqrt(vpos.dx * vpos.dx + vneg.dx * vneg.dx + vpos.dy * vpos.dy + vneg.dy * vneg.dy + vpos.dz * vpos.dz + vneg.dz * vneg.dz);
                     vpos /= length;
                     vneg /= length;
 
@@ -1350,7 +1353,7 @@ namespace Pachyderm_Acoustic
                     }
 
                     //6th order normalization:
-                    double length = Math.Sqrt(vpos.x * vpos.x + vneg.x * vneg.x + vpos.y * vpos.y + vneg.y * vneg.y + vpos.z * vpos.z + vneg.z * vneg.z);
+                    double length = Math.Sqrt(vpos.dx * vpos.dx + vneg.dx * vneg.dx + vpos.dy * vpos.dy + vneg.dy * vneg.dy + vpos.dz * vpos.dz + vneg.dz * vneg.dz);
                     vpos /= length;
                     vneg /= length;
 
@@ -1398,7 +1401,7 @@ namespace Pachyderm_Acoustic
                     }
 
                     //6th order normalization:
-                    double length = Math.Sqrt(vpos.x * vpos.x + vneg.x * vneg.x + vpos.y * vpos.y + vneg.y * vneg.y + vpos.z * vpos.z + vneg.z * vneg.z);
+                    double length = Math.Sqrt(vpos.dx * vpos.dx + vneg.dx * vneg.dx + vpos.dy * vpos.dy + vneg.dy * vneg.dy + vpos.dz * vpos.dz + vneg.dz * vneg.dz);
                     vpos /= length;
                     vneg /= length;
 
@@ -1427,12 +1430,12 @@ namespace Pachyderm_Acoustic
                     {
                         Io[rec_id][oct][0] += I[j][oct];
 
-                        if (d[j].x > 0) this.Dir_Rec_Pos[rec_id][oct][0][0] += (float)(d[j].x * I[j][oct]);
-                        else this.Dir_Rec_Neg[rec_id][oct][0][0] += (float)(d[j].x * I[j][oct]);
-                        if (d[j].y > 0) this.Dir_Rec_Pos[rec_id][oct][0][0] += (float)(d[j].y * I[j][oct]);
-                        else this.Dir_Rec_Neg[rec_id][oct][0][0] += (float)(d[j].y * I[j][oct]);
-                        if (d[j].z > 0) this.Dir_Rec_Pos[rec_id][oct][0][0] += (float)(d[j].z * I[j][oct]);
-                        else this.Dir_Rec_Neg[rec_id][oct][0][0] += (float)(d[j].z * I[j][oct]);
+                        if (d[j].dx > 0) this.Dir_Rec_Pos[rec_id][oct][0][0] += (float)(d[j].dx * I[j][oct]);
+                        else this.Dir_Rec_Neg[rec_id][oct][0][0] += (float)(d[j].dx * I[j][oct]);
+                        if (d[j].dy > 0) this.Dir_Rec_Pos[rec_id][oct][0][0] += (float)(d[j].dy * I[j][oct]);
+                        else this.Dir_Rec_Neg[rec_id][oct][0][0] += (float)(d[j].dy * I[j][oct]);
+                        if (d[j].dz > 0) this.Dir_Rec_Pos[rec_id][oct][0][0] += (float)(d[j].dz * I[j][oct]);
+                        else this.Dir_Rec_Neg[rec_id][oct][0][0] += (float)(d[j].dz * I[j][oct]);
                     }
                 }
                 return;
@@ -1475,34 +1478,34 @@ namespace Pachyderm_Acoustic
                     for (int oct = 0; oct < no_of_bands; oct++)
                     {
                         I_dump[oct][i] = Math.Log10(I[i][oct]);
-                        if (v.x > 0)
+                        if (v.dx > 0)
                         {
-                            xp_dump[oct][i] = Math.Log10(Math.Abs(I[i][oct] * v.x));
+                            xp_dump[oct][i] = Math.Log10(Math.Abs(I[i][oct] * v.dx));
                             xn_dump[oct][i] = log10Eps;
                         }
                         else
                         {
-                            xn_dump[oct][i] = Math.Log10(Math.Abs(I[i][oct] * v.x));
+                            xn_dump[oct][i] = Math.Log10(Math.Abs(I[i][oct] * v.dx));
                             xp_dump[oct][i] = log10Eps;
                         }
-                        if (v.y > 0)
+                        if (v.dy > 0)
                         {
-                            yp_dump[oct][i] = Math.Log10(Math.Abs(I[i][oct] * v.y));
+                            yp_dump[oct][i] = Math.Log10(Math.Abs(I[i][oct] * v.dy));
                             yn_dump[oct][i] = log10Eps;
                         }
                         else
                         {
-                            yn_dump[oct][i] = Math.Log10(Math.Abs(I[i][oct] * v.y));
+                            yn_dump[oct][i] = Math.Log10(Math.Abs(I[i][oct] * v.dy));
                             yp_dump[oct][i] = log10Eps;
                         }
-                        if (v.z > 0)
+                        if (v.dz > 0)
                         {
-                            zp_dump[oct][i] = Math.Log10(Math.Abs(I[i][oct] * v.z));
+                            zp_dump[oct][i] = Math.Log10(Math.Abs(I[i][oct] * v.dz));
                             zn_dump[oct][i] = log10Eps;
                         }
                         else
                         {
-                            zn_dump[oct][i] = Math.Log10(Math.Abs(I[i][oct] * v.z));
+                            zn_dump[oct][i] = Math.Log10(Math.Abs(I[i][oct] * v.dz));
                             zp_dump[oct][i] = log10Eps;
                         }
                     }
@@ -1698,7 +1701,9 @@ namespace Pachyderm_Acoustic
                         else if (Room.IsTransmissive[x3])
                         {
                             //Semi-transparent veil is in between source and receiver...
-                            D.origin = x4[0];
+                            D.x = x4[0].x;
+                            D.y = x4[0].y;
+                            D.z = x4[0].z;
                             for (int oct = 0; oct < 8; oct++) W_temp[oct] *= Room.TransmissionValue[x3][oct];
                             continue;
                         }

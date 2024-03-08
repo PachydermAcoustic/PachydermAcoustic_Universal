@@ -19,6 +19,7 @@
 using Pachyderm_Acoustic.Pach_Graphics;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Eventing.Reader;
 
 namespace Pachyderm_Acoustic
 {
@@ -169,14 +170,13 @@ namespace Pachyderm_Acoustic
 
             public override void Absorb(ref OctaveRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
             {
-                cos_theta = Hare.Geometry.Hare_math.Dot(Normal, Ray.direction);
-
+                cos_theta = Hare.Geometry.Hare_math.Dot(Normal.dx, Normal.dy, Normal.dz, Ray.dx, Ray.dy, Ray.dz);
                 Ray.Intensity *= (Ref[Ray.Octave]);
             }
 
             public override void Absorb(ref BroadRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
             {
-                cos_theta = Hare.Geometry.Hare_math.Dot(Normal, Ray.direction);
+                cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
 
                 Ray.Energy[0] *= (Ref[0]);
                 Ray.Energy[1] *= (Ref[1]);
@@ -780,7 +780,7 @@ namespace Pachyderm_Acoustic
 
             public override void Absorb(ref BroadRay Ray, Hare.Geometry.Vector Normal)
             {
-                double cos_theta = Hare.Geometry.Hare_math.Dot(Ray.direction, Normal);
+                double cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
                 int index = 18 - (int)Math.Round(Math.Acos(Math.Abs(cos_theta)) / angle_incr);
 
                 for(int oct = 0; oct < 8; oct++) Ray.Energy[oct] *= (1 - Ang_Coef_Oct[oct][index]);
@@ -788,7 +788,7 @@ namespace Pachyderm_Acoustic
 
             public override void Absorb(ref BroadRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
             {
-                cos_theta = Hare.Geometry.Hare_math.Dot(Ray.direction, Normal);
+                cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
                 int index = 18 - (int)Math.Round(Math.Acos(Math.Abs(cos_theta)) / angle_incr);
 
                 for (int oct = 0; oct < 8; oct++) Ray.Energy[oct] *= (1 - Ang_Coef_Oct[oct][index]);
@@ -796,7 +796,7 @@ namespace Pachyderm_Acoustic
 
             public override void Absorb(ref OctaveRay Ray, Hare.Geometry.Vector Normal)
             {
-                double cos_theta = Hare.Geometry.Hare_math.Dot(Ray.direction, Normal);
+                double cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
                 int index = 18 - (int)Math.Round(Math.Acos(Math.Abs(cos_theta)) / angle_incr);
 
                 Ray.Intensity *= (1 - Ang_Coef_Oct[Ray.Octave][index]);
@@ -804,7 +804,7 @@ namespace Pachyderm_Acoustic
 
             public override void Absorb(ref OctaveRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
             {
-                cos_theta = Hare.Geometry.Hare_math.Dot(Ray.direction, Normal);
+                cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
                 int index = 18 - (int)Math.Round(Math.Acos(Math.Abs(cos_theta)) / angle_incr);
 
                 Ray.Intensity *= (1 - Ang_Coef_Oct[Ray.Octave][index]);
@@ -957,8 +957,11 @@ namespace Pachyderm_Acoustic
                     diffx = new Hare.Geometry.Vector(0, 0, 1);
                     proj = Math.Abs(Hare.Geometry.Hare_math.Dot(diffz, diffx));
 
-                    if (0.99 < proj && 1.01 > proj) diffx = new Hare.Geometry.Vector(1, 0, 0);
-                    diffy = Hare.Geometry.Hare_math.Cross(diffz, diffx);
+                    if (0.99 < proj && 1.01 > proj)// diffx = new Hare.Geometry.Vector(1, 0, 0);
+                        diffy = Hare.Geometry.Hare_math.Cross(diffz.dx, diffz.dy, diffz.dz, 1, 0, 0);
+                    else
+                        diffy = Hare.Geometry.Hare_math.Cross(diffz.dx, diffz.dy, diffz.dz, 0, 0, 1);
+
                     diffx = Hare.Geometry.Hare_math.Cross(diffy, diffz);
                     diffx.Normalize();
                     diffy.Normalize();
@@ -983,7 +986,9 @@ namespace Pachyderm_Acoustic
                     vect.Normalize();
 
                     //Return the new direction
-                    R.direction = vect;
+                    R.dx = vect.dx;
+                    R.dy = vect.dy;
+                    R.dz = vect.dz;
 
                     if (Transmission != null && Transmission[oct] > 0)
                     {
@@ -991,42 +996,67 @@ namespace Pachyderm_Acoustic
                         Rays.Enqueue(tr);
 
                         OctaveRay td = R.SplitRay(Transmission[oct]);
-                        td.direction *= -1;
+                        td.Reverse();
                         Rays.Enqueue(td);
                     }
 
                     Rays.Enqueue(R);
                 }
-                Ray.direction -= Normal * Cos_Theta * 2;
+                Ray.dx -= Normal.dx * Cos_Theta * 2;
+                Ray.dy -= Normal.dy * Cos_Theta * 2;
+                Ray.dz -= Normal.dz * Cos_Theta * 2;
             }
 
             public override void Scatter_VeryLate(ref OctaveRay Ray, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false)
             {
                 if (rand.NextDouble() < Scattering_Coefficient[Ray.Octave, 1])
                 {
-                    Hare.Geometry.Vector diffx;
-                    Hare.Geometry.Vector diffy;
-                    Hare.Geometry.Vector diffz;
+                    //Hare.Geometry.Vector diffx;
+                    //Hare.Geometry.Vector diffy;
+                    //Hare.Geometry.Vector diffz;
                     double proj;
                     //Check that the ray and the normal are both on the same side...
                     if (Cos_Theta > 0) Normal *= -1;
-                    diffz = Normal;
-                    diffx = new Hare.Geometry.Vector(0, 0, 1);
-                    proj = Math.Abs(Hare.Geometry.Hare_math.Dot(diffz, diffx));
+                    //diffz = Normal;
+                    double diffz_x = Normal.dx;
+                    double diffz_y = Normal.dy;
+                    double diffz_z = Normal.dz;
+                    //diffx = new Hare.Geometry.Vector(0, 0, 1);
+                    double diffx_x = 0, diffx_y = 0, diffx_z = 0;
+                    proj = Math.Abs(Hare.Geometry.Hare_math.Dot(diffz_x, diffz_y, diffz_z, 0, 0, 1));
 
-                    if (0.99 < proj && 1.01 > proj) diffx = new Hare.Geometry.Vector(1, 0, 0);
-                    diffy = Hare.Geometry.Hare_math.Cross(diffz, diffx);
-                    diffx = Hare.Geometry.Hare_math.Cross(diffy, diffz);
-                    diffx.Normalize();
-                    diffy.Normalize();
-                    diffz.Normalize();
+                    if (0.99 < proj && 1.01 > proj)
+                    { //diffx = new Hare.Geometry.Vector(1, 0, 0);
+                        diffx_x = 1;
+                    }
+                    else
+                    {
+                        diffx_z = 1;
+                    }
+                    //diffy = Hare.Geometry.Hare_math.Cross(diffz, diffx);
+                    double diffy_x = diffz_y * diffx_z - diffz_z * diffx_y;
+                    double diffy_y = -(diffz_x * diffx_z - diffz_z * diffx_x);
+                    double diffy_z = diffz_x * diffx_y - diffz_y * diffx_x;
+
+                    //diffx = Hare.Geometry.Hare_math.Cross(diffy, diffz);
+                    diffx_x = diffy_y * diffz_z - diffy_z * diffz_y;
+                    diffx_y = -(diffy_x * diffz_z - diffy_z * diffz_x);
+                    diffx_z = diffy_x * diffz_y - diffy_y * diffz_x;
+
+                    //diffx.Normalize();
+                    //diffy.Normalize();
+                    //diffz.Normalize();
+                    Hare.Geometry.Hare_math.Normalize(ref diffx_x, ref diffx_y, ref diffx_z);
+                    Hare.Geometry.Hare_math.Normalize(ref diffy_x, ref diffy_y, ref diffy_z);
+                    Hare.Geometry.Hare_math.Normalize(ref diffz_x, ref diffz_y, ref diffz_z);
 
                     double u1;
                     double u2;
                     double x;
                     double y;
                     double z;
-                    Hare.Geometry.Vector vect;
+                    //Hare.Geometry.Vector vect;
+                    double vectx, vecty, vectz;
                     u1 = 2.0 * Math.PI * rand.NextDouble();
                     // random azimuth
                     double Scat_Mod = rand.NextDouble();
@@ -1034,21 +1064,28 @@ namespace Pachyderm_Acoustic
                     // random zenith (elevation)
                     x = Math.Cos(u1) * Math.Sin(u2);
                     y = Math.Sin(u1) * Math.Sin(u2);
-                    z = Scat_Mod; //Math.Cos(u2);
+                    z = Scat_Mod;
 
-                    vect = (diffx * x) + (diffy * y) + (diffz * z);
-                    vect.Normalize();
+                    //vect = (diffx * x) + (diffy * y) + (diffz * z);
+                    vectx = diffx_x * x + diffx_y * x - diffx_z * x;
+                    vecty = diffy_x * y + diffy_y * y - diffy_z * y;
+                    vectz = diffz_x * z + diffz_y * z - diffz_z * z;
+                    Hare.Geometry.Hare_math.Normalize(ref vectx, ref vecty, ref vectz);
 
                     //Return the new direction
-                    Ray.direction = vect;
+                    Ray.dx = vectx;
+                    Ray.dy = vecty;
+                    Ray.dz = vectz;
                 }
                 else
                 {
                     //Specular Reflection
-                    Ray.direction -= Normal * Cos_Theta * 2;
+                    Ray.dx -= Normal.dx * Cos_Theta * 2;
+                    Ray.dy -= Normal.dy * Cos_Theta * 2;
+                    Ray.dz -= Normal.dz * Cos_Theta * 2;
                 }
 
-                if (Transmit) Ray.direction *= -1;
+                if (Transmit) { Ray.Reverse(); }
             }
 
             public override void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false)
@@ -1072,8 +1109,10 @@ namespace Pachyderm_Acoustic
                 if (scat_sel > percent + 0.5)
                 {
                     // Specular Reflection
-                    Ray.direction -= Normal * Cos_Theta * 2;
-                    if (Transmit) Ray.direction *= -1;
+                    Ray.dx -= Normal.dx * Cos_Theta * 2;
+                    Ray.dy -= Normal.dy * Cos_Theta * 2;
+                    Ray.dz -= Normal.dz * Cos_Theta * 2;
+                    if (Transmit) Ray.Reverse();
                     return;
                 }
                 else if (scat_sel >= 0.5 - percent)
@@ -1084,36 +1123,61 @@ namespace Pachyderm_Acoustic
                     //Create a new ray...
                     OctaveRay tr = Ray.SplitRay(1 - Scattering_Coefficient[Ray.Octave, 1]);
                     // this is the specular reflection. Save it for later.
-                    tr.direction -= Normal * Cos_Theta * 2;
-                    if (Transmit) tr.direction *= -1;
+                    tr.dx -= Normal.dx * Cos_Theta * 2;
+                    tr.dy -= Normal.dy * Cos_Theta * 2;
+                    tr.dz -= Normal.dz * Cos_Theta * 2;
+                    if (Transmit) tr.Reverse();
 
                     Rays.Enqueue(tr);
                 }
 
-                //If we are here, the original ray needs a scattered direction:
-                Hare.Geometry.Vector diffx;
-                Hare.Geometry.Vector diffy;
-                Hare.Geometry.Vector diffz;
+                //If we are here, the Original ray needs a scattered direction:
+                //Hare.Geometry.Vector diffx;
+                //Hare.Geometry.Vector diffy;
+                //Hare.Geometry.Vector diffz;
                 double proj;
                 //Check that the ray and the normal are both on the same side...
                 if (Cos_Theta > 0) Normal *= -1;
-                diffz = Normal;
-                diffx = new Hare.Geometry.Vector(0, 0, 1);
-                proj = Math.Abs(Hare.Geometry.Hare_math.Dot(diffz, diffx));
+                //diffz = Normal;
+                double diffz_x = Normal.dx;
+                double diffz_y = Normal.dy;
+                double diffz_z = Normal.dz;
+                //diffx = new Hare.Geometry.Vector(0, 0, 1);
+                double diffx_x= 0, diffx_y = 0, diffx_z = 0;
+                proj = Math.Abs(Hare.Geometry.Hare_math.Dot(diffz_x, diffz_y, diffz_z, 0, 0, 1));
 
-                if (0.99 < proj && 1.01 > proj) diffx = new Hare.Geometry.Vector(1, 0, 0);
-                diffy = Hare.Geometry.Hare_math.Cross(diffz, diffx);
-                diffx = Hare.Geometry.Hare_math.Cross(diffy, diffz);
-                diffx.Normalize();
-                diffy.Normalize();
-                diffz.Normalize();
+                if (0.99 < proj && 1.01 > proj) 
+                { //diffx = new Hare.Geometry.Vector(1, 0, 0);
+                    diffx_x = 1;
+                }
+                else
+                {
+                    diffx_z = 1;
+                }
+                //diffy = Hare.Geometry.Hare_math.Cross(diffz, diffx);
+                double diffy_x = diffz_y * diffx_z - diffz_z * diffx_y;
+                double diffy_y = -(diffz_x * diffx_z - diffz_z * diffx_x);
+                double diffy_z = diffz_x * diffx_y - diffz_y * diffx_x;
+
+                //diffx = Hare.Geometry.Hare_math.Cross(diffy, diffz);
+                diffx_x = diffy_y * diffz_z - diffy_z * diffz_y;
+                diffx_y = -(diffy_x * diffz_z - diffy_z * diffz_x);
+                diffx_z = diffy_x * diffz_y - diffy_y * diffz_x;
+
+                //diffx.Normalize();
+                //diffy.Normalize();
+                //diffz.Normalize();
+                Hare.Geometry.Hare_math.Normalize(ref diffx_x, ref diffx_y, ref diffx_z);
+                Hare.Geometry.Hare_math.Normalize(ref diffy_x, ref diffy_y, ref diffy_z);
+                Hare.Geometry.Hare_math.Normalize(ref diffz_x, ref diffz_y, ref diffz_z);
 
                 double u1;
                 double u2;
                 double x;
                 double y;
                 double z;
-                Hare.Geometry.Vector vect;
+                //Hare.Geometry.Vector vect;
+                double vectx, vecty, vectz;
                 u1 = 2.0 * Math.PI * rand.NextDouble();
                 // random azimuth
                 double Scat_Mod = rand.NextDouble();
@@ -1121,14 +1185,19 @@ namespace Pachyderm_Acoustic
                 // random zenith (elevation)
                 x = Math.Cos(u1) * Math.Sin(u2);
                 y = Math.Sin(u1) * Math.Sin(u2);
-                z = Math.Cos(u2);
+                z = Scat_Mod;//Math.Cos(u2);
 
-                vect = (diffx * x) + (diffy * y) + (diffz * z);
-                vect.Normalize();
+                //vect = (diffx * x) + (diffy * y) + (diffz * z);
+                vectx = diffx_x * x + diffx_y * x - diffx_z * x;
+                vecty = diffy_x * y + diffy_y * y - diffy_z * y;
+                vectz = diffz_x * z + diffz_y * z - diffz_z * z;
+                Hare.Geometry.Hare_math.Normalize(ref vectx, ref vecty, ref vectz);
 
                 //Return the new direction
-                Ray.direction = vect;
-                if (Transmit) Ray.direction *= -1;
+                Ray.dx = vectx;
+                Ray.dy = vecty;
+                Ray.dz = vectz;
+                if (Transmit) Ray.Reverse();
             }
         }
 
@@ -1210,21 +1279,25 @@ namespace Pachyderm_Acoustic
                     vect.Normalize();
 
                     //Return the new direction
-                    R.direction = vect;
-                    
+                    R.dx = vect.dx;
+                    R.dy = vect.dy;
+                    R.dz = vect.dz;
+
                     if (Transmission != null && Transmission[oct] > 0)
                     {
                         OctaveRay tr = Ray.SplitRay(oct, Transmission[oct]);
                         Rays.Enqueue(tr);
 
                         OctaveRay td = R.SplitRay(Transmission[oct]);
-                        td.direction *= -1;
+                        td.Reverse();
                         Rays.Enqueue(td);
                     }
 
                     Rays.Enqueue(R);
                 }
-                Ray.direction -= Normal * Cos_Theta * 2;
+                Ray.dx -= Normal.dx * Cos_Theta * 2;
+                Ray.dy -= Normal.dy * Cos_Theta * 2;
+                Ray.dz -= Normal.dz * Cos_Theta * 2;
             }
 
             public override void Scatter_VeryLate(ref OctaveRay Ray, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false)
@@ -1267,15 +1340,19 @@ namespace Pachyderm_Acoustic
                     vect.Normalize();
 
                     //Return the new direction
-                    Ray.direction = vect;
+                    Ray.dx = vect.dx;
+                    Ray.dy = vect.dy;
+                    Ray.dz = vect.dz;
                 }
                 else
                 {
                     //Specular Reflection
-                    Ray.direction -= Normal * Cos_Theta * 2;
+                    Ray.dx -= Normal.dx * Cos_Theta * 2;
+                    Ray.dy -= Normal.dy * Cos_Theta * 2;
+                    Ray.dz -= Normal.dz * Cos_Theta * 2;
                 }
 
-                if (Transmit) Ray.direction *= -1;
+                if (Transmit) Ray.Reverse();
             }
 
             public override void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false)
@@ -1284,8 +1361,10 @@ namespace Pachyderm_Acoustic
                 if (scat_sel > Scattering_Coefficient[Ray.Octave, 2])
                 {
                     // Specular Reflection
-                    Ray.direction -= Normal * Cos_Theta * 2;
-                    if (Transmit) Ray.direction *= -1;
+                    Ray.dx -= Normal.dx * Cos_Theta * 2;
+                    Ray.dy -= Normal.dy * Cos_Theta * 2;
+                    Ray.dz -= Normal.dz * Cos_Theta * 2;
+                    if (Transmit) Ray.Reverse();
                     return;
                 }
                 else if (scat_sel > Scattering_Coefficient[Ray.Octave, 0])
@@ -1296,13 +1375,15 @@ namespace Pachyderm_Acoustic
                     //Create a new ray...
                     OctaveRay tr = Ray.SplitRay(1 - Scattering_Coefficient[Ray.Octave,1]);
                     // this is the specular reflection. Save it for later.
-                    tr.direction -= Normal * Cos_Theta * 2;
-                    if (Transmit) tr.direction *= -1;
+                    tr.dx -= Normal.dx * Cos_Theta * 2;
+                    tr.dy -= Normal.dy * Cos_Theta * 2;
+                    tr.dz -= Normal.dz * Cos_Theta * 2;
+                    if (Transmit) tr.Reverse();
 
                     Rays.Enqueue(tr);
                 }
 
-                //If we are here, the original ray needs a scattered direction:
+                //If we are here, the Original ray needs a scattered direction:
                 Hare.Geometry.Vector diffx;
                 Hare.Geometry.Vector diffy;
                 Hare.Geometry.Vector diffz;
@@ -1339,8 +1420,10 @@ namespace Pachyderm_Acoustic
                 vect.Normalize();
 
                 //Return the new direction
-                Ray.direction = vect;
-                if (Transmit) Ray.direction *= -1;
+                Ray.dx = vect.dx;
+                Ray.dy = vect.dy;
+                Ray.dz = vect.dz;
+                if (Transmit) Ray.Reverse();
             }
         }
     }

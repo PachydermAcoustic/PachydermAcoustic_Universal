@@ -195,7 +195,8 @@ namespace Pachyderm_Acoustic
                     double Phi = random.NextDouble() * 2 * System.Math.PI;
                     Vector Direction = new Hare.Geometry.Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
 
-                    return new BroadRay(P, Direction, random.Next(), thread, DomainPower, 0, S_ID);
+                    //return new BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, DomainPower, 0, S_ID);
+                    return BroadRayPool.Instance.new_BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, DomainPower, 0, S_ID);
                 }
 
                 public override double[] DirPower(Vector Direction, ref Hare.Geometry.Point[] samples, int i, ref double[] DomainPower)
@@ -294,7 +295,7 @@ namespace Pachyderm_Acoustic
                     double[] power = new double[8];
                     for (int oct = 0; oct < 8; oct++) power[oct] = DomainPower[oct] * reciprocal_velocity * dLinf * F_r;
 
-                    return new BroadRay(P, Direction, random.Next(), thread, DomainPower, 0, S_ID);
+                    return BroadRayPool.Instance.new_BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, DomainPower, 0, S_ID);
                 }
             }
         }

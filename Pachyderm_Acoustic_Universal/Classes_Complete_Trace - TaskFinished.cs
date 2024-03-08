@@ -108,7 +108,7 @@
 //                List<Point> spt = new List<Point>();
 //                if (!(Source is LineSource) && !(Source is SurfaceSource))
 //                {
-//                    spt.Add(Source.Origin());
+//                    spt.Add(Source.Origin);
 //                }
 //                else if (Source is LineSource)
 //                {
@@ -173,7 +173,7 @@
 //            Hare.Geometry.Vector d = RecMain.Origin(rec_id) - p;
 //            dist = d.Length();
 //            d.Normalize();
-//            Ray R = new Ray(Source.H_Origin(), d, 0, rnd);
+//            Ray R = new Ray(Source.Origin, d, 0, rnd);
 //            double x1 = 0, x2 = 0;
 //            double t;
 //            int x3 = 0;
@@ -406,7 +406,7 @@
 //                {
 //                    //Ray is lost... move on...
 //                    if (order > IS_Order)
-//                        RecMain.CheckBroadbandRay(R, R.origin + R.direction * 1000000);
+//                        RecMain.CheckBroadbandRay(R, new Point(R.x + R.dx * 1000000, R.y + R.dx * 100000, R.z + R.dx * 100000));
 //                    for (int j = 0; j < 8; j++) _lost[ThreadID] += R.Energy[j];
 //                    goto Do_Scattered;
 //                }
@@ -425,7 +425,7 @@
 //                R.Energy[6] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[6] * leg[0]);
 //                R.Energy[7] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[7] * leg[0]);
 //                R.AddLeg(leg[0] / Room.Sound_speed(code[0]));
-//                R.origin = Start[0];
+//                R.x = Start[0].x; R.y = Start[0].y; R.z = Start[0].z;
 
 //                order++;
 
@@ -471,7 +471,7 @@
 //                        OR.Ray_ID = Rnd.Next();
 //                        if (!Room.shoot(OR, out u, out v, out OR.Surf_ID, out Start, out leg, out code))
 //                        {
-//                            RecMain.CheckRay(OR, OR.origin + OR.direction * 1000000);
+//                            RecMain.CheckRay(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy*1000000, OR.z + OR.dz*1000000));
 //                            _lost[ThreadID] += OR.Intensity;
 //                            goto Do_Scattered;
 //                        }
@@ -480,7 +480,7 @@
 
 //                        OR.Intensity *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[OR.Octave] * leg[0]);
 //                        OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
-//                        OR.origin = Start[0];
+//                        OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
 
 //                        ///Standard Energy Conservation Routine-
 //                        // 1. Multiply by Reflection energy. (1 - Absorption)
@@ -535,7 +535,7 @@
 
 //                if (!Room.shoot(OR, out u, out v, out OR.Surf_ID, out Start, out leg, out code))
 //                {
-//                    RecMain.CheckRay(OR, OR.origin + OR.direction * 1000000);
+//                    RecMain.CheckRay(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000));
 //                    _lost[OR.ThreadID] += OR.Intensity;
 //                    break;
 //                }
@@ -543,7 +543,7 @@
 //                RecMain.CheckRay(OR, Start[0]);
 //                OR.Intensity *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[OR.Octave] * leg[0]);
 //                OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
-//                OR.origin = Start[0];
+//                OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
 
 //                ///Standard Energy Conservation Routine-
 //                // 1. Multiply by Reflection energy. (1 - Absorption)
@@ -599,7 +599,7 @@
 //                {
 //                    //Ray is lost... move on...
 //                    if (order > IS_Order)
-//                        RecMain.CheckBroadbandRay(R, R.origin + R.direction * 1000000);
+//                        RecMain.CheckBroadbandRay(R, new Point(R.x + R.dx * 1000000, R.y + R.dy * 1000000, R.z + R.dz * 1000000));
 //                    for (int j = 0; j < 8; j++) _lost[ThreadID] += R.Energy[j];
 //                    goto Do_Scattered;
 //                }
@@ -618,7 +618,7 @@
 //                R.Energy[6] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[6] * leg[0]);
 //                R.Energy[7] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[7] * leg[0]);
 //                R.AddLeg(leg[0] / Room.Sound_speed(code[0]));
-//                R.origin = Start[0];
+//                R.x = Start[0].x; R.y = Start[0].y; R.z = Start[0].z;
 
 //                order++;
 
@@ -659,7 +659,7 @@
 //                        OR.Ray_ID = Rnd.Next();
 //                        if (!Room.shoot(OR, out u, out v, out OR.Surf_ID, out Start, out leg, out code))
 //                        {
-//                            RecMain.CheckRay(OR, OR.origin + OR.direction * 1000000);
+//                            RecMain.CheckRay(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000));
 //                            _lost[ThreadID] += OR.Intensity;
 //                            goto Do_Scattered;
 //                        }
@@ -668,7 +668,7 @@
 
 //                        OR.Intensity *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[OR.Octave] * leg[0]);
 //                        OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
-//                        OR.origin = Start[0];
+//                        OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
 
 //                        ///Standard Energy Conservation Routine-
 //                        // 1. Multiply by Reflection energy. (1 - Absorption)
@@ -699,7 +699,7 @@
 
 //                        if (!Room.shoot(OR, out u, out v, out OR.Surf_ID, out Start, out leg, out code))
 //                        {
-//                            RecMain.CheckRay(OR, OR.origin + OR.direction * 1000000);
+//                            RecMain.CheckRay(OR, new Point( OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000));
 //                            _lost[OR.ThreadID] += OR.Intensity;
 //                            goto Do_Scattered;
 //                        }
@@ -708,7 +708,7 @@
 //                        //OctChecks.Enqueue(new object[] { OR.Clone(), new Hare.Geometry.Point(Start[0].x, Start[0].y, Start[0].z) });
 //                        OR.Intensity *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[OR.Octave] * leg[0]);
 //                        OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
-//                        OR.origin = Start[0];
+//                        OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
 
 //                        ///Standard Energy Conservation Routine-
 //                        // 1. Multiply by Reflection energy. (1 - Absorption)
@@ -954,7 +954,7 @@
 //            public Minimum_Convergence_Check(Source S, Scene Sc, Receiver_Bank R, int id, int _oct, int check_id, I_Conv_Progress Vis_Feedback)
 //                : base(R, id, _oct, check_id, Vis_Feedback)
 //            {
-//                SampleStart = (int)Math.Floor((S.H_Origin() - R.Origin(id)).Length() / Sc.Sound_speed(R.Origin(id)) * R.SampleRate);
+//                SampleStart = (int)Math.Floor((S.Origin - R.Origin(id)).Length() / Sc.Sound_speed(R.Origin(id)) * R.SampleRate);
 //                Sample50 = (int)Math.Floor(50.0 * R.SampleRate / 1000) + SampleStart;
 //                Sample80 = (int)Math.Floor(80.0 * R.SampleRate / 1000) + SampleStart;
 //                SampleInf = R.SampleCT;

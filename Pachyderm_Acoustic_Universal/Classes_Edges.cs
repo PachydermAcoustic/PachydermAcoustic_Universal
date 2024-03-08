@@ -134,15 +134,19 @@ namespace Pachyderm_Acoustic
                 zs = Hare_math.Dot(S_D, Z_Norm);//S_Coord.z;
                 zr = Hare_math.Dot(R_D, Z_Norm);//R_Coord.z;
 
-                Hare.Geometry.Point S_p = S - (Z_mid + zs * Z_Norm);
-                Hare.Geometry.Point R_p = R - (Z_mid + zr * Z_Norm);
+                double S_px = S.x - (Z_mid.x + zs * Z_Norm.dx);
+                double S_py = S.y - (Z_mid.y + zs * Z_Norm.dy);
+                double S_pz = S.z - (Z_mid.z + zs * Z_Norm.dz);
+                double R_px = R.x - (Z_mid.x + zr * Z_Norm.dx);
+                double R_py = R.y - (Z_mid.y + zr * Z_Norm.dy);
+                double R_pz = R.z - (Z_mid.z + zr * Z_Norm.dz);
 
-                rs = Math.Sqrt(S_p.x * S_p.x + S_p.y * S_p.y + S_p.z * S_p.z);//Math.Sqrt(S_Coord.x * S_Coord.x + S_Coord.y * S_Coord.y + S_Coord.z * S_Coord.z);
-                rr = Math.Sqrt(R_p.x * R_p.x + R_p.y * R_p.y + R_p.z * R_p.z);//Math.Sqrt(R_Coord.x * R_Coord.x + R_Coord.y * R_Coord.y + R_Coord.z * R_Coord.z);
+                rs = Math.Sqrt(S_px * S_px + S_py * S_py + S_pz * S_pz);//Math.Sqrt(S_Coord.x * S_Coord.x + S_Coord.y * S_Coord.y + S_Coord.z * S_Coord.z);
+                rr = Math.Sqrt(R_px * R_px + R_py * R_py + R_pz * R_pz);//Math.Sqrt(R_Coord.x * R_Coord.x + R_Coord.y * R_Coord.y + R_Coord.z * R_Coord.z);
 
-                Hare.Geometry.Vector S_Norm = new Vector(S_p.x, S_p.y, S_p.z);
+                Hare.Geometry.Vector S_Norm = new Vector(S_px, S_py, S_pz);
                 S_Norm.Normalize();
-                Hare.Geometry.Vector R_Norm = new Vector(R_p.x, R_p.y, R_p.z);
+                Hare.Geometry.Vector R_Norm = new Vector(R_px, R_py, R_pz);
                 R_Norm.Normalize();
 
                 uint SDIR = 0;
@@ -574,7 +578,7 @@ namespace Pachyderm_Acoustic
             for (int i = 0; i < Sources.Count; i++)
             {
                 Vector T_Comp = Hare.Geometry.Hare_math.Cross(Sources[i].Z_mid - src, Sources[i].Z_mid - rec);
-                if ((Sources[i].Z_Norm.x * T_Comp.x + Sources[i].Z_Norm.y * T_Comp.y + Sources[i].Z_Norm.z * T_Comp.z) > .95) Apex.Add(i);
+                if ((Sources[i].Z_Norm.dx * T_Comp.dx + Sources[i].Z_Norm.dy * T_Comp.dy + Sources[i].Z_Norm.dz * T_Comp.dz) > .95) Apex.Add(i);
             }
             return Apex;
         }

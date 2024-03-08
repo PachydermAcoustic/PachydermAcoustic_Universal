@@ -22,6 +22,8 @@ using Hare.Geometry;
 using System.Linq;
 using MathNet.Numerics;
 using Pachyderm_Acoustic.Pach_Graphics;
+using Pachyderm_Acoustic.Utilities;
+using System.CodeDom;
 
 namespace Pachyderm_Acoustic
 {
@@ -76,8 +78,8 @@ namespace Pachyderm_Acoustic
 
                 for (int i = 0; i < arrPts.Length; i++)
                 {
-                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT.H_Origin(), Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
-                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT.H_Origin(), RayCount, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT.Origin, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT.Origin, RayCount, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
 
                     if (arrPts[i].x > Max.x) Max.x = arrPts[i].x;
                     if (arrPts[i].y > Max.y) Max.y = arrPts[i].y;
@@ -123,7 +125,7 @@ namespace Pachyderm_Acoustic
             /// <summary>
             /// Receiver bank constructor.
             /// </summary>
-            /// <param name="Pt">array of receiver origin points</param>
+            /// <param name="Pt">array of receiver Origin points</param>
             /// <param name="SrcPT">sound source point</param>
             /// <param name="Room">the acoustical scene</param>
             /// <param name="RCT">the number or rays emanating from the source</param>
@@ -146,8 +148,8 @@ namespace Pachyderm_Acoustic
 
                 for (int i = 0; i < arrPts.Length; i++)
                 {
-                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT.H_Origin(), Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
-                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT.H_Origin(), RayCount, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT.Origin, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT.Origin, RayCount, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
 
                     if (arrPts[i].x > Max.x) Max.x = arrPts[i].x;
                     if (arrPts[i].y > Max.y) Max.y = arrPts[i].y;
@@ -476,29 +478,29 @@ namespace Pachyderm_Acoustic
 
             public virtual Vector Directions_Pos(int Octave, int t, int Rec_Index, double alt, double azi, bool degrees)
             {
-                Vector V = new Vector(Rec_List[Rec_Index].Directions_Pos(Octave, t).x, Rec_List[Rec_Index].Directions_Pos(Octave, t).y, Rec_List[Rec_Index].Directions_Pos(Octave, t).z);
+                Vector V = new Vector(Rec_List[Rec_Index].Directions_Pos(Octave, t).dx, Rec_List[Rec_Index].Directions_Pos(Octave, t).dy, Rec_List[Rec_Index].Directions_Pos(Octave, t).dz);
                 return Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V, azi, 0, degrees), 0, alt, degrees);
             }
 
             public virtual Vector Directions_Neg(int Octave, int t, int Rec_Index, double alt, double azi, bool degrees)
             {
-                Vector V = new Vector(Rec_List[Rec_Index].Directions_Neg(Octave, t).x, Rec_List[Rec_Index].Directions_Neg(Octave, t).y, Rec_List[Rec_Index].Directions_Neg(Octave, t).z);
+                Vector V = new Vector(Rec_List[Rec_Index].Directions_Neg(Octave, t).dx, Rec_List[Rec_Index].Directions_Neg(Octave, t).dy, Rec_List[Rec_Index].Directions_Neg(Octave, t).dz);
                 return Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V, azi, 0, degrees), 0, alt, degrees);
             }
 
             public virtual Vector Directions_Pos(int Octave, int t, int Rec_Index, Vector V)
             {
-                double l = Math.Sqrt(V.z * V.z + V.x * V.x);
-                double azi = Math.Asin(V.y / l);
-                double alt = Math.Atan2(V.x, V.z);
+                double l = Math.Sqrt(V.dz * V.dz + V.dx * V.dx);
+                double azi = Math.Asin(V.dy / l);
+                double alt = Math.Atan2(V.dx, V.dz);
                 return Directions_Pos(Octave, t, Rec_Index, alt, azi, false);
             }
 
             public virtual Vector Directions_Neg(int Octave, int t, int Rec_Index, Vector V)
             {
-                double l = Math.Sqrt(V.z * V.z + V.x * V.x);
-                double azi = Math.Asin(V.y / l);
-                double alt = Math.Atan2(V.x, V.z);
+                double l = Math.Sqrt(V.dz * V.dz + V.dx * V.dx);
+                double azi = Math.Asin(V.dy / l);
+                double alt = Math.Atan2(V.dx, V.dz);
                 return Directions_Neg(Octave, t, Rec_Index, alt, azi, false);
             }
 
@@ -522,10 +524,10 @@ namespace Pachyderm_Acoustic
             }
 
             /// <summary>
-            /// Gets the origin of a receiver in the bank
+            /// Gets the Origin of a receiver in the bank
             /// </summary>
             /// <param name="ID">the index or 'ID' of a receiver in the bank</param>
-            /// <returns>the origin point in Hare format</returns>
+            /// <returns>the Origin point in Hare format</returns>
             public Hare.Geometry.Point Origin(int ID)
             {
                 return Rec_List[ID].Origin;
@@ -750,9 +752,11 @@ namespace Pachyderm_Acoustic
             /// <param name="EndPt">The point at which the ray intersects the model after potential receiver intersection.</param>
             public virtual void CheckBroadbandRay(BroadRay R, Hare.Geometry.Point EndPt)
             {
-                Vector m = R.origin - Origin;
-                double b = Hare_math.Dot(m, R.direction);
-                double c = Hare_math.Dot(m, m)  - Radius2;
+                double mx = R.x - Origin.x;
+                double my = R.y - Origin.y;
+                double mz = R.z - Origin.z;
+                double b = Hare_math.Dot(mx, my, mz, R.dx, R.dy, R.dz);
+                double c = Hare_math.Dot(mx, my, mz, mx, my, mz)  - Radius2;
                 if (c > 0 && b > 0) return;
                 double discr = b * b - c;
                 if (discr < 0) return;
@@ -760,14 +764,12 @@ namespace Pachyderm_Acoustic
                 double t2 = -b + Math.Sqrt(discr);
                 double tsphere = (t2 - t1) * 0.5;
                 double t = (t1 + t2) * .5;
-                if (t > 0 && t * t < SqDistance(EndPt, R.origin))
+                if (t > 0 && t * t < SqDistance(EndPt.x,EndPt.y, EndPt.z, R.x, R.y, R.z))
                 {
                     double RayTime = t * Inv_C_Sound + R.t_sum;
-                    Vector Dir = R.direction * -1;
-                    Dir.Normalize();
                     foreach(int oct in R.Freq_Bands)
                     {
-                        Recs.Add(RayTime, R.Energy[oct] * Math.Pow(10, -.1 * Atten[oct] * t) * SizeMod * tsphere, Dir, Rho_C, oct);
+                        Recs.Add(RayTime, R.Energy[oct] * Math.Pow(10, -.1 * Atten[oct] * t) * SizeMod * tsphere, -R.dx, -R.dy, -R.dz, Rho_C, oct);
                     }
                 }
             }
@@ -780,9 +782,11 @@ namespace Pachyderm_Acoustic
             /// <param name="EndPt">The point at which the ray intersects the model after potential receiver intersection.</param>
             public virtual void CheckRay(OctaveRay R, Hare.Geometry.Point EndPt)
             {
-                Vector m = R.origin - Origin;
-                double b = Hare_math.Dot(m, R.direction);
-                double c = Hare_math.Dot(m, m) - Radius2;
+                double mx = R.x - Origin.x;
+                double my = R.y - Origin.y;
+                double mz = R.y - Origin.z;
+                double b = Hare_math.Dot(mx, my, mz, R.dx, R.dy, R.dz);
+                double c = Hare_math.Dot(mx, my, mz, mx, my, mz) - Radius2;
                 if (c > 0 && b > 0) return;
                 double discr = b * b - c;
                 if (discr < 0) return;
@@ -790,12 +794,10 @@ namespace Pachyderm_Acoustic
                 double t2 = -b + Math.Sqrt(discr);
                 double tsphere = (t2 - t1) * 0.5;
                 double t = (t1 + t2) *.5;
-                if (t > 0 && t * t < SqDistance(EndPt, R.origin))
+                if (t > 0 && t * t < SqDistance(EndPt.x, EndPt.y, EndPt.z, Origin.x, Origin.y, Origin.z))
                 {
-                    Vector Dir = R.direction * -1;
-                    Dir.Normalize();
                     double Raydist = t*Inv_C_Sound + R.t_sum;
-                    Recs.Add(Raydist, R.Intensity * Math.Pow(10,-.1 * Atten[R.Octave] * t) * SizeMod * tsphere, Dir, Rho_C, R.Octave);
+                    Recs.Add(Raydist, R.Intensity * Math.Pow(10,-.1 * Atten[R.Octave] * t) * SizeMod * tsphere, -R.dx, -R.dy, -R.dz, Rho_C, R.Octave);
                 }
             }
 
@@ -808,16 +810,16 @@ namespace Pachyderm_Acoustic
             /// <returns>true if intersects, false if not.</returns>
             public virtual bool SimpleCheck(BroadRay R, Hare.Geometry.Point EndPt)
             {
-                Vector m = R.origin - Origin;
-                double b = Hare_math.Dot(m, R.direction);
-                double c = Hare_math.Dot(m, m) - Radius2;
+                double mx = R.x - Origin.x, my = R.y - Origin.y, mz = R.z - Origin.z;
+                double b = Hare_math.Dot(mx,my, mz, R.dx, R.dy, R.dz);
+                double c = Hare_math.Dot(mx, my, mz, mx, my, mz) - Radius2;
                 if (c > 0 && b > 0) return false;
                 double discr = b * b - c;
                 if (discr < 0) return false;
                 double t1 = -b - Math.Sqrt(discr);
                 double t2 = -b + Math.Sqrt(discr);
                 double t = (t1 + t2) * .5;
-                if (t > 0 && t * t < SqDistance(EndPt, R.origin)) return true;
+                if (t > 0 && t * t < SqDistance(EndPt.x, EndPt.y, EndPt.z, R.x, R.y, R.z)) return true;
                 return false;
             }
 
@@ -829,9 +831,16 @@ namespace Pachyderm_Acoustic
             /// <returns>the square of the distance</returns>
             protected double SqDistance(Hare.Geometry.Point StartPt, Hare.Geometry.Point EndPt)
             {
-                Hare.Geometry.Point DistPt = EndPt - StartPt;
-                return DistPt.x * DistPt.x + DistPt.y * DistPt.y + DistPt.z * DistPt.z;
+                double dx = EndPt.x - StartPt.x, dy = EndPt.y - StartPt.y, dz = EndPt.z - StartPt.z;
+                return dx * dx + dy * dy + dz * dz;
             }
+
+            protected double SqDistance(double x1, double y1, double z1, double x2, double y2, double z2)
+            {
+                double dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
+                return dx * dx + dy * dy + dz * dz;
+            }
+
 
             /// <summary>
             /// returns the energy response of the simulation.
@@ -932,7 +941,7 @@ namespace Pachyderm_Acoustic
             /// <param name="Octave">the octave band index</param>
             public void Add(double Distance, double Energy_in, Vector direction, int Octave)
             {
-                Recs.Add(Distance, Energy_in, direction, Rho_C, Octave);
+                Recs.Add(Distance, Energy_in, direction.dx, direction.dy, direction.dz, Rho_C, Octave);
             }
 
             /// <summary>
@@ -944,7 +953,7 @@ namespace Pachyderm_Acoustic
             /// <param name="Octave"></param>
             public void Add(int Sample, double Energy_in, Vector direction, int Octave)
             {
-                Recs.Add(Sample, Energy_in, direction, Rho_C, Octave);
+                Recs.Add(Sample, Energy_in, direction.dx, direction.dy, direction.dz, Rho_C, Octave);
             }
 
             public void Combine_Sample(int sample, double Energy_in, double Pressure_in, Vector direction_pos, Vector direction_neg, int Octave)// float p_real, float p_imag,
@@ -1054,13 +1063,13 @@ namespace Pachyderm_Acoustic
                 /// <param name="Energy_in">the energy to be recorded</param>
                 /// <param name="direction">the incoming direction of the ray</param>
                 /// <param name="Octave">the index of the octave band.</param>
-                public virtual void Add(double time, double Energy_in, Vector direction, double Rho_C, int Octave)
+                public virtual void Add(double time, double Energy_in, double dx, double dy, double dz, double Rho_C, int Octave)
                 {
                     int sample = (int)(time * SampleRate);
                     if (sample >= Energy[Octave].Length) return;
                     if (sample < 0) return;
                     Energy[Octave][sample] += Energy_in;
-                    Pressure[Octave][sample] += Math.Sqrt(Energy_in);// AcousticalMath.Pressure_Intensity(Energy_in, Rho_C);
+                    Pressure[Octave][sample] += Math.Sqrt(Energy_in);
                 }
 
                 public virtual void Combine_Sample(int Sample, double Energy_in, double Pressure_in, Vector direction_pos, Vector direction_neg, int Octave)
@@ -1283,7 +1292,7 @@ namespace Pachyderm_Acoustic
                 /// <param name="Energy_in">the energy to be recorded</param>
                 /// <param name="direction">the incoming direction of the ray</param>
                 /// <param name="Octave">the index of the octave band.</param>
-                public override void Add(double time, double Energy_in, Vector direction, double Rho_C, int Octave)
+                public override void Add(double time, double Energy_in, double dx, double dy, double dz, double Rho_C, int Octave)
                 {
                     Energy[Octave][0] += Energy_in;
                 }
@@ -1371,12 +1380,12 @@ namespace Pachyderm_Acoustic
                     if (Sample < 0) Sample = 0;
                     Energy[Octave][Sample] += Energy_in;
                     Pressure[Octave][Sample] += Pressure_in;
-                    Dir_Rec_Pos[0][Octave][Sample] += (direction_pos.x) / 3.0;
-                    Dir_Rec_Pos[1][Octave][Sample] += (direction_pos.y) / 3.0;
-                    Dir_Rec_Pos[2][Octave][Sample] += (direction_pos.z) / 3.0;
-                    Dir_Rec_Neg[0][Octave][Sample] += (direction_neg.x) / 3.0;
-                    Dir_Rec_Neg[1][Octave][Sample] += (direction_neg.y) / 3.0;
-                    Dir_Rec_Neg[2][Octave][Sample] += (direction_neg.z) / 3.0;
+                    Dir_Rec_Pos[0][Octave][Sample] += (direction_pos.dx) / 3.0;
+                    Dir_Rec_Pos[1][Octave][Sample] += (direction_pos.dy) / 3.0;
+                    Dir_Rec_Pos[2][Octave][Sample] += (direction_pos.dz) / 3.0;
+                    Dir_Rec_Neg[0][Octave][Sample] += (direction_neg.dx) / 3.0;
+                    Dir_Rec_Neg[1][Octave][Sample] += (direction_neg.dy) / 3.0;
+                    Dir_Rec_Neg[2][Octave][Sample] += (direction_neg.dz) / 3.0;
                 }
 
                 public override void Scale(int ray_ct)
@@ -1418,18 +1427,18 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                public override void Add(double time, double Energy_in, Vector direction, double Rho_C, int Octave)
+                public override void Add(double time, double Energy_in, double dx, double dy, double dz, double Rho_C, int Octave)
                 {
                     int sample = (int)(time * SampleRate);
                     if (sample >= Energy[Octave].Length) return;
                     Energy[Octave][sample] += Energy_in;
                     Pressure[Octave][sample] += Math.Sqrt(Energy_in * Rho_C);
-                    if (direction.x > 0) Dir_Rec_Pos[0][Octave][sample] += (float)(direction.x * Energy_in);
-                    else Dir_Rec_Neg[0][Octave][sample] += (float)(direction.x * Energy_in);
-                    if (direction.y > 0) Dir_Rec_Pos[1][Octave][sample] += (float)(direction.y * Energy_in);
-                    else Dir_Rec_Neg[1][Octave][sample] += (float)(direction.y * Energy_in);
-                    if (direction.z > 0) Dir_Rec_Pos[2][Octave][sample] += (float)(direction.z * Energy_in);
-                    else Dir_Rec_Pos[2][Octave][sample] += (float)(direction.z * Energy_in);
+                    if (dx > 0) Dir_Rec_Pos[0][Octave][sample] += (float)(dx * Energy_in);
+                    else Dir_Rec_Neg[0][Octave][sample] += (float)(dx * Energy_in);
+                    if (dy > 0) Dir_Rec_Pos[1][Octave][sample] += (float)(dy * Energy_in);
+                    else Dir_Rec_Neg[1][Octave][sample] += (float)(dy * Energy_in);
+                    if (dz > 0) Dir_Rec_Pos[2][Octave][sample] += (float)(dz * Energy_in);
+                    else Dir_Rec_Pos[2][Octave][sample] += (float)(dz * Energy_in);
                 }
 
                 /// <summary>
@@ -1440,12 +1449,12 @@ namespace Pachyderm_Acoustic
                 /// <param name="V">the direction of the arrival.</param>
                 public override void Add_direction(int octave, int sample, Vector VPos, Vector VNeg)
                 {
-                    this.Dir_Rec_Pos[0][octave][sample] = (float)VPos.x;
-                    this.Dir_Rec_Pos[1][octave][sample] = (float)VPos.y;
-                    this.Dir_Rec_Pos[2][octave][sample] = (float)VPos.z;
-                    this.Dir_Rec_Neg[0][octave][sample] = (float)VNeg.x;
-                    this.Dir_Rec_Neg[1][octave][sample] = (float)VNeg.y;
-                    this.Dir_Rec_Neg[2][octave][sample] = (float)VNeg.z;
+                    this.Dir_Rec_Pos[0][octave][sample] = (float)VPos.dx;
+                    this.Dir_Rec_Pos[1][octave][sample] = (float)VPos.dy;
+                    this.Dir_Rec_Pos[2][octave][sample] = (float)VPos.dz;
+                    this.Dir_Rec_Neg[0][octave][sample] = (float)VNeg.dx;
+                    this.Dir_Rec_Neg[1][octave][sample] = (float)VNeg.dy;
+                    this.Dir_Rec_Neg[2][octave][sample] = (float)VNeg.dz;
                 }
 
                 /// <summary>
@@ -1459,9 +1468,9 @@ namespace Pachyderm_Acoustic
                     if (oct < 8) return new Vector(Dir_Rec_Pos[0][oct][t], Dir_Rec_Pos[1][oct][t], Dir_Rec_Pos[2][oct][t]);
 
                     Vector D = new Vector(Dir_Rec_Pos[0][0][t], Dir_Rec_Pos[1][0][t], Dir_Rec_Pos[2][0][t]);
-                    D.x += Dir_Rec_Pos[0][1][t] + Dir_Rec_Pos[0][2][t] + Dir_Rec_Pos[0][3][t] + Dir_Rec_Pos[0][4][t] + Dir_Rec_Pos[0][5][t] + Dir_Rec_Pos[0][6][t] + Dir_Rec_Pos[0][7][t];
-                    D.y += Dir_Rec_Pos[1][1][t] + Dir_Rec_Pos[1][2][t] + Dir_Rec_Pos[1][3][t] + Dir_Rec_Pos[1][4][t] + Dir_Rec_Pos[1][5][t] + Dir_Rec_Pos[1][6][t] + Dir_Rec_Pos[1][7][t];
-                    D.x += Dir_Rec_Pos[2][1][t] + Dir_Rec_Pos[2][2][t] + Dir_Rec_Pos[2][3][t] + Dir_Rec_Pos[2][4][t] + Dir_Rec_Pos[2][5][t] + Dir_Rec_Pos[2][6][t] + Dir_Rec_Pos[2][7][t];
+                    D.dx += Dir_Rec_Pos[0][1][t] + Dir_Rec_Pos[0][2][t] + Dir_Rec_Pos[0][3][t] + Dir_Rec_Pos[0][4][t] + Dir_Rec_Pos[0][5][t] + Dir_Rec_Pos[0][6][t] + Dir_Rec_Pos[0][7][t];
+                    D.dy += Dir_Rec_Pos[1][1][t] + Dir_Rec_Pos[1][2][t] + Dir_Rec_Pos[1][3][t] + Dir_Rec_Pos[1][4][t] + Dir_Rec_Pos[1][5][t] + Dir_Rec_Pos[1][6][t] + Dir_Rec_Pos[1][7][t];
+                    D.dx += Dir_Rec_Pos[2][1][t] + Dir_Rec_Pos[2][2][t] + Dir_Rec_Pos[2][3][t] + Dir_Rec_Pos[2][4][t] + Dir_Rec_Pos[2][5][t] + Dir_Rec_Pos[2][6][t] + Dir_Rec_Pos[2][7][t];
                     return D;
                 }
 
@@ -1476,9 +1485,9 @@ namespace Pachyderm_Acoustic
                     if (oct < 8) return new Vector(Dir_Rec_Neg[0][oct][t], Dir_Rec_Neg[1][oct][t], Dir_Rec_Neg[2][oct][t]);
 
                     Vector D = new Vector(Dir_Rec_Neg[0][0][t], Dir_Rec_Neg[1][0][t], Dir_Rec_Neg[2][0][t]);
-                    D.x += Dir_Rec_Neg[0][1][t] + Dir_Rec_Neg[0][2][t] + Dir_Rec_Neg[0][3][t] + Dir_Rec_Neg[0][4][t] + Dir_Rec_Neg[0][5][t] + Dir_Rec_Neg[0][6][t] + Dir_Rec_Neg[0][7][t];
-                    D.y += Dir_Rec_Neg[1][1][t] + Dir_Rec_Neg[1][2][t] + Dir_Rec_Neg[1][3][t] + Dir_Rec_Neg[1][4][t] + Dir_Rec_Neg[1][5][t] + Dir_Rec_Neg[1][6][t] + Dir_Rec_Neg[1][7][t];
-                    D.x += Dir_Rec_Neg[2][1][t] + Dir_Rec_Neg[2][2][t] + Dir_Rec_Neg[2][3][t] + Dir_Rec_Neg[2][4][t] + Dir_Rec_Neg[2][5][t] + Dir_Rec_Neg[2][6][t] + Dir_Rec_Neg[2][7][t];
+                    D.dx += Dir_Rec_Neg[0][1][t] + Dir_Rec_Neg[0][2][t] + Dir_Rec_Neg[0][3][t] + Dir_Rec_Neg[0][4][t] + Dir_Rec_Neg[0][5][t] + Dir_Rec_Neg[0][6][t] + Dir_Rec_Neg[0][7][t];
+                    D.dy += Dir_Rec_Neg[1][1][t] + Dir_Rec_Neg[1][2][t] + Dir_Rec_Neg[1][3][t] + Dir_Rec_Neg[1][4][t] + Dir_Rec_Neg[1][5][t] + Dir_Rec_Neg[1][6][t] + Dir_Rec_Neg[1][7][t];
+                    D.dx += Dir_Rec_Neg[2][1][t] + Dir_Rec_Neg[2][2][t] + Dir_Rec_Neg[2][3][t] + Dir_Rec_Neg[2][4][t] + Dir_Rec_Neg[2][5][t] + Dir_Rec_Neg[2][6][t] + Dir_Rec_Neg[2][7][t];
                     return D;
                 }
 
@@ -1649,12 +1658,12 @@ namespace Pachyderm_Acoustic
                     if (Sample < 0) Sample = 0;
                     Energy[Octave][Sample] += Energy_in;
                     Pressure[Octave][Sample] += Pressure_in;
-                    Dir_Rec_Pos[0][Octave][Sample] += (direction_pos.x);
-                    Dir_Rec_Pos[1][Octave][Sample] += (direction_pos.y);
-                    Dir_Rec_Pos[2][Octave][Sample] += (direction_pos.z);
-                    Dir_Rec_Neg[0][Octave][Sample] += (direction_neg.x);
-                    Dir_Rec_Neg[1][Octave][Sample] += (direction_neg.y);
-                    Dir_Rec_Neg[2][Octave][Sample] += (direction_neg.z);
+                    Dir_Rec_Pos[0][Octave][Sample] += (direction_pos.dx);
+                    Dir_Rec_Pos[1][Octave][Sample] += (direction_pos.dy);
+                    Dir_Rec_Pos[2][Octave][Sample] += (direction_pos.dz);
+                    Dir_Rec_Neg[0][Octave][Sample] += (direction_neg.dx);
+                    Dir_Rec_Neg[1][Octave][Sample] += (direction_neg.dy);
+                    Dir_Rec_Neg[2][Octave][Sample] += (direction_neg.dz);
                 }
 
                 public override void Scale(int ray_ct)
@@ -1696,18 +1705,18 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                public override void Add(double time, double Energy_in, Vector direction, double Rho_C, int Octave)
+                public override void Add(double time, double Energy_in, double dx, double dy, double dz, double Rho_C, int Octave)
                 {
                     int sample = (int)(time * SampleRate);
                     if (sample >= Energy[Octave].Length) return;
                     Energy[Octave][sample] += Energy_in;
                     Pressure[Octave][sample] += Math.Sqrt(Energy_in * Rho_C);
-                    if (direction.x > 0) Dir_Rec_Pos[0][Octave][sample] += (float)(direction.x * Energy_in);
-                    else Dir_Rec_Neg[0][Octave][sample] += (float)(direction.x * Energy_in);
-                    if (direction.y > 0) Dir_Rec_Pos[1][Octave][sample] += (float)(direction.y * Energy_in);
-                    else Dir_Rec_Neg[1][Octave][sample] += (float)(direction.y * Energy_in);
-                    if (direction.z > 0) Dir_Rec_Pos[2][Octave][sample] += (float)(direction.z * Energy_in);
-                    else Dir_Rec_Pos[2][Octave][sample] += (float)(direction.z * Energy_in);
+                    if (dx > 0) Dir_Rec_Pos[0][Octave][sample] += (float)(dx * Energy_in);
+                    else Dir_Rec_Neg[0][Octave][sample] += (float)(dx * Energy_in);
+                    if (dy > 0) Dir_Rec_Pos[1][Octave][sample] += (float)(dy * Energy_in);
+                    else Dir_Rec_Neg[1][Octave][sample] += (float)(dy * Energy_in);
+                    if (dz > 0) Dir_Rec_Pos[2][Octave][sample] += (float)(dz * Energy_in);
+                    else Dir_Rec_Pos[2][Octave][sample] += (float)(dz * Energy_in);
                 }
 
                 /// <summary>
@@ -1718,12 +1727,12 @@ namespace Pachyderm_Acoustic
                 /// <param name="V">the direction of the arrival.</param>
                 public override void Add_direction(int octave, int sample, Vector VPos, Vector VNeg)
                 {
-                    this.Dir_Rec_Pos[0][octave][sample] = (float)VPos.x;
-                    this.Dir_Rec_Pos[1][octave][sample] = (float)VPos.y;
-                    this.Dir_Rec_Pos[2][octave][sample] = (float)VPos.z;
-                    this.Dir_Rec_Neg[0][octave][sample] = (float)VNeg.x;
-                    this.Dir_Rec_Neg[1][octave][sample] = (float)VNeg.y;
-                    this.Dir_Rec_Neg[2][octave][sample] = (float)VNeg.z;
+                    this.Dir_Rec_Pos[0][octave][sample] = (float)VPos.dx;
+                    this.Dir_Rec_Pos[1][octave][sample] = (float)VPos.dy;
+                    this.Dir_Rec_Pos[2][octave][sample] = (float)VPos.dz;
+                    this.Dir_Rec_Neg[0][octave][sample] = (float)VNeg.dx;
+                    this.Dir_Rec_Neg[1][octave][sample] = (float)VNeg.dy;
+                    this.Dir_Rec_Neg[2][octave][sample] = (float)VNeg.dz;
                 }
 
                 /// <summary>
@@ -1737,9 +1746,9 @@ namespace Pachyderm_Acoustic
                     if (oct < 8) return new Vector(Dir_Rec_Pos[0][oct][t], Dir_Rec_Pos[1][oct][t], Dir_Rec_Pos[2][oct][t]);
 
                     Vector D = new Vector(Dir_Rec_Pos[0][0][t], Dir_Rec_Pos[1][0][t], Dir_Rec_Pos[2][0][t]);
-                    D.x += Dir_Rec_Pos[0][1][t] + Dir_Rec_Pos[0][2][t] + Dir_Rec_Pos[0][3][t] + Dir_Rec_Pos[0][4][t] + Dir_Rec_Pos[0][5][t] + Dir_Rec_Pos[0][6][t] + Dir_Rec_Pos[0][7][t];
-                    D.y += Dir_Rec_Pos[1][1][t] + Dir_Rec_Pos[1][2][t] + Dir_Rec_Pos[1][3][t] + Dir_Rec_Pos[1][4][t] + Dir_Rec_Pos[1][5][t] + Dir_Rec_Pos[1][6][t] + Dir_Rec_Pos[1][7][t];
-                    D.x += Dir_Rec_Pos[2][1][t] + Dir_Rec_Pos[2][2][t] + Dir_Rec_Pos[2][3][t] + Dir_Rec_Pos[2][4][t] + Dir_Rec_Pos[2][5][t] + Dir_Rec_Pos[2][6][t] + Dir_Rec_Pos[2][7][t];
+                    D.dx += Dir_Rec_Pos[0][1][t] + Dir_Rec_Pos[0][2][t] + Dir_Rec_Pos[0][3][t] + Dir_Rec_Pos[0][4][t] + Dir_Rec_Pos[0][5][t] + Dir_Rec_Pos[0][6][t] + Dir_Rec_Pos[0][7][t];
+                    D.dy += Dir_Rec_Pos[1][1][t] + Dir_Rec_Pos[1][2][t] + Dir_Rec_Pos[1][3][t] + Dir_Rec_Pos[1][4][t] + Dir_Rec_Pos[1][5][t] + Dir_Rec_Pos[1][6][t] + Dir_Rec_Pos[1][7][t];
+                    D.dz += Dir_Rec_Pos[2][1][t] + Dir_Rec_Pos[2][2][t] + Dir_Rec_Pos[2][3][t] + Dir_Rec_Pos[2][4][t] + Dir_Rec_Pos[2][5][t] + Dir_Rec_Pos[2][6][t] + Dir_Rec_Pos[2][7][t];
                     return D;
                 }
 
@@ -1754,9 +1763,9 @@ namespace Pachyderm_Acoustic
                     if (oct < 8) return new Vector(Dir_Rec_Neg[0][oct][t], Dir_Rec_Neg[1][oct][t], Dir_Rec_Neg[2][oct][t]);
 
                     Vector D = new Vector(Dir_Rec_Neg[0][0][t], Dir_Rec_Neg[1][0][t], Dir_Rec_Neg[2][0][t]);
-                    D.x += Dir_Rec_Neg[0][1][t] + Dir_Rec_Neg[0][2][t] + Dir_Rec_Neg[0][3][t] + Dir_Rec_Neg[0][4][t] + Dir_Rec_Neg[0][5][t] + Dir_Rec_Neg[0][6][t] + Dir_Rec_Neg[0][7][t];
-                    D.y += Dir_Rec_Neg[1][1][t] + Dir_Rec_Neg[1][2][t] + Dir_Rec_Neg[1][3][t] + Dir_Rec_Neg[1][4][t] + Dir_Rec_Neg[1][5][t] + Dir_Rec_Neg[1][6][t] + Dir_Rec_Neg[1][7][t];
-                    D.x += Dir_Rec_Neg[2][1][t] + Dir_Rec_Neg[2][2][t] + Dir_Rec_Neg[2][3][t] + Dir_Rec_Neg[2][4][t] + Dir_Rec_Neg[2][5][t] + Dir_Rec_Neg[2][6][t] + Dir_Rec_Neg[2][7][t];
+                    D.dx += Dir_Rec_Neg[0][1][t] + Dir_Rec_Neg[0][2][t] + Dir_Rec_Neg[0][3][t] + Dir_Rec_Neg[0][4][t] + Dir_Rec_Neg[0][5][t] + Dir_Rec_Neg[0][6][t] + Dir_Rec_Neg[0][7][t];
+                    D.dy += Dir_Rec_Neg[1][1][t] + Dir_Rec_Neg[1][2][t] + Dir_Rec_Neg[1][3][t] + Dir_Rec_Neg[1][4][t] + Dir_Rec_Neg[1][5][t] + Dir_Rec_Neg[1][6][t] + Dir_Rec_Neg[1][7][t];
+                    D.dz += Dir_Rec_Neg[2][1][t] + Dir_Rec_Neg[2][2][t] + Dir_Rec_Neg[2][3][t] + Dir_Rec_Neg[2][4][t] + Dir_Rec_Neg[2][5][t] + Dir_Rec_Neg[2][6][t] + Dir_Rec_Neg[2][7][t];
                     return D;
                 }
 
@@ -1942,11 +1951,13 @@ namespace Pachyderm_Acoustic
             {
                 double Radius = (R.t_sum * C_Sound) * Math.Sqrt(6.28 / (RayCount));
                 double Radius2 = Radius * Radius;
-                Vector m = R.origin - Origin;
-                double RayLength = (EndPt - R.origin).Length();
-                Vector d = (EndPt - R.origin) / RayLength;
-                double b = Hare_math.Dot(m, d);
-                double c = Hare_math.Dot(m, m) - (Radius2);
+                double mx = R.x - Origin.x;
+                double my = R.y - Origin.y;
+                double mz = R.z - Origin.z;
+                double RayLength = Hare_math.distance(EndPt.x, EndPt.y, EndPt.z, R.x, R.y, R.z);
+                double dx = (EndPt.x - R.x) / RayLength, dy = (EndPt.y - R.y)/RayLength, dz = (EndPt.z - R.z) / RayLength;
+                double b = Hare_math.Dot(mx, my, mz, dx, dy, dz);
+                double c = Hare_math.Dot(mx, my, mz, mx, my, mz) - (Radius2);
                 if (c > 0 && b > 0) return;
                 double discr = b * b - c;
                 if (discr < 0) return;
@@ -1954,11 +1965,11 @@ namespace Pachyderm_Acoustic
                 double t2 = -b + Math.Sqrt(discr);
                 double t = (t1 + t2) * .5;
 
-                if (t > 0 && t * t < SqDistance(EndPt, R.origin))
+                if (t > 0 && t * t < SqDistance(EndPt.x, EndPt.y, EndPt.z, R.x, R.y, R.z))
                 {
                     double Raydist = t * Inv_C_Sound + R.t_sum;
                     double Ei = R.Intensity * Math.Pow(10,-.1 * Atten[R.Octave] * t) / (Math.PI * Radius2);
-                    Recs.Add(Raydist, Ei, R.direction * -1, Rho_C, R.Octave);
+                    Recs.Add(Raydist, Ei, -R.dx, -R.dy, -R.dz, Rho_C, R.Octave);
                 }
                 return;
             }
@@ -1973,32 +1984,33 @@ namespace Pachyderm_Acoustic
             {
                 double Radius = (R.t_sum * C_Sound) * Math.Sqrt(6.28 / (RayCount));
                 double Radius2 = Radius * Radius;
-                Vector m = R.origin - Origin;
-                double RayLength = (EndPt - R.origin).Length();
-                Vector d = (EndPt - R.origin) / RayLength;
-                double b = Hare_math.Dot(m, d);
-                double c = Hare_math.Dot(m, m) - (Radius2);
+                double mx = R.x - Origin.x, my = R.y - Origin.y, mz = R.z - Origin.z;
+                double RayLength = Hare_math.distance(EndPt.x, EndPt.y, EndPt.z, R.x, R.y, R.z);
+                double dx = (EndPt.x - R.x) / RayLength;
+                double dy = (EndPt.y - R.y) / RayLength;
+                double dz = (EndPt.z - R.z) / RayLength;
+                double b = Hare_math.Dot(mx, my, mz, dx, dy, dz);
+                double c = Hare_math.Dot(mx, my, mz, mx, my, mz) - (Radius2);
                 if (c > 0 && b > 0) return;
                 double discr = b * b - c;
                 if (discr < 0) return;
                 double t1 = -b - Math.Sqrt(discr);
                 double t2 = -b + Math.Sqrt(discr);
                 double t = (t1 + t2) * .5;
-                if (t > 0 && t * t < SqDistance(EndPt, R.origin))
+                if (t > 0 && t * t < SqDistance(EndPt.x, EndPt.y, EndPt.z, R.x, R.y, R.z))
                 {
                     double t_ACC = Math.Abs(t1 - t2);
                     double RayTime = t * Inv_C_Sound + R.t_sum;
-                    Vector Dir = R.direction * -1;
                     double Area = Math.PI * Radius2;
 
-                    Recs.Add(RayTime, (R.Energy[0] * Math.Pow(10,-.1 * Atten[0] * t) / Area), Dir, Rho_C, 0);
-                    Recs.Add(RayTime, (R.Energy[1] * Math.Pow(10,-.1 * Atten[1] * t) / Area), Dir, Rho_C, 1);
-                    Recs.Add(RayTime, (R.Energy[2] * Math.Pow(10,-.1 * Atten[2] * t) / Area), Dir, Rho_C, 2);
-                    Recs.Add(RayTime, (R.Energy[3] * Math.Pow(10,-.1 * Atten[3] * t) / Area), Dir, Rho_C, 3);
-                    Recs.Add(RayTime, (R.Energy[4] * Math.Pow(10,-.1 * Atten[4] * t) / Area), Dir, Rho_C, 4);
-                    Recs.Add(RayTime, (R.Energy[5] * Math.Pow(10,-.1 * Atten[5] * t) / Area), Dir, Rho_C, 5);
-                    Recs.Add(RayTime, (R.Energy[6] * Math.Pow(10,-.1 * Atten[6] * t) / Area), Dir, Rho_C, 6);
-                    Recs.Add(RayTime, (R.Energy[7] * Math.Pow(10,-.1 * Atten[7] * t) / Area), Dir, Rho_C, 7);
+                    Recs.Add(RayTime, (R.Energy[0] * Math.Pow(10,-.1 * Atten[0] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 0);
+                    Recs.Add(RayTime, (R.Energy[1] * Math.Pow(10,-.1 * Atten[1] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 1);
+                    Recs.Add(RayTime, (R.Energy[2] * Math.Pow(10,-.1 * Atten[2] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 2);
+                    Recs.Add(RayTime, (R.Energy[3] * Math.Pow(10,-.1 * Atten[3] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 3);
+                    Recs.Add(RayTime, (R.Energy[4] * Math.Pow(10,-.1 * Atten[4] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 4);
+                    Recs.Add(RayTime, (R.Energy[5] * Math.Pow(10,-.1 * Atten[5] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 5);
+                    Recs.Add(RayTime, (R.Energy[6] * Math.Pow(10,-.1 * Atten[6] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 6);
+                    Recs.Add(RayTime, (R.Energy[7] * Math.Pow(10,-.1 * Atten[7] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 7);
                 }
                 return;
             }
@@ -2013,14 +2025,14 @@ namespace Pachyderm_Acoustic
             public override bool SimpleCheck(BroadRay R, Hare.Geometry.Point EndPt)
             {
                 double Radius = R.t_sum * Math.Sqrt(6.28 / RayCount);
-                Vector m = R.origin - Origin;
-                double b = Hare_math.Dot(m, R.direction);
-                double c = Hare_math.Dot(m, m) - (Radius * Radius);
+                double mx = R.x - Origin.x, my = R.y - Origin.y, mz = R.z - Origin.z;
+                double b = Hare_math.Dot(mx, my, mz, R.dx, R.dy, R.dz);
+                double c = Hare_math.Dot(mx, my, mz, mx, my, mz) - (Radius * Radius);
                 if (c > 0 && b > 0) return false;
                 double discr = b * b - c;
                 if (discr < 0) return false;
                 double t = (-b - Math.Sqrt(discr)) + (-b + Math.Sqrt(discr)) / 2;
-                if (t * t < SqDistance(EndPt, R.origin)) return true;
+                if (t * t < SqDistance(EndPt.x, EndPt.y, EndPt.z, R.x, R.y, R.z)) return true;
                 return false;
             }
         }

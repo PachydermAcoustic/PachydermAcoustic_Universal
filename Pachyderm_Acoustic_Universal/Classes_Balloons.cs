@@ -146,10 +146,10 @@ namespace Pachyderm_Acoustic
                     for (int v = 0; v < vmax; v++)
                     {
                         Hare.Geometry.Point[] Poly = new Hare.Geometry.Point[4];
-                        Poly[0] = new Hare.Geometry.Point(Magnitude[u, v].x, Magnitude[u, v].y, Magnitude[u, v].z);
-                        Poly[1] = new Hare.Geometry.Point(Magnitude[u, (v + 1) % vmax].x, Magnitude[u, (v + 1) % vmax].y, Magnitude[u, (v + 1) % vmax].z);
-                        Poly[2] = new Hare.Geometry.Point(Magnitude[u + 1, (v + 1) % vmax].x, Magnitude[u + 1, (v + 1) % vmax].y, Magnitude[u + 1, (v + 1) % vmax].z);
-                        Poly[3] = new Hare.Geometry.Point(Magnitude[u + 1, v].x, Magnitude[u + 1, v].y, Magnitude[u + 1, v].z);
+                        Poly[0] = new Hare.Geometry.Point(Magnitude[u, v].dx, Magnitude[u, v].dy, Magnitude[u, v].dz);
+                        Poly[1] = new Hare.Geometry.Point(Magnitude[u, (v + 1) % vmax].dx, Magnitude[u, (v + 1) % vmax].dy, Magnitude[u, (v + 1) % vmax].dz);
+                        Poly[2] = new Hare.Geometry.Point(Magnitude[u + 1, (v + 1) % vmax].dx, Magnitude[u + 1, (v + 1) % vmax].dy, Magnitude[u + 1, (v + 1) % vmax].dz);
+                        Poly[3] = new Hare.Geometry.Point(Magnitude[u + 1, v].dx, Magnitude[u + 1, v].dy, Magnitude[u + 1, v].dz);
                         list.Add(Poly);
 
                         foreach (Hare.Geometry.Point p in Poly)
@@ -241,15 +241,15 @@ namespace Pachyderm_Acoustic
                         double yaw = CurrentAlt * Math.PI / 180;
                         double pitch = CurrentAzi * Math.PI / 180;
 
-                        double x = Magnitude[u, v].x;
-                        Magnitude[u, v].x = x * Math.Cos(roll) - Magnitude[u, v].z * Math.Sin(roll);
-                        Magnitude[u, v].z = x * Math.Sin(roll) + Magnitude[u, v].z * Math.Cos(roll);
-                        double y = Magnitude[u, v].y;
-                        Magnitude[u, v].y = y * Math.Cos(yaw) - Magnitude[u, v].z * Math.Sin(yaw);
-                        Magnitude[u, v].z = y * Math.Sin(yaw) + Magnitude[u, v].z * Math.Cos(yaw);
-                        x = Magnitude[u, v].x;
-                        Magnitude[u, v].x = x * Math.Cos(pitch) - Magnitude[u, v].y * Math.Sin(pitch);
-                        Magnitude[u, v].y = x * Math.Sin(pitch) + Magnitude[u, v].y * Math.Cos(pitch);
+                        double x = Magnitude[u, v].dx;
+                        Magnitude[u, v].dx = x * Math.Cos(roll) - Magnitude[u, v].dz * Math.Sin(roll);
+                        Magnitude[u, v].dz = x * Math.Sin(roll) + Magnitude[u, v].dz * Math.Cos(roll);
+                        double y = Magnitude[u, v].dy;
+                        Magnitude[u, v].dy = y * Math.Cos(yaw) - Magnitude[u, v].dz * Math.Sin(yaw);
+                        Magnitude[u, v].dz = y * Math.Sin(yaw) + Magnitude[u, v].dz * Math.Cos(yaw);
+                        x = Magnitude[u, v].dx;
+                        Magnitude[u, v].dx = x * Math.Cos(pitch) - Magnitude[u, v].dy * Math.Sin(pitch);
+                        Magnitude[u, v].dy = x * Math.Sin(pitch) + Magnitude[u, v].dy * Math.Cos(pitch);
                     }
                 }
 
@@ -260,16 +260,16 @@ namespace Pachyderm_Acoustic
                     for (int v = 0; v < vmax; v++)
                     {
                         Hare.Geometry.Point[] Poly = new Hare.Geometry.Point[3];
-                        Poly[0] = new Hare.Geometry.Point(Magnitude[u, v].x, Magnitude[u, v].y, Magnitude[u, v].z);
-                        Poly[1] = new Hare.Geometry.Point(Magnitude[u, (v + 1) % vmax].x, Magnitude[u, (v + 1) % vmax].y, Magnitude[u, (v + 1) % vmax].z);
-                        Poly[2] = new Hare.Geometry.Point(Magnitude[u + 1, v].x, Magnitude[u + 1, v].y, Magnitude[u + 1, v].z);
+                        Poly[0] = new Hare.Geometry.Point(Magnitude[u, v].dx, Magnitude[u, v].dy, Magnitude[u, v].dz);
+                        Poly[1] = new Hare.Geometry.Point(Magnitude[u, (v + 1) % vmax].dx, Magnitude[u, (v + 1) % vmax].dy, Magnitude[u, (v + 1) % vmax].dz);
+                        Poly[2] = new Hare.Geometry.Point(Magnitude[u + 1, v].dx, Magnitude[u + 1, v].dy, Magnitude[u + 1, v].dz);
                         list.Add(Poly);
                         //Balloon[oct - 1].Add_Polygon(Poly);
 
                         Poly = new Hare.Geometry.Point[3];
-                        Poly[0] = new Hare.Geometry.Point(Magnitude[u, (v + 1) % vmax].x, Magnitude[u, (v + 1) % vmax].y, Magnitude[u, (v + 1) % vmax].z);
-                        Poly[1] = new Hare.Geometry.Point(Magnitude[u + 1, (v + 1) % vmax].x, Magnitude[u + 1, (v + 1) % vmax].y, Magnitude[u + 1, (v + 1) % vmax].z);
-                        Poly[2] = new Hare.Geometry.Point(Magnitude[u + 1, v].x, Magnitude[u + 1, v].y, Magnitude[u + 1, v].z);
+                        Poly[0] = new Hare.Geometry.Point(Magnitude[u, (v + 1) % vmax].dx, Magnitude[u, (v + 1) % vmax].dy, Magnitude[u, (v + 1) % vmax].dz);
+                        Poly[1] = new Hare.Geometry.Point(Magnitude[u + 1, (v + 1) % vmax].dx, Magnitude[u + 1, (v + 1) % vmax].dy, Magnitude[u + 1, (v + 1) % vmax].dz);
+                        Poly[2] = new Hare.Geometry.Point(Magnitude[u + 1, v].dx, Magnitude[u + 1, v].dy, Magnitude[u + 1, v].dz);
                         list.Add(Poly);
                         //Balloon[oct - 1].Add_Polygon(Poly);
                     }
@@ -667,10 +667,10 @@ namespace Pachyderm_Acoustic
                     for (int v = 0; v < vmax; v++)
                     {
                         Hare.Geometry.Point[] Poly = new Hare.Geometry.Point[4];
-                        Poly[0] = Magnitude[u, v];
-                        Poly[1] = Magnitude[u, (v + 1) % vmax];
-                        Poly[2] = Magnitude[u + 1, (v + 1) % vmax];
-                        Poly[3] = Magnitude[u + 1, v];
+                        Poly[0] = new Point(Magnitude[u, v].dx, Magnitude[u, v].dy, Magnitude[u, v].dz);
+                        Poly[1] = new Point(Magnitude[u, (v + 1) % vmax].dx, Magnitude[u, (v + 1) % vmax].dy, Magnitude[u, (v + 1) % vmax].dz);
+                        Poly[2] = new Point(Magnitude[u + 1, (v + 1) % vmax].dx, Magnitude[u + 1, (v + 1) % vmax].dy, Magnitude[u + 1, (v + 1) % vmax].dz);
+                        Poly[3] = new Point(Magnitude[u + 1, v].dx, Magnitude[u + 1, v].dy, Magnitude[u + 1, v].dz);
                         list.Add(Poly);
 
                         foreach (Hare.Geometry.Point p in Poly)
@@ -762,15 +762,15 @@ namespace Pachyderm_Acoustic
                         double yaw = CurrentAlt * Math.PI / 180;
                         double pitch = CurrentAzi * Math.PI / 180;
 
-                        double x = Magnitude[u, v].x;
-                        Magnitude[u, v].x = x * Math.Cos(roll) - Magnitude[u, v].z * Math.Sin(roll);
-                        Magnitude[u, v].z = x * Math.Sin(roll) + Magnitude[u, v].z * Math.Cos(roll);
-                        double y = Magnitude[u, v].y;
-                        Magnitude[u, v].y = y * Math.Cos(yaw) - Magnitude[u, v].z * Math.Sin(yaw);
-                        Magnitude[u, v].z = y * Math.Sin(yaw) + Magnitude[u, v].z * Math.Cos(yaw);
-                        x = Magnitude[u, v].x;
-                        Magnitude[u, v].x = x * Math.Cos(pitch) - Magnitude[u, v].y * Math.Sin(pitch);
-                        Magnitude[u, v].y = x * Math.Sin(pitch) + Magnitude[u, v].y * Math.Cos(pitch);
+                        double x = Magnitude[u, v].dx;
+                        Magnitude[u, v].dx = x * Math.Cos(roll) - Magnitude[u, v].dz * Math.Sin(roll);
+                        Magnitude[u, v].dz = x * Math.Sin(roll) + Magnitude[u, v].dz * Math.Cos(roll);
+                        double y = Magnitude[u, v].dy;
+                        Magnitude[u, v].dy = y * Math.Cos(yaw) - Magnitude[u, v].dz * Math.Sin(yaw);
+                        Magnitude[u, v].dz = y * Math.Sin(yaw) + Magnitude[u, v].dz * Math.Cos(yaw);
+                        x = Magnitude[u, v].dx;
+                        Magnitude[u, v].dx = x * Math.Cos(pitch) - Magnitude[u, v].dy * Math.Sin(pitch);
+                        Magnitude[u, v].dy = x * Math.Sin(pitch) + Magnitude[u, v].dy * Math.Cos(pitch);
                     }
                 }
 
@@ -781,16 +781,16 @@ namespace Pachyderm_Acoustic
                     for (int v = 0; v < vmax; v++)
                     {
                         Hare.Geometry.Point[] Poly = new Hare.Geometry.Point[3];
-                        Poly[0] = Magnitude[u, v];
-                        Poly[1] = Magnitude[u, (v + 1) % vmax];
-                        Poly[2] = Magnitude[u + 1, v];
+                        Poly[0] = new Point(Magnitude[u, v].dx, Magnitude[u, v].dy, Magnitude[u, v].dz);
+                        Poly[1] = new Point(Magnitude[u, (v + 1) % vmax].dx, Magnitude[u, (v + 1) % vmax].dy, Magnitude[u, (v + 1) % vmax].dz);
+                        Poly[2] = new Point(Magnitude[u + 1, v].dx, Magnitude[u + 1, v].dy, Magnitude[u + 1, v].dz);
                         list.Add(Poly);
                         //Balloon[oct - 1].Add_Polygon(Poly);
 
                         Poly = new Hare.Geometry.Point[3];
-                        Poly[0] = Magnitude[u, (v + 1) % vmax];
-                        Poly[1] = Magnitude[u + 1, (v + 1) % vmax];
-                        Poly[2] = Magnitude[u + 1, v];
+                        Poly[0] = new Point(Magnitude[u, (v + 1) % vmax].dx, Magnitude[u, (v + 1) % vmax].dy, Magnitude[u, (v + 1) % vmax].dz);
+                        Poly[1] = new Point(Magnitude[u + 1, (v + 1) % vmax].dx, Magnitude[u + 1, (v + 1) % vmax].dy, Magnitude[u + 1, (v + 1) % vmax].dz);
+                        Poly[2] = new Point(Magnitude[u + 1, v].dx, Magnitude[u + 1, v].dy, Magnitude[u + 1, v].dz);
                         list.Add(Poly);
                         //Balloon[oct - 1].Add_Polygon(Poly);
                     }

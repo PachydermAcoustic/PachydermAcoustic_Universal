@@ -94,7 +94,8 @@ namespace Pachyderm_Acoustic
                 double Phi = random.NextDouble() * 2 * System.Math.PI;
                 Hare.Geometry.Vector Direction = new Hare.Geometry.Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
                 
-                return new BroadRay(P, Direction, random.Next(), thread, DomainPower, 0, S_ID);
+                //return new BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, DomainPower, 0, S_ID);
+                return BroadRayPool.Instance.new_BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, DomainPower, 0, S_ID);
             }
         }
     }

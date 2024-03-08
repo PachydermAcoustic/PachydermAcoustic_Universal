@@ -113,7 +113,7 @@ namespace Pachyderm_Acoustic
             Calc_Params Params = (Calc_Params)i;
             Random RND = new Random(Params.RandomSeed);
             ST = DateTime.Now;
-            Hare.Geometry.Point Origin = Source.H_Origin();
+            Hare.Geometry.Point Origin = Source.Origin;
             ///'''''''''''''Renewable Variables''''''''''''''''''
             double SumLength;
             double u = 0;
@@ -154,11 +154,13 @@ namespace Pachyderm_Acoustic
                     }
                     else
                     {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddCurve(new LineCurve(Pachyderm_Acoustic.Utilities.PachTools.HPttoRPt(R.origin), Pachyderm_Acoustic.Utilities.PachTools.HPttoRPt(R.origin + R.direction) * 5));
+                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddCurve(new LineCurve(Pachyderm_Acoustic.Utilities.PachTools.HPttoRPt(R.Origin), Pachyderm_Acoustic.Utilities.PachTools.HPttoRPt(R.Origin + R.direction) * 5));
                         break;
                     }
                     Sequence.Add(Room.PlaneID(ChosenIndex));
-                    R.origin = Start[0];
+                    R.x = Start[0].x;
+                    R.y = Start[0].y;
+                    R.z = Start[0].z;
                 }
                 while (SumLength < CutoffLength);
             }

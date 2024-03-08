@@ -1165,10 +1165,10 @@ namespace Pachyderm_Acoustic
                             Hare.Geometry.Vector Vpos = RTData.Directions_Pos(Octave, i, Rec_ID, alt, azi, degrees);
                             Hare.Geometry.Vector Vneg = RTData.Directions_Neg(Octave, i, Rec_ID, alt, azi, degrees);
 
-                            Hare.Geometry.Vector VTot = new Hare.Geometry.Vector(-Math.Abs(Vpos.x) + Math.Abs(Vneg.x), -Math.Abs(Vpos.y) + Math.Abs(Vneg.y), -Math.Abs(Vpos.z) + Math.Abs(Vneg.z));
-                            Histogram[0][i] = Math.Abs(VTot.x);
-                            Histogram[1][i] = Math.Abs(VTot.y);
-                            Histogram[2][i] = Math.Abs(VTot.z);
+                            Hare.Geometry.Vector VTot = new Hare.Geometry.Vector(-Math.Abs(Vpos.dx) + Math.Abs(Vneg.dx), -Math.Abs(Vpos.dy) + Math.Abs(Vneg.dy), -Math.Abs(Vpos.dz) + Math.Abs(Vneg.dz));
+                            Histogram[0][i] = Math.Abs(VTot.dx);
+                            Histogram[1][i] = Math.Abs(VTot.dy);
+                            Histogram[2][i] = Math.Abs(VTot.dz);
                         }
                     }
 
@@ -1190,9 +1190,9 @@ namespace Pachyderm_Acoustic
 
                         for (int i = 0; i < DirectValue.Length; i++)
                         {
-                            Histogram[0][D_Start + i] += DirectValue[i].x;// * DirectValue[i].x / E);
-                            Histogram[1][D_Start + i] += DirectValue[i].y;// * DirectValue[i].y / E);
-                            Histogram[2][D_Start + i] += DirectValue[i].z;// * DirectValue[i].z / E);
+                            Histogram[0][D_Start + i] += DirectValue[i].dx;// * DirectValue[i].x / E);
+                            Histogram[1][D_Start + i] += DirectValue[i].dy;// * DirectValue[i].y / E);
+                            Histogram[2][D_Start + i] += DirectValue[i].dz;// * DirectValue[i].z / E);
                         }
                     }
 
@@ -1208,9 +1208,9 @@ namespace Pachyderm_Acoustic
                                         Hare.Geometry.Vector[] E_Sum = value.Dir_EnergySum(alt, azi, degrees);
                                         for (int i = 0; i < E_Sum.Length; i++)
                                         {
-                                            Histogram[0][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += E_Sum[i].x;// E_Sum[i].x;// * E_Sum[i].x / E);
-                                            Histogram[1][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += E_Sum[i].y;// E_Sum[i].y;// * E_Sum[i].y / E);
-                                            Histogram[2][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += E_Sum[i].z;// E_Sum[i].z;// * E_Sum[i].z / E);
+                                            Histogram[0][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += E_Sum[i].dx;// E_Sum[i].x;// * E_Sum[i].x / E);
+                                            Histogram[1][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += E_Sum[i].dy;// E_Sum[i].y;// * E_Sum[i].y / E);
+                                            Histogram[2][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += E_Sum[i].dz;// E_Sum[i].z;// * E_Sum[i].z / E);
                                         }
                                     }
                                 }
@@ -1223,9 +1223,9 @@ namespace Pachyderm_Acoustic
                                         Hare.Geometry.Vector[] E_Dir = value.Dir_Energy(Octave, alt, azi, degrees);
                                         for (int i = 0; i < E_Dir.Length; i++)
                                         {
-                                            Histogram[0][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += E_Dir[i].x;// * E_Dir[i].x / E);
-                                            Histogram[1][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += E_Dir[i].y;// * E_Dir[i].y / E);
-                                            Histogram[2][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += E_Dir[i].z;// * E_Dir[i].z / E);
+                                            Histogram[0][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += E_Dir[i].dx;// * E_Dir[i].x / E);
+                                            Histogram[1][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += E_Dir[i].dy;// * E_Dir[i].y / E);
+                                            Histogram[2][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += E_Dir[i].dz;// * E_Dir[i].z / E);
                                         }
                                     }
                                 }
@@ -1333,13 +1333,13 @@ namespace Pachyderm_Acoustic
                             Hare.Geometry.Vector Vneg = RTData.Directions_Neg(Octave, i, Rec_ID, alt, azi, degrees);
 
                             double E = RTData.Rec_List[Rec_ID].Energy(i, Octave);
-                            Hare.Geometry.Vector VTot = new Hare.Geometry.Vector(Math.Abs(Vpos.x) - Math.Abs(Vneg.x), Math.Abs(Vpos.y) - Math.Abs(Vneg.y), Math.Abs(Vpos.z) - Math.Abs(Vneg.z));
+                            Hare.Geometry.Vector VTot = new Hare.Geometry.Vector(Math.Abs(Vpos.dx) - Math.Abs(Vneg.dx), Math.Abs(Vpos.dy) - Math.Abs(Vneg.dy), Math.Abs(Vpos.dz) - Math.Abs(Vneg.dz));
                             VTot.Normalize();
                             VTot *= E;
 
-                            Histogram[0][i] = VTot.x;
-                            Histogram[1][i] = VTot.y;
-                            Histogram[2][i] = VTot.z;
+                            Histogram[0][i] = VTot.dx;
+                            Histogram[1][i] = VTot.dy;
+                            Histogram[2][i] = VTot.dz;
                         }
                     }
 
@@ -1361,9 +1361,9 @@ namespace Pachyderm_Acoustic
 
                         for (int i = 0; i < DirectValue.Length; i++)
                         {
-                            Histogram[0][D_Start + i] += Math.Abs(DirectValue[i].x);
-                            Histogram[1][D_Start + i] += Math.Abs(DirectValue[i].y);
-                            Histogram[2][D_Start + i] += Math.Abs(DirectValue[i].z);
+                            Histogram[0][D_Start + i] += Math.Abs(DirectValue[i].dx);
+                            Histogram[1][D_Start + i] += Math.Abs(DirectValue[i].dy);
+                            Histogram[2][D_Start + i] += Math.Abs(DirectValue[i].dz);
                         }
                     }
 
@@ -1379,9 +1379,9 @@ namespace Pachyderm_Acoustic
                                         Hare.Geometry.Vector[] E_Sum = value.Dir_EnergySum(alt, azi, degrees);
                                         for (int i = 0; i < E_Sum.Length; i++)
                                         {
-                                            Histogram[0][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += Math.Abs(E_Sum[i].x);
-                                            Histogram[1][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += Math.Abs(E_Sum[i].y);
-                                            Histogram[2][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += Math.Abs(E_Sum[i].z);
+                                            Histogram[0][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += Math.Abs(E_Sum[i].dx);
+                                            Histogram[1][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += Math.Abs(E_Sum[i].dy);
+                                            Histogram[2][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i / Sampling_Frequency)] += Math.Abs(E_Sum[i].dz);
                                         }
                                     }
                                 }
@@ -1394,9 +1394,9 @@ namespace Pachyderm_Acoustic
                                         Hare.Geometry.Vector[] E_Dir = value.Dir_Energy(Octave, alt, azi, degrees, true);
                                         for (int i = 0; i < E_Dir.Length; i++)
                                         {
-                                            Histogram[0][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Dir[i].x);
-                                            Histogram[1][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Dir[i].y);
-                                            Histogram[2][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Dir[i].z);
+                                            Histogram[0][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Dir[i].dx);
+                                            Histogram[1][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Dir[i].dy);
+                                            Histogram[2][(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Dir[i].dz);
                                         }
                                     }
                                 }
@@ -1483,15 +1483,15 @@ namespace Pachyderm_Acoustic
                             Hare.Geometry.Vector Vneg = RTData.Directions_Neg(Octave, i, Rec_ID, alt, azi, degrees);
 
                             double E = RTData.Rec_List[Rec_ID].Energy(i, Octave);
-                            Hare.Geometry.Vector VTot = new Hare.Geometry.Vector(Math.Abs(Vpos.x) - Math.Abs(Vneg.x), Math.Abs(Vpos.y) - Math.Abs(Vneg.y), Math.Abs(Vpos.z) - Math.Abs(Vneg.z));
+                            Hare.Geometry.Vector VTot = new Hare.Geometry.Vector(Math.Abs(Vpos.dx) - Math.Abs(Vneg.dx), Math.Abs(Vpos.dy) - Math.Abs(Vneg.dy), Math.Abs(Vpos.dz) - Math.Abs(Vneg.dz));
 
-                            if (Vpos.x > 0)
+                            if (Vpos.dx > 0)
                             {
-                                Histogram[i] += Math.Abs(Vpos.x);
+                                Histogram[i] += Math.Abs(Vpos.dx);
                             }
-                            if (Vneg.x > 0)
+                            if (Vneg.dx > 0)
                             {
-                                Histogram[i] += Math.Abs(Vneg.x);
+                                Histogram[i] += Math.Abs(Vneg.dx);
                             }
 
                             double L = VTot.Length();
@@ -1517,7 +1517,7 @@ namespace Pachyderm_Acoustic
 
                         for (int i = 0; i < DirectValue.Length; i++)
                         {
-                            if (DirectValue[i].x > 0) Histogram[D_Start + i] += Math.Abs(DirectValue[i].x);
+                            if (DirectValue[i].dx > 0) Histogram[D_Start + i] += Math.Abs(DirectValue[i].dx);
                         }
                     }
 
@@ -1533,7 +1533,7 @@ namespace Pachyderm_Acoustic
                                         Hare.Geometry.Vector[] E_Sum = value.Dir_EnergySum(alt, azi, degrees);
                                         for (int i = 0; i < E_Sum.Length; i++)
                                         {
-                                            if (E_Sum[i].x > 0) Histogram[(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Sum[i].x);
+                                            if (E_Sum[i].dx > 0) Histogram[(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Sum[i].dx);
                                         }
                                     }
                                 }
@@ -1546,7 +1546,7 @@ namespace Pachyderm_Acoustic
                                         Hare.Geometry.Vector[] E_Dir = value.Dir_Energy(Octave, alt, azi, degrees);
                                         for (int i = 0; i < E_Dir.Length; i++)
                                         {
-                                            if (E_Dir[i].x > 0) Histogram[(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Dir[i].x);
+                                            if (E_Dir[i].dx > 0) Histogram[(int)Math.Ceiling(Sampling_Frequency * value.TravelTime + i)] += Math.Abs(E_Dir[i].dx);
                                         }
                                     }
                                 }
@@ -1648,7 +1648,7 @@ namespace Pachyderm_Acoustic
                     for (int i = 0; i < hist_temp[0].Length; i++)
                     {
                         Hare.Geometry.Vector V = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_temp[ids[0]][i], hist_temp[ids[1]][i], hist_temp[ids[2]][i]), azi, 0, true), 0, alt, true);
-                        Histogram[i] = V.x * SIGN;
+                        Histogram[i] = V.dx * SIGN;
                     }
                 }
                 else
@@ -1699,9 +1699,9 @@ namespace Pachyderm_Acoustic
                     for (int i = 0; i < hist_temp[0].Length; i++)
                     {
                         Hare.Geometry.Vector V = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_temp[0][i] - hist_temp[1][i], hist_temp[2][i] - hist_temp[3][i], hist_temp[4][i] - hist_temp[5][i]), xpos_azi, 0, true), 0, xpos_alt, true);
-                        Histogram[0][i] = V.x;
-                        Histogram[1][i] = V.y;
-                        Histogram[2][i] = V.z;
+                        Histogram[0][i] = V.dx;
+                        Histogram[1][i] = V.dy;
+                        Histogram[2][i] = V.dz;
                     }
                 }
                 else
@@ -1779,14 +1779,14 @@ namespace Pachyderm_Acoustic
                     {
                         Hare.Geometry.Vector Vpos = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_temp[0][i], hist_temp[2][i], hist_temp[4][i]), xpos_azi, 0, true), 0, xpos_alt, true);
                         Hare.Geometry.Vector Vneg = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(-hist_temp[1][i], -hist_temp[3][i], -hist_temp[5][i]), xpos_azi, 0, true), 0, xpos_alt, true);
-                        double magpos = Math.Sqrt(Vpos.x * Vpos.x + Vpos.y * Vpos.y + Vpos.z * Vpos.z);
-                        double magneg = Math.Sqrt(Vneg.x * Vneg.x + Vneg.y * Vneg.y + Vneg.z * Vneg.z);
-                        double magxyp = Math.Sqrt(Vpos.x * Vpos.x + Vpos.y * Vpos.y);
-                        double magxyn = Math.Sqrt(Vneg.x * Vneg.x + Vneg.y * Vneg.y);
-                        double phipos = Math.Atan(Vpos.z / (magxyp == 0? 1:magxyp));
-                        double phineg = Math.Atan(Vneg.z / (magxyn == 0? 1:magxyn));
-                        double thetapos = Math.Asin(Vpos.y / (magxyp == 0 ? 1 : magxyp));
-                        double thetaneg = Math.Asin(Vneg.y / (magxyn == 0 ? 1 : magxyn));
+                        double magpos = Math.Sqrt(Vpos.dx * Vpos.dx + Vpos.dy * Vpos.dy + Vpos.dz * Vpos.dz);
+                        double magneg = Math.Sqrt(Vneg.dx * Vneg.dx + Vneg.dy * Vneg.dy + Vneg.dz * Vneg.dz);
+                        double magxyp = Math.Sqrt(Vpos.dx * Vpos.dx + Vpos.dy * Vpos.dy);
+                        double magxyn = Math.Sqrt(Vneg.dx * Vneg.dx + Vneg.dy * Vneg.dy);
+                        double phipos = Math.Atan(Vpos.dz / (magxyp == 0? 1:magxyp));
+                        double phineg = Math.Atan(Vneg.dz / (magxyn == 0? 1:magxyn));
+                        double thetapos = Math.Asin(Vpos.dy / (magxyp == 0 ? 1 : magxyp));
+                        double thetaneg = Math.Asin(Vneg.dy / (magxyn == 0 ? 1 : magxyn));
                         double rt3_2 = Math.Sqrt(3) / 2;
 
                         double sin2phpos = Math.Sin(2 * phipos);
@@ -1888,14 +1888,14 @@ namespace Pachyderm_Acoustic
                     {
                         Hare.Geometry.Vector Vpos = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_temp[0][i], hist_temp[2][i], hist_temp[4][i]), xpos_azi, 0, true), 0, xpos_alt, true);
                         Hare.Geometry.Vector Vneg = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(-hist_temp[1][i], -hist_temp[3][i], -hist_temp[5][i]), xpos_azi, 0, true), 0, xpos_alt, true);
-                        double magpos = Math.Sqrt(Vpos.x * Vpos.x + Vpos.y * Vpos.y + Vpos.z * Vpos.z);
-                        double magneg = Math.Sqrt(Vneg.x * Vneg.x + Vneg.y * Vneg.y + Vneg.z * Vneg.z);
-                        double magxyp = Math.Sqrt(Vpos.x * Vpos.x + Vpos.y * Vpos.y);
-                        double magxyn = Math.Sqrt(Vneg.x * Vneg.x + Vneg.y * Vneg.y);
-                        double phipos = Math.Atan(Vpos.z / (magxyp == 0 ? 1 : magxyp));
-                        double phineg = Math.Atan(Vneg.z / (magxyn == 0 ? 1 : magxyn));
-                        double thetapos = Math.Asin(Vpos.y / (magxyp == 0 ? 1 : magxyp));
-                        double thetaneg = Math.Asin(Vneg.y / (magxyn == 0 ? 1 : magxyn));
+                        double magpos = Math.Sqrt(Vpos.dx * Vpos.dx + Vpos.dy * Vpos.dy + Vpos.dz * Vpos.dz);
+                        double magneg = Math.Sqrt(Vneg.dx * Vneg.dx + Vneg.dy * Vneg.dy + Vneg.dz * Vneg.dz);
+                        double magxyp = Math.Sqrt(Vpos.dx * Vpos.dx + Vpos.dy * Vpos.dy);
+                        double magxyn = Math.Sqrt(Vneg.dx * Vneg.dx + Vneg.dy * Vneg.dy);
+                        double phipos = Math.Atan(Vpos.dz / (magxyp == 0 ? 1 : magxyp));
+                        double phineg = Math.Atan(Vneg.dz / (magxyn == 0 ? 1 : magxyn));
+                        double thetapos = Math.Asin(Vpos.dy / (magxyp == 0 ? 1 : magxyp));
+                        double thetaneg = Math.Asin(Vneg.dy / (magxyn == 0 ? 1 : magxyn));
                         double rt3_8 = Math.Sqrt(3.0 / 8.0);
                         double rt15_2 = Math.Sqrt(15.0) / 2.0;
                         double rt5_8 = Math.Sqrt(5.0 / 8.0);
@@ -2432,8 +2432,8 @@ namespace Pachyderm_Acoustic
             {
                 Hare.Geometry.Vector V = Src - Rec;
                 V.Normalize();
-                azi = Math.Atan2(V.y, V.x);
-                alt = Math.Asin(V.z);
+                azi = Math.Atan2(V.dy, V.dx);
+                alt = Math.Asin(V.dz);
 
                 while (azi < 0) azi += 2 * Math.PI;
 
@@ -2447,7 +2447,7 @@ namespace Pachyderm_Acoustic
             public static bool check_circumsphere(Hare.Geometry.Point ctr, Hare.Geometry.Point Vertex, double r2)
             {
                 Hare.Geometry.Vector vd = Vertex - ctr;
-                if (vd.x * vd.x + vd.y * vd.y + vd.z * vd.z < r2) return false;
+                if (vd.dx * vd.dx + vd.dy * vd.dy + vd.dz * vd.dz < r2) return false;
                 return true;
             }
 
@@ -2462,7 +2462,7 @@ namespace Pachyderm_Acoustic
                 Hare.Geometry.Vector Pac = Hare.Geometry.Hare_math.Cross(abXac, ac);
 
                 // this is the vector from a TO the circumsphere center
-                radius = (Pab.x * acmid.y - Pab.x * abmid.y + Pab.y * abmid.x - Pab.y * acmid.x) / (Pac.x * Pab.y - Pab.x * Pac.y);
+                radius = (Pab.dx * acmid.y - Pab.dx * abmid.y + Pab.dy * abmid.x - Pab.dy * acmid.x) / (Pac.dx * Pab.dy - Pab.dx * Pac.dy);
                 ctr = acmid + Pac * radius;
                 radius = (ctr - a).Length();
             }
@@ -2486,11 +2486,11 @@ namespace Pachyderm_Acoustic
                 Hare.Geometry.Vector fwd = new Hare.Geometry.Vector(r1[0], r1[1], r1[2]);
                 Hare.Geometry.Vector up = new Hare.Geometry.Vector(0, 0, 1) - Hare.Geometry.Hare_math.Dot(new Hare.Geometry.Vector(0, 0, 1), fwd) * fwd;
                 up.Normalize();
-                double[] r3 = new double[3] { up.x, up.y, up.z };
+                double[] r3 = new double[3] { up.dx, up.dy, up.dz };
                 Hare.Geometry.Vector right = Hare.Geometry.Hare_math.Cross(up, fwd);
-                double[] r2 = new double[3] { right.x, right.y, right.z };
+                double[] r2 = new double[3] { right.dx, right.dy, right.dz };
 
-                return (new Hare.Geometry.Vector(r1[0] * V.x + r1[1] * V.y + r1[2] * V.z, r2[0] * V.x + r2[1] * V.y + r2[2] * V.z, r3[0] * V.x + r3[1] * V.y + r3[2] * V.z));
+                return (new Hare.Geometry.Vector(r1[0] * V.dx + r1[1] * V.dy + r1[2] * V.dz, r2[0] * V.dx + r2[1] * V.dy + r2[2] * V.dz, r3[0] * V.dx + r3[1] * V.dy + r3[2] * V.dz));
             }
 
             public static double Polygon_Closest_Distance(Hare.Geometry.Point p, Hare.Geometry.Point a, Hare.Geometry.Point b, Hare.Geometry.Point c )
@@ -2569,16 +2569,16 @@ namespace Pachyderm_Acoustic
             public static double Polygon_Farthest_Distance(Hare.Geometry.Point p, Hare.Geometry.Point a, Hare.Geometry.Point b, Hare.Geometry.Point c)
             {
                 Hare.Geometry.Vector pa = p - a, pb = p - b, pc = p - c;
-                double dpa = pa.x * pa.x + pa.y * pa.y + pa.z * pa.z;
-                double dpb = pb.x * pb.x + pb.y * pb.y + pb.z * pb.z;
+                double dpa = pa.dx * pa.dx + pa.dy * pa.dy + pa.dz * pa.dz;
+                double dpb = pb.dx * pb.dx + pb.dy * pb.dy + pb.dz * pb.dz;
                 if (dpa < dpb)
                 {
-                    double dpc = pc.x * pc.x + pc.y * pc.y + pc.z * pc.z;
+                    double dpc = pc.dx * pc.dx + pc.dy * pc.dy + pc.dz * pc.dz;
                     return dpb < dpc ? Math.Sqrt(dpc): Math.Sqrt(dpb);
                 }
                 else
                 {
-                    double dpc = pc.x * pc.x + pc.y * pc.y + pc.z * pc.z;
+                    double dpc = pc.dx * pc.dx + pc.dy * pc.dy + pc.dz * pc.dz;
                     return dpa < dpc ? Math.Sqrt(dpc) : Math.Sqrt(dpa);
                 }
             }
@@ -2586,9 +2586,9 @@ namespace Pachyderm_Acoustic
             public static void Euler_Pitch_Yaw(Hare.Geometry.Vector V1, Hare.Geometry.Vector V2, out double yaw, out double pitch)
             {
                 Hare.Geometry.Vector V = V2 - V1;
-                yaw = Math.Atan2(V.x, V.z);
-                double padj = Math.Sqrt(V.x * V.x + V.z * V.z);
-                pitch = Math.Atan2(padj, V.y);
+                yaw = Math.Atan2(V.dx, V.dz);
+                double padj = Math.Sqrt(V.dx * V.dx + V.dz * V.dz);
+                pitch = Math.Atan2(padj, V.dy);
             }
 
             public static void RotateMatrix(double phi_radians, ref MathNet.Numerics.LinearAlgebra.Matrix<double> matrix)

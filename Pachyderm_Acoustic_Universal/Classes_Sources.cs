@@ -36,7 +36,6 @@ namespace Pachyderm_Acoustic
             protected Point Center;
             protected double[] SPL = new double[8];
             protected double[] SourcePower = new double[8];
-            protected Hare.Geometry.Point H_Center;
             protected string type = "";
             protected int S_ID = 0;
             public double Rho_C = 411.6;
@@ -51,7 +50,6 @@ namespace Pachyderm_Acoustic
             public Source(double[] power_In_db, Point Source, int ID, bool Third_Octave)
             {
                 S_ID = ID;
-                H_Center = new Hare.Geometry.Point(Source.x, Source.y, Source.z);
                 Center = Source;
                 if (Third_Octave)
                 {
@@ -114,7 +112,6 @@ namespace Pachyderm_Acoustic
             public Source(Point Source, int ID, bool Third_Octave)
             {
                 S_ID = ID;
-                H_Center = new Hare.Geometry.Point(Source.x, Source.y, Source.z);
                 Center = Source;
 
                 int no_of_bands = Third_Octave ? 24 : 8;
@@ -129,7 +126,7 @@ namespace Pachyderm_Acoustic
 
             public virtual void AppendPts(ref List<Point> SPT)
             {
-                SPT.Add(Origin());
+                SPT.Add(Origin);
             }
 
             /// <summary>
@@ -204,21 +201,15 @@ namespace Pachyderm_Acoustic
             public abstract BroadRay Directions(int thread, ref Random random, int[] Octaves);
             
             /// <summary>
-            /// The origin of the source.
+            /// The Origin of the source.
             /// </summary>
             /// <returns></returns>
-            public Point Origin()
+            public Point Origin
             {
-                return Center;
-            }
-
-            /// <summary>
-            /// The origin of the source.
-            /// </summary>
-            /// <returns></returns>
-            public Hare.Geometry.Point H_Origin()
-            {
-                return H_Center;
+                get
+                {
+                    return Center;
+                }
             }
 
             public virtual string Type()
@@ -250,7 +241,7 @@ namespace Pachyderm_Acoustic
                 double Phi = random.NextDouble() * 2 * System.Math.PI;
                 Vector Direction = new Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
 
-                BroadRay B = new BroadRay(H_Center, Direction, random.Next(), thread, DirPower(thread, random.Next(), Direction), 0, Source_ID());
+                BroadRay B = BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, DirPower(thread, random.Next(), Direction), 0, Source_ID());
                 return B;
             }
 
@@ -259,8 +250,9 @@ namespace Pachyderm_Acoustic
                 double Theta = random.NextDouble() * 2 * System.Math.PI;
                 double Phi = random.NextDouble() * 2 * System.Math.PI;
                 Vector Direction = new Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
-                
-                BroadRay B = new BroadRay(H_Center, Direction, random.Next(), thread, DirPower(thread, random.Next(), Direction), 0, Source_ID(), Octaves);
+
+                //BroadRay B = new BroadRay(Origin.x, Origin.y, Origin.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, DirPower(thread, random.Next(), Direction), 0, Source_ID(), Octaves);
+                BroadRay B = BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, DirPower(thread, random.Next(), Direction), 0, Source_ID(), Octaves);
                 return B;
             }
         }
@@ -369,7 +361,7 @@ namespace Pachyderm_Acoustic
                 }
                 else
                 {
-                    P[Fnum] = new Hare.Geometry.Point[3]{P0, P1, P2};
+                    P[Fnum] = new Hare.Geometry.Point[3]{new Point(P0.dx, P0.dy, P0.dz), new Point(P1.dx, P1.dy, P1.dz), new Point(P2.dx, P2.dy, P2.dz)};
                     Fnum++;
                 }
             }
@@ -381,7 +373,8 @@ namespace Pachyderm_Acoustic
                 P.Normalize();
                 rayct++;
 
-                return new BroadRay(H_Center, P, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID()); //Provides divided Power[stochastic]
+                //return new BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID()); //Provides divided Power[stochastic]
+                return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID()); //Provides divided Power[stochastic]
             }
 
             object ctlock = new object();
@@ -396,7 +389,8 @@ namespace Pachyderm_Acoustic
                 Hare.Geometry.Vector P = new Vector(Pt.x, Pt.y, Pt.z);
                 P.Normalize();
 
-                return new BroadRay(H_Center, P, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID(), Octaves); //Provides divided Power[stochastic]
+                //return new BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID(), Octaves); //Provides divided Power[stochastic]
+                return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID(), Octaves); //Provides divided Power[stochastic]
             }
         }
 
@@ -463,7 +457,8 @@ namespace Pachyderm_Acoustic
 
                 base.rayct++;
 
-                return new BroadRay(H_Center, P, random.Next(), thread, RayPower, 0, Source_ID());
+                //return new BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, RayPower, 0, Source_ID());
+                return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, RayPower, 0, Source_ID());
             }
 
             /// <summary>
@@ -589,13 +584,16 @@ namespace Pachyderm_Acoustic
             {
                 if (Ord < max)
                 {
-                    Vector P3 = (P0 + P1) / 2;
+                    //Vector P3 = (P0 + P1) / 2;
+                    Vector P3 = new Vector(P0.dx + P1.dx, P0.dy + P1.dy, P0.dz + P1.dz);
                     P3.Normalize();
 
-                    Vector P4 = (P1 + P2) / 2;
+                    //Vector P4 = (P1 + P2) / 2;
+                    Vector P4 = new Vector(P1.dx + P2.dx, P1.dy + P2.dy, P1.dz + P2.dz);
                     P4.Normalize();
 
-                    Vector P5 = (P2 + P0) / 2;
+                    //Vector P5 = (P2 + P0) / 2;
+                    Vector P5 = new Vector(P2.dx + P0.dx, P2.dy + P0.dy, P2.dz + P0.dz);
                     P5.Normalize();
 
                     this.triangle(P0, P3, P5, Ord + 1, max);
@@ -605,7 +603,7 @@ namespace Pachyderm_Acoustic
                 }
                 else
                 {
-                    P[Fnum] = new Hare.Geometry.Point[3] { P0, P1, P2 };
+                    P[Fnum] = new Hare.Geometry.Point[3] { new Point(P0.dx, P0.dy, P0.dz), new Point( P1.dx, P1.dy, P1.dz), new Point(P2.dx, P2.dy,P2.dz) };
                     Fnum++;
                 }
             }
@@ -620,13 +618,16 @@ namespace Pachyderm_Acoustic
 
             public override BroadRay Directions(int thread, ref Random random)
             {
-
-                return new BroadRay(H_Center, Dir_Random(ref random), random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID());
+                Vector d = Dir_Random(ref random);
+                //return new BroadRay(Origin.x, Origin.y, Origin.z, d.dx, d.dy, d.dz, random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID());
+                return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, d.dx, d.dy, d.dz, random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID());
             }
 
             public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
-                return new BroadRay(H_Center, Dir_Random(ref random), random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID(), Octaves);
+                Vector d = Dir_Random(ref random);
+                //return new BroadRay(Origin.x, Origin.y, Origin.z, d.dx, d.dy, d.dy, random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID(), Octaves);
+                return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, d.dx, d.dy, d.dy, random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID(), Octaves);
             }
         }
     }
