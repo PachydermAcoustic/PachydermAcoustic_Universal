@@ -625,7 +625,7 @@
 
 //                if (!Room.shoot(OR, out u, out v, out OR.Surf_ID, out Start, out leg, out code))
 //                {
-//                    RecMain.CheckRay(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 100000, OR.z + OR.dz * 100000));
+//                    RecMain.CheckRay(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000));
 //                    _lost[OR.ThreadID] += OR.Intensity;
 //                    break;
 //                }
@@ -1175,29 +1175,29 @@
 //        void Fill(double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr);
 //    }
 
-//    public class RayQueue<T> : ConcurrentQueue<T>
-//    {
-//        int ProcessorCt;
-//        public RayQueue(int no_of_processors)
-//        : base()
-//        {
-//            ProcessorCt = no_of_processors;
-//        }
+//    //public class RayQueue<T> : ConcurrentQueue<T>
+//    //{
+//    //    int ProcessorCt;
+//    //    public RayQueue(int no_of_processors)
+//    //    : base()
+//    //    {
+//    //        ProcessorCt = no_of_processors;
+//    //    }
 
-//        public AutoResetEvent Ray_Loaded = new AutoResetEvent(false);
-//        public AutoResetEvent Rays_dwindling = new AutoResetEvent(false);
+//    //    public AutoResetEvent Ray_Loaded = new AutoResetEvent(false);
+//    //    public AutoResetEvent Rays_dwindling = new AutoResetEvent(false);
 
-//        public new void Enqueue(T item)
-//        {
-//            base.Enqueue(item);
-//            Ray_Loaded.Set();
-//        }
+//    //    public new void Enqueue(T item)
+//    //    {
+//    //        base.Enqueue(item);
+//    //        Ray_Loaded.Set();
+//    //    }
 
-//        public new bool TryDequeue(out T item)
-//        {
-//            if (Count < ProcessorCt) Rays_dwindling.Set();
-//            Rays_dwindling.Set();
-//            return base.TryDequeue(out item);
-//        }
-//    }
+//    //    public new bool TryDequeue(out T item)
+//    //    {
+//    //        if (Count < ProcessorCt) Rays_dwindling.Set();
+//    //        Rays_dwindling.Set();
+//    //        return base.TryDequeue(out item);
+//    //    }
+//    //}
 //}

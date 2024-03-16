@@ -380,7 +380,7 @@ namespace Pachyderm_Acoustic
 
             public BroadRay Clone()
             {
-                return BroadRayPool.Instance.new_BroadRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Energy, t_sum, Source_ID);
+                return BroadRayPool.Instance.new_BroadRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Energy, t_sum, Source_ID, Surf_ID);
             }
 
             /// <summary>
@@ -449,7 +449,7 @@ namespace Pachyderm_Acoustic
                 ctr.Release(count);
             }
 
-            public BroadRay new_BroadRay(double x, double y, double z, double dx, double dy, double dz, int ID, int ThreadID_IN, double[] Intensity_in, double Time, int SrcID)
+            public BroadRay new_BroadRay(double x, double y, double z, double dx, double dy, double dz, int ID, int ThreadID_IN, double[] Intensity_in, double Time, int SrcID, int srf_id = -1)
             {
                 BroadRay BR = pull;
                 BR.x = x; BR.y = y; BR.z = z;
@@ -460,10 +460,11 @@ namespace Pachyderm_Acoustic
                 BR.t_sum = Time;
                 BR.Freq_Bands = new int[8] {0,1,2,3,4,5,6,7};
                 BR.Source_ID = SrcID;
+                BR.Surf_ID = srf_id;
                 return BR;
             }
 
-            public BroadRay new_BroadRay(double x, double y, double z, double dx, double dy, double dz, int ID, int ThreadID_IN, double[] Intensity_in, double Time, int SrcID, int[] _Octaves)
+            public BroadRay new_BroadRay(double x, double y, double z, double dx, double dy, double dz, int ID, int ThreadID_IN, double[] Intensity_in, double Time, int SrcID, int[] _Octaves, int srf_id = -1)
             {
                 BroadRay BR = pull;
                 BR.x = x; BR.y = y; BR.z = z;
@@ -474,6 +475,7 @@ namespace Pachyderm_Acoustic
                 BR.t_sum = Time;
                 BR.Freq_Bands = _Octaves;
                 BR.Source_ID = SrcID;
+                BR.Surf_ID = srf_id; 
                 return BR;
             }
 
@@ -510,7 +512,7 @@ namespace Pachyderm_Acoustic
                     R.Energy = new double[8];
                     R.t_sum = 0;
                     R.Ray_ID = 0;
-                    R.Surf_ID = 0;
+                    R.Surf_ID = -1;
                     R.Source_ID = 0;
                     R.poly_origin1 = 0;
                     R.poly_origin2 = 0;
@@ -576,8 +578,7 @@ namespace Pachyderm_Acoustic
                 OR.Ray_ID = ID;
                 OR.ThreadID = ThreadID_IN;
                 OR.Intensity = Intensity_in;
-                if (Time == 0)
-                    OR.t_sum = Time;
+                OR.t_sum = Time;
                 OR.Octave = octave;
                 OR.Source_ID = SrcID;
                 OR.Decimation = Decimation_in;
@@ -594,8 +595,7 @@ namespace Pachyderm_Acoustic
                 OR.Ray_ID = ID;
                 OR.ThreadID = ThreadID_IN;
                 OR.Intensity = Intensity_in;
-                if (Time == 0)
-                    OR.t_sum = Time;
+                OR.t_sum = Time;
                 OR.Octave = octave;
                 OR.Source_ID = SrcID;
                 OR.Decimation = Decimation_in;
@@ -646,7 +646,7 @@ namespace Pachyderm_Acoustic
                     R.poly_origin1 = 0;
                     R.poly_origin2 = 0;
                     R.Ray_ID = 0;
-                    R.Surf_ID = 0;
+                    R.Surf_ID = -1;
                     R.t_sum = 0;
                     R.Source_ID = 0;
                     R.ThreadID = 0;

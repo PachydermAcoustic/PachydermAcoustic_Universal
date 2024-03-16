@@ -26,7 +26,7 @@ using System.Collections.Concurrent;
 using Pachyderm_Acoustic.Utilities;
 using System.Threading.Tasks;
 using Pachyderm_Acoustic.Pach_Graphics;
-using Eto.Forms;
+using System.Threading.Tasks.Sources;
 
 namespace Pachyderm_Acoustic
 {
@@ -216,6 +216,14 @@ namespace Pachyderm_Acoustic
                     ValueTask t = new ValueTask(Task.Run(() => Calculate(T)));
                     MainRays.Add(t);
                 }
+
+                Task.Run(async () => 
+                { 
+                    for (int i = 0; i < MainRays.Count; i++) await MainRays[i];
+                    conclude = true;
+                    _ts = DateTime.Now - _st;
+                });
+
             }
             else
             {
@@ -244,7 +252,7 @@ namespace Pachyderm_Acoustic
         /// Called by each thread from the begin method for calculations with a user-defined length.
         /// </summary>
         /// <param name="i">the object is type "Calc_Params" which holds all the necessary information to run a portion of the simulation.</param>
-        public void Calculate(object i)
+        public async void Calculate(object i)
         {
             ///Homogeneous media only...
             Calc_Params Params = (Calc_Params)i;
@@ -253,16 +261,11 @@ namespace Pachyderm_Acoustic
 
             for (int ray = 0; ray < Params.EndIndex - Params.StartIndex; ray++)
             {
-                cast_ray_distributed(Params.Room, Params.ThreadID, Rnd);
+                await cast_ray_distributed(Params.Room, Params.ThreadID, Rnd);
                 lock (ctlock)
                 {
                     _currentRay[0]++;
                 }
-            }
-            if (_currentRay[0] == Raycount)
-            {
-                conclude = true;
-                _ts = DateTime.Now - _st;
             }
         }
 
@@ -284,34 +287,23 @@ namespace Pachyderm_Acoustic
                 rev++;
                 if (conclude)
                     break;
-                //GC.TryStartNoGCRegion();
-                //for (int P_I = 0; P_I < _processorCt; P_I++)
-                //{
+
                 for (int P_I = 0; P_I < 80; P_I++)
-                {    //int start = (int)Math.Floor((double)P_I * 80 / _processorCt);
-                    //int end;
-                    //if (P_I == _processorCt - 1) end = 80;
-                    //else end = (P_I + 1) * (80 / _processorCt);
+                {    
                     Calc_Params T = new Calc_Params(Room, P_I, P_I + 1, P_I, rnd.Next());
-                    ValueTask t = new ValueTask(Task.Run(delegate
+                    ValueTask t = new ValueTask(Task.Run(async () =>
                     {
                         Random Rnd = new Random(T.RandomSeed);
-
-                        for (int ray = 0; ray < T.EndIndex - T.StartIndex; ray++)
+                        await cast_ray_distributed(T.Room, T.ThreadID, Rnd);
+                        lock (ctlock)
                         {
-                            cast_ray_distributed(T.Room, T.ThreadID, Rnd);
-                            lock (ctlock)
-                            {
-                                _currentRay[0]++;
-                            }
-                        }
+                            _currentRay[0]++;
+                        }                
                     }));
                     MainRays.Add(t);
                 }
 
-                //Task.WaitAll(MainRays.ToArray());
-
-                for (var j = 0; j < MainRays.Count; j++) await MainRays[j].ConfigureAwait(false);
+                for (var j = 0; j < MainRays.Count; j++) await MainRays[j];
 
                 GC.Collect();
                 conv = true;
@@ -319,15 +311,7 @@ namespace Pachyderm_Acoustic
             } while (!conv);
 
             Conclude_Simulation();
-            //foreach (Thread t in _tlist) t.Join();
 
-            //foreach (List<Task> t in LastRays) await Task.WhenAll(t);
-            //while (LastRays.Count > 0)
-            //{
-            //    Thread.Sleep(200);
-            //}
-
-            //foreach (Thread t in lastraytracers) t.Abort();
             _ts = DateTime.Now - _st;
         }
 
@@ -335,7 +319,7 @@ namespace Pachyderm_Acoustic
 
         object lostlock = new object();
         object initlock = new object();
-        private async void cast_ray_distributed(Scene Room, int ThreadID, Random Rnd)
+        private async Task cast_ray_distributed(Scene Room, int ThreadID, Random Rnd)
         {
             List<ValueTask> LastRays = new List<ValueTask>();
             List<Point> Start;
@@ -434,7 +418,6 @@ namespace Pachyderm_Acoustic
                 do
                 {
                     OctaveRay OR = Rays.Dequeue();
-
                     do
                     {
                         OR.Ray_ID = Rnd.Next();
@@ -476,16 +459,16 @@ namespace Pachyderm_Acoustic
                     while (OR.t_sum < COTime && OR.Intensity > Threshold_Power_2[OR.Octave]);
 
                     int seed = Rnd.Next();
+                    OR.Ray_ID = seed;
 
-                    //Action<object> ET = delegate (object ray) { End_Trace(ray as OctaveRay); };
                     ValueTask t = new ValueTask(Task.Run(() => End_Trace(OR)));
-                    //t.Start();
                     LastRays.Add(t);
                 }
                 while (Rays.Count > 0);
             }
-            //Task.WaitAll(LastRays.ToArray());
-            for (var i = 0; i < LastRays.Count; i++) await LastRays[i].ConfigureAwait(false);
+
+            for (int i = 0; i < LastRays.Count; i++)
+                await LastRays[i];
         }
 
         object rt_Lock = new object();

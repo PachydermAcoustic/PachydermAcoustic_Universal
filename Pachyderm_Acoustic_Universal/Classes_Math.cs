@@ -2834,7 +2834,7 @@ namespace Pachyderm_Acoustic
                 int r = (int)(R * 255.0);
                 int g = (int)(G * 255.0);
                 int b = (int)(B * 255.0);
-                return Eto.Drawing.Color.FromArgb(255, r<0?0:r>255?255:r, g<0?0:g>255?255:g, b<0?0:b>255?255:b);
+                return Eto.Drawing.Color.FromArgb(r<0?0:r>255?255:r, g<0?0:g>255?255:g, b<0?0:b>255?255:b, 255);
             }
 
             /// <summary>

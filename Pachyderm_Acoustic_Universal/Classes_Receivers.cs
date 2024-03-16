@@ -24,6 +24,7 @@ using MathNet.Numerics;
 using Pachyderm_Acoustic.Pach_Graphics;
 using Pachyderm_Acoustic.Utilities;
 using System.CodeDom;
+using System.Threading.Tasks;
 
 namespace Pachyderm_Acoustic
 {
@@ -615,7 +616,7 @@ namespace Pachyderm_Acoustic
             {
                 for (int rec = 0; rec < Rec_List.Length; rec++)
                 {
-                    await new System.Threading.Tasks.Task(() => { Rec_List[rec].Create_Filter(VB); });
+                    await Task.Run(() => { Rec_List[rec].Create_Filter(VB); });
                 }
             }
 
@@ -1708,6 +1709,8 @@ namespace Pachyderm_Acoustic
                 public override void Add(double time, double Energy_in, double dx, double dy, double dz, double Rho_C, int Octave)
                 {
                     int sample = (int)(time * SampleRate);
+                    if (sample < 150)
+                        sample = sample;
                     if (sample >= Energy[Octave].Length) return;
                     Energy[Octave][sample] += Energy_in;
                     Pressure[Octave][sample] += Math.Sqrt(Energy_in * Rho_C);

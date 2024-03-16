@@ -160,7 +160,6 @@ namespace Pachyderm_Acoustic
                 else
                 { throw x; }
             }
-
         }
 
         /// <summary>

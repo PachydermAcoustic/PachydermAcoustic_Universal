@@ -32,15 +32,16 @@
   <ItemGroup>
     <None Remove="Resources\CLF_Read.dll" />
   </ItemGroup>
-  <ItemGroup>
-    <Reference Include="Eto">
-      <HintPath>..\..\..\..\..\..\..\..\Program Files\Rhino 8\System\Eto.dll</HintPath>
-    </Reference>
-  </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net7.0'">
     <PackageReference Include="System.Windows.Extensions">
       <Version>7.0.0</Version>
     </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Eto">
+      <HintPath>..\..\..\..\..\..\..\..\Program Files\Rhino 7\System\Eto.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
   <PropertyGroup />
 </Project>
