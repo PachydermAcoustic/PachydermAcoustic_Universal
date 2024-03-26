@@ -1788,7 +1788,7 @@ namespace Pachyderm_Acoustic
                     {
                         P.Create_Filter(length, 0);
                         CDE.Signal();
-                        VB.Report((int)(100 * (1f - ((float)CDE.CurrentCount / (float)CDE.InitialCount))));
+                        if (VB != null) VB.Report((int)(100 * (1f - ((float)CDE.CurrentCount / (float)CDE.InitialCount))));
                         //VB.Refresh();
                     }
                 }
@@ -1797,7 +1797,7 @@ namespace Pachyderm_Acoustic
 
             do
             {
-                VB.Report((int)(100 * (1f - ((float)CDE.CurrentCount / (float)CDE.InitialCount))));
+                if (VB != null) VB.Report((int)(100 * (1f - ((float)CDE.CurrentCount / (float)CDE.InitialCount))));
                 //VB.Refresh();
                 if (CDE.IsSet)
                 {

@@ -157,7 +157,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddCurve(new LineCurve(Pachyderm_Acoustic.Utilities.PachTools.HPttoRPt(R.Origin), Pachyderm_Acoustic.Utilities.PachTools.HPttoRPt(R.Origin + R.direction) * 5));
                         break;
                     }
-                    Sequence.Add(Room.PlaneID(ChosenIndex));
+                    Sequence.Add(Room.ObjectID(ChosenIndex));
                     R.x = Start[0].x;
                     R.y = Start[0].y;
                     R.z = Start[0].z;

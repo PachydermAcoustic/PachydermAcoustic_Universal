@@ -150,10 +150,11 @@ namespace Pachyderm_Acoustic
                     double CO_TIME = sr.ReadDouble();
                     int SampleRate = sr.ReadInt32();
                     //3.1 Third Octave? (version 2.6+) true for 1/3 octave, false for octave band.
-                    bool Third_Octave = double.Parse(Pach_version) >= 2.6 ? sr.ReadBoolean() : false;
+                    bool Third_Octave = double.Parse(Pach_version.Substring(0, 3)) >= 2.9 ? sr.ReadBoolean() : false;
                     //4. Source Count          
                     int SrcCt = 1;
-                    if (double.Parse(Pach_version.Substring(0, 3)) >= 1.1) SrcCt = sr.ReadInt32();
+                    string vers_shallow = Pach_version.Substring(0, 3);
+                    if (double.Parse(vers_shallow) >= 1.1) SrcCt = sr.ReadInt32();
                     //4.1 Source Location x                   
                     //4.2 Source Location y
                     //4.3 Source Location z
@@ -185,16 +186,19 @@ namespace Pachyderm_Acoustic
                         switch (readin)
                         {
                             case "Direct_Sound":
-                            case "Direct_Sound w sourcedata":
+                            case "Direct_Sound w sourcedata":                                          
                                 //9. Read Direct Sound Data
                                 Direct_Data[DDCT] = Direct_Sound.Read_Data(ref sr, Recs, SrcPt[DDCT], Rho_C, Third_Octave, Pach_version);
                                 Direct_Data[DDCT].CO_Time = CO_TIME;
                                 Direct_Data[DDCT].SampleFreq = (int)SampleRate;
                                 DDCT++;
+                                //float s1 = sr.ReadSingle();
+                                //float s2 = sr.ReadSingle();
                                 break;
                             case "Image-Source_Data":
                                 //10. Read Image Source Sound Data
                                 IS_Data[ISCT] = ImageSourceData.Read_Data(ref sr, Recs.Length, Direct_Data[DDCT - 1], false, Rho_C, ISCT, Pach_version, VB);
+
                                 ISCT++;
                                 break;
                             case "Ray-Traced_Data":

@@ -166,19 +166,21 @@ namespace Pachyderm_Acoustic
 
             double v = double.Parse(Version.Substring(0, 3));
 
+
             for (int q = 0; q < RecPts.Count<Hare.Geometry.Point>(); q++)
             {
                 //2.2 Write number of samples
                 int no_of_samples = BR.ReadInt32();
+
                 //3. Write the validity of the direct sound
                 D.Validity[q] = BR.ReadBoolean();
                 //4. Write the Time point
                 D.Time_Pt[q] = BR.ReadDouble();
                 D.Io[q] = new double[9][];
-                D.Dir_Rec_Pos[q] = new float[8][][];
-                D.Dir_Rec_Neg[q] = new float[8][][];
+                D.Dir_Rec_Pos[q] = new float[no_of_bands][][];
+                D.Dir_Rec_Neg[q] = new float[no_of_bands][][];
 
-                for (int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < no_of_bands; oct++)
                 {
                     D.Io[q][oct] = new double[no_of_samples];
                     D.Dir_Rec_Pos[q][oct] = new float[no_of_samples][];
@@ -190,12 +192,12 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                D.Io[q][no_of_bands+1] = new double[no_of_samples];
+                D.Io[q][no_of_bands] = new double[no_of_samples];
 
                 for (int s = 0; s < no_of_samples; s++)
                 {
                     //5a. Write all Energy data
-                    for (int i = 0; i < no_of_bands + 1; i++)
+                    for (int i = 0; i < no_of_bands; i++)
                     {
                         D.Io[q][i][s] = BR.ReadDouble();
                         D.Io[q][no_of_bands][s] = D.Io[q][i][s];

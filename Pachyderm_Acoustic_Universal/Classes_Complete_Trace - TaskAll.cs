@@ -218,8 +218,9 @@ namespace Pachyderm_Acoustic
                 }
 
                 Task.Run(async () => 
-                { 
-                    for (int i = 0; i < MainRays.Count; i++) await MainRays[i];
+                {   
+                    while (_currentRay[0] < Raycount) { await Task.Delay(1500); }
+                    for (int i = 0; i < MainRays.Count; i++) if (MainRays[i].IsCompletedSuccessfully);
                     conclude = true;
                     _ts = DateTime.Now - _st;
                 });
