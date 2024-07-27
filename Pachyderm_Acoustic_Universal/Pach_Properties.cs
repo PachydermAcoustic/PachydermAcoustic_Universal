@@ -26,7 +26,7 @@ namespace Pachyderm_Acoustic
         string SettingsPath;
 
         int GeometrySystem;
-        int Processing;
+        int Priority;
         int Thread_Spec;
         int Spatial_Partition;
 
@@ -98,7 +98,7 @@ namespace Pachyderm_Acoustic
                 //}
 
                 //3. Processing
-                Processing = Reader.ReadInt32();
+                Priority = Reader.ReadInt32();
                 //switch (Reader.ReadInt32())
                 //{
                 //    case 1:
@@ -179,8 +179,11 @@ namespace Pachyderm_Acoustic
             //2. Geometry System(int)
             GeometrySystem = 2;
             Writer.Write(2);
-            //3. Processing(int)
-            Processing = 2;
+            //3. Priority(int)
+            //0 = 'High'
+            //1 = 'AboveNormal'
+            //2 = 'Normal'
+            Priority = 2;
             Writer.Write(2);
             //4. ThreadCount(int)
             Thread_Spec = System.Environment.ProcessorCount;
@@ -212,12 +215,9 @@ namespace Pachyderm_Acoustic
         /// Get the number of processors/threads to be used.
         /// </summary>
         /// <returns></returns>
-        public int ProcessorCount()
+        public int TaskPriority()
         {
-            if (Processing == 1) return 1;
-            else if (Processing == 2) return System.Environment.ProcessorCount;
-            else if (Processing == 3) return Thread_Spec;
-            throw new Exception("Is there a new Processor Option that needs to be implemented?");
+            return Priority;
         }
 
         /// <summary>
@@ -232,15 +232,15 @@ namespace Pachyderm_Acoustic
             throw new Exception("Is there a new Geometrical Option that needs to be implemented?");
         }
 
-        public int Processor_Choice
+        public int Priority_Choice
         {
             get 
             {
-                return Processing; 
+                return Priority; 
             }
             set 
             {
-                Processing = value;
+                Priority = value;
                 Commit_Settings();
             }
         }
@@ -411,7 +411,7 @@ namespace Pachyderm_Acoustic
             //{ Writer.Write(2); }
             //else
             //{ Writer.Write(3); }
-            Writer.Write(Processing);
+            Writer.Write(Priority);
 
             //4. ThreadCount(int)
             //Writer.Write((int)Thread_Spec.Value);

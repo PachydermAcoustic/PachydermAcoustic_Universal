@@ -486,6 +486,14 @@ namespace Pachyderm_Acoustic
                 }
                 return RayPower;
             }
+
+            public override double[] DirPressure(int threadid, int random, Vector Direction)
+            {
+                double[] H = DirPower (threadid, random, Direction);
+                for (int i = 0; i < H.Length; i++) H[i] = AcousticalMath.Pressure_Intensity(H[i], this.Rho_C);
+                return H;
+            }
+
         }
 
         /// <summary>

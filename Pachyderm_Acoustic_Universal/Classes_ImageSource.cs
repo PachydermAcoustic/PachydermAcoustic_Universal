@@ -24,6 +24,7 @@ using Pachyderm_Acoustic.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace Pachyderm_Acoustic
 {
@@ -116,7 +117,7 @@ namespace Pachyderm_Acoustic
         /// </summary>
         public override void Begin()
         {
-            processorCT = Pach_Properties.Instance.ProcessorCount();
+            processorCT = System.Environment.ProcessorCount;
             ThreadPaths = new List<Deterministic_Reflection>[Rec.Length, processorCT];
             int SrfCT = Room.ObjectCount;
             //
@@ -172,7 +173,7 @@ namespace Pachyderm_Acoustic
         /// <param name="Sequences">List of surface index sequences to try.</param>
         public void Lookup_Sequences(List<int[]>[] Sequences)
         {
-            processorCT = Pach_Properties.Instance.ProcessorCount();
+            processorCT = System.Environment.ProcessorCount;
             ThreadPaths = new List<Deterministic_Reflection>[Rec.Length, processorCT];
             int SrfCT = Room.ObjectCount;
             CurrentSrf = new int[processorCT];
@@ -241,14 +242,6 @@ namespace Pachyderm_Acoustic
                 return string.Format("Calculating Image Set {0} of {1}. ({2} hours,{3} minutes,{4} seconds Remaining.) Press 'Esc' to Cancel...", Srf_CT, Room.ObjectCount, TS.Hours, TS.Minutes, TS.Seconds);
             }
         }
-
-        /// <summary>
-        /// Aborts all threads, effectively ending the simulation.
-        /// </summary>
-        //public override void Abort_Calculation()
-        //{
-        //    foreach (System.Threading.Thread T in T_List) T.Abort();
-        //}
 
         /// <summary>
         /// Consolidates output from all threads into a single set of output.
@@ -443,7 +436,7 @@ namespace Pachyderm_Acoustic
                     if (PathVertices[i] == null) continue;
                     Hare.Geometry.Vector d = PathVertices[i][1] - PathVertices[i][0];
                     d.Normalize();
-                    double[] En = Src.DirPower(Threadid, 0, d);
+                    double[] En = Src.DirPower(Threadid, Rnd[Threadid].Next(), d);
                     for (int oct = 0; oct < 8; oct++) Trans_Mod[i][oct] *= En[oct];
                 }
 
@@ -2113,7 +2106,7 @@ namespace Pachyderm_Acoustic
 
         public override double[] Dir_Filter(double[] SWL, double alt, double azi, bool degrees, bool Figure8, int SampleFreq, bool flat)
         {
-            Hare.Geometry.Vector V = Path[0][Path[0].Length - 1] - Path[0][Path[0].Length - 2];
+            Hare.Geometry.Vector V = -1 * (Path[0][Path[0].Length - 1] - Path[0][Path[0].Length - 2]);
             V.Normalize();
             Hare.Geometry.Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V, azi, 0, degrees), 0, alt, degrees);
             double[] F_Chosen = (SampleFreq == 44100 && flat) ? F : this.Create_Filter(SWL, 4096, SampleFreq, 0)[0];
@@ -2125,7 +2118,7 @@ namespace Pachyderm_Acoustic
                     Fn[i] = Vn.dx * F_Chosen[i];
                 }
             }
-            if (Vn.dx > 0)
+            else if (Vn.dx > 0)
             {
                 for (int i = 0; i < F_Chosen.Length; i++)
                 {
@@ -2200,7 +2193,7 @@ namespace Pachyderm_Acoustic
         private int[] Sequence; //Unique identifying indices for each reflecting element.
         private double RhoC;
         //public double[][] Octave_Power; //Contains power modifying information for each sample in H (such as absorption or transmission coefficients, air attenuation, etc.)
-        public double[][] H; //Initual H-function of the reflection (contains info about diffraction, compression, etc. that is a consequence of the resulting wave-form.) [oct][t]
+        public double[][] H; //Initial H-function of the reflection (contains info about diffraction, compression, etc. that is a consequence of the resulting wave-form.) [oct][t]
         public double[][][] Hdir; //Directional form of H.[d][oct][t]
         public double[] F; //Filter form of the reflection time signature.
         public double[][] Fdir; //Directional form of F.[d][t]

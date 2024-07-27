@@ -21,7 +21,9 @@ using Hare.Geometry;
 using Pachyderm_Acoustic.Environment;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Pachyderm_Acoustic.Utilities;
+using System.Text.RegularExpressions;
 
 namespace Pachyderm_Acoustic
 {
@@ -796,8 +798,8 @@ namespace Pachyderm_Acoustic
 
                      Rho_C[i] = Room.Rho_C(Receiver[i]);
 
-                     double Length = (Src.Origin - Receiver[i]).Length();
                     Vector dir = Receiver[i] - Src.Origin;
+                    double Length = dir.Length();
 
                      double[] Power = Src.DirPower(0, rnd.Next(), dir);
 
@@ -832,9 +834,9 @@ namespace Pachyderm_Acoustic
                      for (int oct = 0; oct < 8; oct++)
                      {
                          Vector V = dir * Io[i][oct][0];
-                         if (V.dx > 0) Dir_Rec_Pos[i][oct][0][0] += (float)V.dx; else Dir_Rec_Neg[i][oct][0][0] += (float)V.dx;
-                         if (V.dy > 0) Dir_Rec_Pos[i][oct][0][1] += (float)V.dy; else Dir_Rec_Neg[i][oct][0][1] += (float)V.dy;
-                         if (V.dz > 0) Dir_Rec_Pos[i][oct][0][2] += (float)V.dz; else Dir_Rec_Neg[i][oct][0][2] += (float)V.dz;
+                         if (-V.dx > 0) Dir_Rec_Pos[i][oct][0][0] -= (float)V.dx; else Dir_Rec_Neg[i][oct][0][0] -= (float)V.dx;
+                         if (-V.dy > 0) Dir_Rec_Pos[i][oct][0][1] -= (float)V.dy; else Dir_Rec_Neg[i][oct][0][1] -= (float)V.dy;
+                         if (-V.dz > 0) Dir_Rec_Pos[i][oct][0][2] -= (float)V.dz; else Dir_Rec_Neg[i][oct][0][2] -= (float)V.dz;
                      }
 
                      Time_Pt[i] = Length / C_Sound + Delay_ms;
@@ -917,12 +919,23 @@ namespace Pachyderm_Acoustic
                 else
                 {
                     for (int i = 0; i < Fn.Length; i++) Fn[i] = new double[3];
-                    Vector D = new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
-                    Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
-                    Vn.Normalize();
-                    if (Vn.dx > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][0] = F[Rec_ID][i] * Vn.dx;
-                    if (Vn.dy > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][1] = F[Rec_ID][i] * Vn.dy;
-                    if (Vn.dz > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][2] = F[Rec_ID][i] * Vn.dz;
+                    //Vector D = new Vector(Dir_Rec_Pos[Rec_ID][5][0][0] + Dir_Rec_Neg[Rec_ID][5][0][0], Dir_Rec_Pos[Rec_ID][5][0][1] + Dir_Rec_Neg[Rec_ID][5][0][1], Dir_Rec_Pos[Rec_ID][5][0][2] + Dir_Rec_Neg[Rec_ID][5][0][2]);
+                    Vector Vp = new Vector(0, 0, 0);
+                    Vector Vn = new Vector(0, 0, 0);
+                    if (Dir_Rec_Pos[Rec_ID][4][0][0] > -Dir_Rec_Neg[Rec_ID][4][0][0]) { Vp.dx = Dir_Rec_Pos[Rec_ID][4][0][0]; Vn.dx = Dir_Rec_Neg[Rec_ID][4][0][0]; } else { Vp.dx = Dir_Rec_Neg[Rec_ID][4][0][0]; Vn.dx = Dir_Rec_Pos[Rec_ID][4][0][0]; }
+                    if (Dir_Rec_Pos[Rec_ID][4][0][1] > -Dir_Rec_Neg[Rec_ID][4][0][1]) { Vp.dy = Dir_Rec_Pos[Rec_ID][4][0][1]; Vn.dy = Dir_Rec_Neg[Rec_ID][4][0][1]; } else { Vp.dy = Dir_Rec_Neg[Rec_ID][4][0][1]; Vn.dy = Dir_Rec_Pos[Rec_ID][4][0][1]; }
+                    if (Dir_Rec_Pos[Rec_ID][4][0][2] > -Dir_Rec_Neg[Rec_ID][4][0][2]) { Vp.dz = Dir_Rec_Pos[Rec_ID][4][0][2]; Vn.dz = Dir_Rec_Neg[Rec_ID][4][0][2]; } else { Vp.dz = Dir_Rec_Neg[Rec_ID][4][0][2]; Vn.dz = Dir_Rec_Pos[Rec_ID][4][0][2]; }
+                    Vp = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(Vp, azi, 0, degrees), 0, alt, degrees);
+                    Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(Vn, azi, 0, degrees), 0, alt, degrees);
+                    double VM = Math.Sqrt(Math.Max(Vp.dx * Vp.dx, Vn.dx + Vn.dx) + Math.Max(Vp.dy * Vp.dy, Vn.dy + Vn.dy) + Math.Max(Vp.dz * Vp.dz, Vn.dz * Vn.dz));
+                    Vp /= VM;
+                    Vn /= VM;
+                    if (Vp.dx > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][0] += F[Rec_ID][i] * Vp.dx;
+                    if (Vp.dy > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][1] += F[Rec_ID][i] * Vp.dy;
+                    if (Vp.dz > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][2] += F[Rec_ID][i] * Vp.dz;
+                    if (Vn.dx > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][0] += F[Rec_ID][i] * Vn.dx;
+                    if (Vn.dy > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][1] += F[Rec_ID][i] * Vn.dy;
+                    if (Vn.dz > 0) for (int i = 0; i < Fn.Length; i++) Fn[i][2] += F[Rec_ID][i] * Vn.dz;
                 }
             }
             return Fn;
@@ -1261,7 +1274,6 @@ namespace Pachyderm_Acoustic
         {
             F = new double[Receiver.Count][];
             Fdir = new double[Receiver.Count][][];
-            //double scale = Math.Sqrt(4096);
 
             double[] p_mod = new double[8];
             for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
@@ -1412,8 +1424,8 @@ namespace Pachyderm_Acoustic
                         for (int k = 0; k < 4096; k++)
                         {
                             int j2 = 2 * j;
-                            F_out[j2+1][t + k] += Pmin[k] * vpos.byint(j);//((double.IsNaN(hist_temp[j2][k])) ? 0: hist_temp[j2][k]);
-                            F_out[j2+2][t + k] += Pmin[k] * vneg.byint(j);//((double.IsNaN(hist_temp[j2 + 1][k])) ? 0 : hist_temp[j2 + 1][k]);
+                            F_out[j2+1][t + k] += Pmin[k] * vpos.byint(j);
+                            F_out[j2+2][t + k] += Pmin[k] * vneg.byint(j);
                         }
                     }
                 }
@@ -1423,7 +1435,7 @@ namespace Pachyderm_Acoustic
 
         private void Record_Line_Segment(ref List<double> t, ref List<double[]> I, ref List<Vector> d, int rec_id)
         {
-            int no_of_bands = Io[0].Length;
+            int no_of_bands = Io[0].Length - 1;
             if (SPL_Only)
             {
                 for (int j = 0; j < t.Count; j++)
@@ -1475,7 +1487,7 @@ namespace Pachyderm_Acoustic
                     t_dump[i] = t[i];
                     tmin = Math.Min(t[i], tmin);
                     tmax = Math.Max(t[i], tmax);
-                    double log10Eps = Math.Log10(1E-12);
+                    double log10Eps = Math.Log10(1E-12);    
 
                     for (int oct = 0; oct < no_of_bands; oct++)
                     {
@@ -1532,7 +1544,7 @@ namespace Pachyderm_Acoustic
                     zn_Spline[oct] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaSorted(t_dump, zn_dump[oct]);
                 }
                 int taumin = (int)Math.Ceiling(tmin / dt);
-                int taumax = (int)Math.Floor(tmax / dt); //Io[rec_id][0].Length;
+                int taumax = (int)Math.Floor(tmax / dt);
 
                 if (Io[rec_id][0].Length < Io[rec_id][0].Length)
                 {
@@ -1584,7 +1596,6 @@ namespace Pachyderm_Acoustic
             int[] rnd = new int[Receiver.Count];
             for (int i = 0; i < Receiver.Count; i++) rnd[i] = RndGen.Next();
             Hare.Geometry.AABB b = LSrc.bounds;
-            //double dx = 1;// 5 * Math.Acos(d / (d + dmod)); //1
             trib = (trib / C_Sound) * SampleFreq;
 
             for (int i = 0; i < Receiver.Count; i++)
@@ -1721,8 +1732,6 @@ namespace Pachyderm_Acoustic
                                         I_d.Add(dir);
                                         I.Add(new double[8] { double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon });
                                         time.Add(tdbl);
-                                        //if (tdbl <= 0)
-                                        //    tdbl = tdbl;
                                     }
                                     break;
                                 }

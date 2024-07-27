@@ -56,11 +56,12 @@ namespace Pachyderm_Acoustic
                         string[] D_Mat = Material.Split(new char[] { ':' });
                         string Name = D_Mat[0].Trim();
                         string Abs_Code = D_Mat[1].Trim();
-                        Abs_Code += "0000000000000000";
+                        Abs_Code += "00000000000000000000000000000000";
                         double[] Abs = new double[8];
                         double[] Sct = new double[8];
                         double[] Trns = new double[8];
                         Utilities.PachTools.DecodeAcoustics(Abs_Code, ref Abs, ref Sct, ref Trns);
+                        for(int i = 0; i <  Abs.Length; i++) { Abs[i] *= 100; }
                         this.Add_Unique_Abs(Name, Abs);
                     }
                     catch (System.Exception)
@@ -156,7 +157,7 @@ namespace Pachyderm_Acoustic
                 int[] trns = new int[1];
                 for (int oct = 0; oct < Abs_List[i].Values.Length; oct++)
                 {
-                    abs[oct] = (int)(Abs_List[i].Values[oct] * 1000.0);
+                    abs[oct] = (int)(Abs_List[i].Values[oct] * 10);
                 }
                 string Abs_Code = Utilities.PachTools.EncodeAcoustics(abs, sct, trns);
                 Entry += Abs_Code.Substring(0, Abs_List[i].Values.Length * 3);

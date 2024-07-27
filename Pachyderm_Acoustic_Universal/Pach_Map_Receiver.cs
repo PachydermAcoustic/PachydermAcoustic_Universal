@@ -33,7 +33,6 @@ namespace Pachyderm_Acoustic
     [Serializable]
     public class PachMapReceiver : Receiver_Bank
     {
-        //public double[] SWL;
         public Hare.Geometry.Topology Map_Mesh;
         public AABB OBox;
         public int VoxelCtX, VoxelCtY, VoxelCtZ;
@@ -98,7 +97,7 @@ namespace Pachyderm_Acoustic
         }
         private void Partition(Source Src_Pt)//, bool ProcessMesh)
         {
-            int processorCt = Pach_Properties.Instance.ProcessorCount();
+            int processorCt = System.Environment.ProcessorCount;
 
             //if (ProcessMesh)
             //{
@@ -111,7 +110,7 @@ namespace Pachyderm_Acoustic
                     for (int i = 0; i < Map_Mesh.Vertex_Count; i++)
                     {
                         p = new Hare.Geometry.Point(Map_Mesh[i].x, Map_Mesh[i].y, Map_Mesh[i].z) + V;
-                        Rec_List[i] = new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p), 1000, CutOffTime, processorCt, Time1Pt, Directional);
+                        Rec_List[i] = new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p), 1000, CutOffTime, no_of_boxes, Time1Pt, Directional);
                     }
                 }
                 else
@@ -129,7 +128,7 @@ namespace Pachyderm_Acoustic
                         else { center /= 3; }
 
                         p = center + V;
-                        Rec_List[i] = new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p), 1000, CutOffTime, processorCt, Time1Pt, Directional);
+                        Rec_List[i] = new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p), 1000, CutOffTime, no_of_boxes, Time1Pt, Directional);
                     }
                 }
             }
@@ -141,7 +140,7 @@ namespace Pachyderm_Acoustic
                     {
                         Vector V = Map_Mesh.Vertex_Normals[i] * increment;
                         p = Map_Mesh[i] + V;
-                        Rec_List[i] = new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p), 1000, CutOffTime, processorCt, Time1Pt, Directional);
+                        Rec_List[i] = new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p), 1000, CutOffTime, no_of_boxes, Time1Pt, Directional);
                     }
                 }
                 else
@@ -160,7 +159,7 @@ namespace Pachyderm_Acoustic
                         Vector V = Map_Mesh.Normal(i);
 
                         p = center + V;
-                        Rec_List[i] = new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p), 1000, CutOffTime, processorCt, Time1Pt, Directional);
+                        Rec_List[i] = new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p), 1000, CutOffTime, no_of_boxes, Time1Pt, Directional);
                     }
                 }
 
@@ -263,11 +262,11 @@ namespace Pachyderm_Acoustic
         /// <param name="X">The current voxel index 'X'</param>
         /// <param name="Y">The current voxel index 'Y'</param>
         /// <param name="Z">The current voxel index 'Z'</param>
-        private void CheckReceivers_Broadband(BroadRay R, Hare.Geometry.Point EndPt, int X, int Y, int Z)
+        private void CheckReceivers_Broadband(BroadRay R, Hare.Geometry.Point EndPt, uint boxid, int X, int Y, int Z)
         {
             for (int i = 0; i < Voxel_Inv[X, Y, Z].Count; i++)
             {
-                if (!(Rec_List[Voxel_Inv[X, Y, Z][i]].Ray_ID[R.ThreadID] == R.Ray_ID))
+                if (!(Rec_List[Voxel_Inv[X, Y, Z][i]].Ray_ID[boxid] == R.Ray_ID))
                 {
                     Rec_List[Voxel_Inv[X, Y, Z][i]].CheckBroadbandRay(R, EndPt);
                     //    //Debug Code
@@ -279,7 +278,7 @@ namespace Pachyderm_Acoustic
                     //    //RhUtil.RhinoApp().ActiveDoc().AddObject(sphere_obj);
                     //    ///////////////////////////////////////////////////////////////////
                     //}
-                    Rec_List[Voxel_Inv[X, Y, Z][i]].Ray_ID[R.ThreadID] = R.Ray_ID;
+                    Rec_List[Voxel_Inv[X, Y, Z][i]].Ray_ID[boxid] = R.Ray_ID;
                 }
             }
         }
@@ -293,12 +292,12 @@ namespace Pachyderm_Acoustic
         /// <param name="X">The current voxel index 'X'</param>
         /// <param name="Y">The current voxel index 'Y'</param>
         /// <param name="Z">The current voxel index 'Z'</param>
-        private void CheckReceivers_Octave(OctaveRay R, Hare.Geometry.Point EndPt, int X, int Y, int Z)
+        private void CheckReceivers_Octave(OctaveRay R, Hare.Geometry.Point EndPt, uint boxid, int X, int Y, int Z)
         {
             //PachTools.AddBox(Voxels[X, Y, 0].Min(), Voxels[X, Y, 0].Max());//Debug tool...
             for (int i = 0; i < Voxel_Inv[X, Y, Z].Count; i++)
             {
-                if (!(Rec_List[Voxel_Inv[X, Y, Z][i]].Ray_ID[R.ThreadID] == R.Ray_ID))
+                if (!(Rec_List[Voxel_Inv[X, Y, Z][i]].Ray_ID[boxid] == R.Ray_ID))
                 {
                     Rec_List[Voxel_Inv[X, Y, Z][i]].CheckRay(R, EndPt);
                     //    //Debug Code
@@ -310,7 +309,7 @@ namespace Pachyderm_Acoustic
                     //    //RhUtil.RhinoApp().ActiveDoc().AddObject(sphere_obj);
                     //    ///////////////////////////////////////////////////////////////////
                     //}
-                    Rec_List[Voxel_Inv[X, Y, Z][i]].Ray_ID[R.ThreadID] = R.Ray_ID;
+                    Rec_List[Voxel_Inv[X, Y, Z][i]].Ray_ID[boxid] = R.Ray_ID;
                 }
             }
         }
@@ -1058,6 +1057,20 @@ namespace Pachyderm_Acoustic
             }
         }
 
+        uint no_of_boxes = 500;
+        uint rayno;
+        object ctlock = new object();
+        protected uint assign_id()
+        {
+            lock (ctlock)
+            {
+                rayno++;
+                if (rayno == no_of_boxes) { rayno = 0; } //reset_half(true);  }
+                //else if (rayno == no_of_boxes_2) { reset_half(false); }
+                return rayno;
+            }
+        }
+
         /// <summary>
         /// Checks receivers for intersections with a broadband ray (specular only). Records detections. Use after shooting a ray, but before adding the distance of ray travel to the total of distance traveled.
         /// </summary>
@@ -1066,7 +1079,7 @@ namespace Pachyderm_Acoustic
         /// <param name="EndPt">The point of the d</param>
         public override void CheckBroadbandRay(BroadRay R, Hare.Geometry.Point EndPt)
         {
-            // R.ThreadID = this.Get_shotID();
+            uint boxid = assign_id();
             int X, Y, Z, Xend, Yend, Zend;
             //Identify whether the Origin is inside the voxel grid...
             //double Sumlength = R.t_sum;
@@ -1086,7 +1099,6 @@ namespace Pachyderm_Acoustic
             Xend = (int)Math.Floor((EndPt.x - OBox.Min_PT.x) / VoxelDims.x);
             Yend = (int)Math.Floor((EndPt.y - OBox.Min_PT.y) / VoxelDims.y);
             Zend = (int)Math.Floor((EndPt.z - OBox.Min_PT.z) / VoxelDims.z);
-
 
             double tDeltaX, tDeltaY, tDeltaZ;
             double tMaxX = 0, tMaxY = 0, tMaxZ = 0;
@@ -1153,7 +1165,7 @@ namespace Pachyderm_Acoustic
 
             do
             {
-                CheckReceivers_Broadband(R, EndPt, X, Y, Z);
+                CheckReceivers_Broadband(R, EndPt, boxid, X, Y, Z);
 
                 if (tMaxX < tMaxY)
                 {
@@ -1201,7 +1213,7 @@ namespace Pachyderm_Acoustic
         /// <param name="EndPt">The point of the d</param>
         public override void CheckRay(OctaveRay R, Hare.Geometry.Point EndPt)
         {
-            //R.ThreadID = this.Get_shotID();
+            uint boxid = assign_id();
             int X, Y, Z, Xend, Yend, Zend;
             //Identify whether the Origin is inside the voxel grid...
             //double Sumlength = R.t_sum;
@@ -1291,7 +1303,7 @@ namespace Pachyderm_Acoustic
             do
             {
                 //CheckReceivers_Octave(R, Sumlength, EndPt, X, Y, Z);
-                CheckReceivers_Octave(R, EndPt, X, Y, Z);
+                CheckReceivers_Octave(R, EndPt, boxid, X, Y, Z);
 
                 if (tMaxX < tMaxY)
                 {
@@ -1427,9 +1439,9 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            public Map_Receiver(double Diameter, int i, Hare.Geometry.Point Point, Source Src, double SoundSpeed, double rho, double[] Attenuation, int SampleRate_in, double COTime_in, int ProcessorSpec, bool Time1Pt, bool Directional)
+            public Map_Receiver(double Diameter, int i, Hare.Geometry.Point Point, Source Src, double SoundSpeed, double rho, double[] Attenuation, int SampleRate_in, double COTime_in, uint BoxCt, bool Time1Pt, bool Directional)
             {
-                Ray_ID = new int[ProcessorSpec];
+                Ray_ID = new int[BoxCt];
                 Radius = 1;
                 Radius2 = Radius * Radius;
                 CO_Time = COTime_in;

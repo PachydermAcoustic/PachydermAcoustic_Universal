@@ -54,6 +54,8 @@ namespace Pachyderm_Acoustic
         private Convergence_Check[] check;
         private bool conclude = false;
         I_Conv_Progress Vis_Feedback;
+        CancellationToken Cancelled;
+        CancellationTokenSource Canceler;
 
         /// <summary>
         /// Constructor for the general case ray tracer.
@@ -68,6 +70,8 @@ namespace Pachyderm_Acoustic
         /// <param name="partitionedReceiver">Is the receiver partitioned... i.e., did you use a mapping receiver bank?</param>
         public SplitRayTracer(Source sourceIn, Receiver_Bank receiverIn, Scene roomIn, double cutoffTime, int[] octaveRange, int isOrderIn, int rayCountIn, I_Conv_Progress Vis_Feedback)
         {
+            Canceler = Vis_Feedback.Canceler;
+            Cancelled = Vis_Feedback.CancellationToken;
             BroadRayPool.Initialize();
             OctaveRayPool.Initialize();
             IS_Order = isOrderIn;
@@ -202,7 +206,7 @@ namespace Pachyderm_Acoustic
         {
             _st = DateTime.Now;
             Random Rnd = new Random((int)DateTime.Now.ToFileTimeUtc());
-            _processorCt = Pach_Properties.Instance.ProcessorCount();
+            _processorCt = System.Environment.ProcessorCount;
 
             if (Raycount > 0)
             {
@@ -224,7 +228,6 @@ namespace Pachyderm_Acoustic
                     conclude = true;
                     _ts = DateTime.Now - _st;
                 });
-
             }
             else
             {
@@ -258,7 +261,6 @@ namespace Pachyderm_Acoustic
             ///Homogeneous media only...
             Calc_Params Params = (Calc_Params)i;
             Random Rnd = new Random(Params.RandomSeed);
-            //LastRays = new List<Task>[_processorCt];
 
             for (int ray = 0; ray < Params.EndIndex - Params.StartIndex; ray++)
             {
@@ -266,6 +268,11 @@ namespace Pachyderm_Acoustic
                 lock (ctlock)
                 {
                     _currentRay[0]++;
+                }
+                if (Cancelled.IsCancellationRequested)
+                {
+                    Conclude_Simulation();
+                    break;
                 }
             }
         }
@@ -299,7 +306,7 @@ namespace Pachyderm_Acoustic
                         lock (ctlock)
                         {
                             _currentRay[0]++;
-                        }                
+                        }
                     }));
                     MainRays.Add(t);
                 }
@@ -309,6 +316,7 @@ namespace Pachyderm_Acoustic
                 GC.Collect();
                 conv = true;
                 foreach (Convergence_Check c in check) if (c != null) conv &= c.Check();
+                if (Cancelled.IsCancellationRequested) break;
             } while (!conv);
 
             Conclude_Simulation();
@@ -1034,6 +1042,8 @@ namespace Pachyderm_Acoustic
     {
         void Populate();
         void Fill(double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr);
+        CancellationToken CancellationToken { get; }
+        CancellationTokenSource Canceler { get; }
     }
 
     public class RayQueue<T> : ConcurrentQueue<T>

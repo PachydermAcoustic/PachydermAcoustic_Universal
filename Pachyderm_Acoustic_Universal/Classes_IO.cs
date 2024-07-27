@@ -15,7 +15,6 @@
 //'You should have received a copy of the GNU General Public 
 //'License along with Pachyderm-Acoustic; if not, write to the Free Software 
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
-using Eto.Forms;
 using Pachyderm_Acoustic.Pach_Graphics;
 using System;
 
@@ -54,8 +53,7 @@ namespace Pachyderm_Acoustic
             {
                 if (Direct_Data == null && IS_Data == null && IS_Data == null && Receiver != null)
                 {
-                    Eto.Forms.MessageBox.Show("There is no simulated data to save.");
-                    return;
+                    throw new Exception("There is no simulated data to save.");
                 }
 
                 System.IO.BinaryWriter sw = new System.IO.BinaryWriter(System.IO.File.Open(filename, System.IO.FileMode.Create));
@@ -120,23 +118,6 @@ namespace Pachyderm_Acoustic
                 sw.Close();
             }
 
-            /// <summary>
-            /// Writes a Pac1 file. [Useable by scripts and interface components alike.]
-            /// </summary>
-            /// <param name="Direct_Data">Empty array of Direct Sound Simulations Required</param>
-            /// <param name="IS_Data">Empty array of Image Source Simulations. Enter null if opted out.</param>
-            /// <param name="Receiver">Empty array of Ray-Tracing Simulation Receivers. Enter null if opted out.</param>
-            public static bool Read_Pac1(ref Direct_Sound[] Direct_Data, ref ImageSourceData[] IS_Data, ref Environment.Receiver_Bank[] Receiver, string filepath)
-            {
-                Eto.Forms.OpenFileDialog sf = new Eto.Forms.OpenFileDialog();
-                sf.Filters.Add(new FileFilter("Pachyderm Simulation (*.pac1)", ".pac1"));
-                sf.Filters.Add(new FileFilter("All", ".*"));
-                sf.CurrentFilter = new FileFilter("Pachyderm Simulation (*.pac1)" ,".pac1");
-                    //if (sf.ShowDialog(parent) != Eto.Forms.DialogResult.Ok) return false;
-
-                    return Read_Pac1(filepath, ref Direct_Data, ref IS_Data, ref Receiver);
-            }
-
             public static bool Read_Pac1(string filename, ref Direct_Sound[] Direct_Data, ref ImageSourceData[] IS_Data, ref Environment.Receiver_Bank[] Receiver, IProgressFeedback VB = null)
             {
                 System.IO.BinaryReader sr = new System.IO.BinaryReader(System.IO.File.Open(filename, System.IO.FileMode.Open));
@@ -198,7 +179,6 @@ namespace Pachyderm_Acoustic
                             case "Image-Source_Data":
                                 //10. Read Image Source Sound Data
                                 IS_Data[ISCT] = ImageSourceData.Read_Data(ref sr, Recs.Length, Direct_Data[DDCT - 1], false, Rho_C, ISCT, Pach_version, VB);
-
                                 ISCT++;
                                 break;
                             case "Ray-Traced_Data":

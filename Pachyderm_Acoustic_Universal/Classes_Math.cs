@@ -21,6 +21,11 @@ using System;
 using Pachyderm_Acoustic.Environment;
 using System.Linq;
 using Pachyderm_Acoustic.Pach_Graphics;
+using Hare.Geometry;
+using System.IO.MemoryMappedFiles;
+using System.Diagnostics.Eventing.Reader;
+using Microsoft.VisualBasic;
+using System.Collections.Specialized;
 
 namespace Pachyderm_Acoustic
 {
@@ -33,13 +38,6 @@ namespace Pachyderm_Acoustic
             public static double Pi_180 = Math.PI / 180;
             public static double[] angularFrequency_Octave = new double[] { 62.5 * PiX2, 125 * PiX2, 250 * PiX2, 500 * PiX2, 1000 * PiX2, 2000 * PiX2, 4000 * PiX2, 8000 * PiX2 };
             public static double[] angularFrequency_ThirdOctave = new double[] { 50 * PiX2, 62.5 * PiX2, 80 * PiX2, 100 * PiX2, 125 * PiX2, 160 * PiX2, 200 * PiX2, 250 * PiX2, 315 * PiX2, 400 * PiX2, 500 * PiX2, 630 * PiX2, 800 * PiX2, 1000 * PiX2, 1250 * PiX2, 1600 * PiX2, 2000 * PiX2, 2500 * PiX2, 3150 * PiX2, 4000 * PiX2, 5000 * PiX2, 6300 * PiX2, 8000 * PiX2, 10000 * PiX2 };
-
-            public enum ComplexComponent
-            {
-                Real,
-                Imaginary,
-                Magnitude
-            }
 
             public static void ExpComplex(float re, float im, out float re_out, out float im_out)
             {
@@ -1582,7 +1580,7 @@ namespace Pachyderm_Acoustic
             /// <param name="Octave">the chosen octave band.</param>
             /// <param name="Rec_ID">the id of the selected receiver.</param>
             /// <returns></returns>
-            public static double[] Auralization_Filter(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, int Src_ID, int dim, bool Start_at_Zero, bool flat, IProgressFeedback VB)
+            public static double[] Auralization_Filter(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, int Src_ID, bool Start_at_Zero, bool flat, IProgressFeedback VB = null)
             {
                 double[] SWL = Direct[Src_ID].SWL;
                 double[] F;
@@ -1593,7 +1591,7 @@ namespace Pachyderm_Acoustic
                     else F = RTData[Src_ID].Create_Filter(Direct[Src_ID].SWL, Rec_ID, 0, VB);
                 }
                 else
-                {
+                {  
                     F = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency)];
                 }
 
@@ -1602,7 +1600,7 @@ namespace Pachyderm_Acoustic
                     int D_Start = 0;
                     if (!Start_at_Zero) D_Start = (int)Math.Ceiling(Direct[Src_ID].Time(Rec_ID) * Sampling_Frequency);
 
-                    double[] Filter = flat ? Direct[Src_ID].Get_Filter(Rec_ID, Sampling_Frequency)[0] : Direct[Src_ID].Create_Filter(Direct[Rec_ID].SWL, Rec_ID, dim, Sampling_Frequency);
+                    double[] Filter = flat ? Direct[Src_ID].Get_Filter(Rec_ID, Sampling_Frequency)[0] : Direct[Src_ID].Create_Filter(Direct[Rec_ID].SWL, Rec_ID, 0, Sampling_Frequency);
 
                     for (int i = 0; i < Filter.Length; i++)
                     {
@@ -1631,24 +1629,150 @@ namespace Pachyderm_Acoustic
                 return F;
             }
 
-            public static double[] Aurfilter_Directional(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB)
+            public static double[][] Aurfilter_HRTF(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
+            {
+                double[][] Histogram = new double[2][];
+                Histogram[0] = new double[(int)(RTData.CO_Time / 1000 * Sampling_Frequency) + 4096 + hrtf.SampleCt];
+                Histogram[1] = new double[(int)(RTData.CO_Time / 1000 * Sampling_Frequency) + 4096 + hrtf.SampleCt];
+                int power = hrtf.DirsCT / 2 - 2;
+
+                if (RTData != null)
+                {
+                    double[][] hist_temp = flat ? RTData.Filter_3Axis(Rec_ID) : RTData.Create_Filter(Direct.SWL, Rec_ID, VB);
+                    int[] ids = new int[3];
+                    double[][] hist_rot = PachTools.Rotate_Vector_Rose(hist_temp, azi, alt, true);
+
+                    for (int d = 0; d < hrtf.DirsCT; d++)
+                    {
+                        Vector v = hrtf.Directions[d];
+                        double d_azi = Math.Atan2(v.dy, v.dz);
+                        double d_alt = Math.Asin(v.dz);
+                        ids[0] = (d_azi > Math.PI / 2 && azi < 3 * Math.PI / 2) ? 1 : 0;
+                        ids[1] = (d_azi <= Math.PI) ? 2 : 3;
+                        ids[2] = (d_alt < 0) ? 5 : 4;
+                        int SIGN = 1;
+                        for (int i = 1; i < 2; i++) SIGN *= (ids[i] % 2 == 1) ? -1 : 1;
+
+                        double[] hist1d = new double[hist_rot.Length];
+                        for (int i = 0; i < hist_rot.Length; i++)
+                        {
+                            Hare.Geometry.Vector V = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_rot[i][ids[0]], hist_rot[i][ids[1]], hist_rot[i][ids[2]]), d_azi, 0, true), 0, d_alt, true);
+                            double contribution = V.dx;
+                            V.Normalize();
+                            hist1d[i] = contribution * Math.Pow(Hare_math.Dot(V, v), power);
+                        }
+
+                        double[] HistL = Audio.Pach_SP.FFT_Convolution_double(hist1d, hrtf.HeadRelatedIR(d)[0], 0);
+                        double[] HistR = Audio.Pach_SP.FFT_Convolution_double(hist1d, hrtf.HeadRelatedIR(d)[1], 0);
+
+                        for (int i = 0; i < hist1d.Length; i++)
+                        {
+                            Histogram[0][i] += HistL[i];
+                            Histogram[1][i] += HistR[i];
+                        }
+                    }
+
+                    if (Direct != null && Direct.IsOccluded(Rec_ID))
+                    {
+                        int D_Start = 0;
+                        if (!Start_at_Zero) D_Start = (int)Math.Ceiling(Direct.Time(Rec_ID) * Sampling_Frequency);
+
+                        double[][] hist_d = Direct.Dir_Filter(Rec_ID, alt, azi, degrees, Sampling_Frequency, false, flat);
+                        double[] hist1d = new double[Histogram[0].Length];
+
+                        Vector[] dn = Direct.Directions_Neg(4, Rec_ID, alt, azi, degrees);
+                        Vector[] dp = Direct.Directions_Pos(4, Rec_ID, alt, azi, degrees);
+                        Vector[] dnet = new Vector[dn.Length];
+                        for (int i = 0; i < dn.Length; i++) { dnet[i] = dp[i] - dn[i]; dnet[i].Normalize(); }
+
+                        for (int d = 0; d < hrtf.DirsCT; d++)
+                        {
+                            Vector v = hrtf.Directions[d];
+                            double d_azi = Math.Atan2(v.dy, v.dz);
+                            double d_alt = Math.Asin(v.dz);
+                            ids[0] = (d_azi > Math.PI / 2 && azi < 3 * Math.PI / 2) ? 1 : 0;
+                            ids[1] = (d_azi <= Math.PI) ? 2 : 3;
+                            ids[2] = (d_alt < 0) ? 5 : 4;
+                            int SIGN = 1;
+                            for (int i = 1; i < 2; i++) SIGN *= (ids[i] % 2 == 1) ? -1 : 1;
+                            for (int i = 0; i < hist_d.Length; i++)
+                            {
+                                Hare.Geometry.Vector V = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_d[i][0], hist_d[i][1], hist_d[i][2]), d_azi, 0, true), 0, d_alt, true);
+                                double contribution = V.dx;
+                                hist1d[i] = contribution * Math.Pow(Hare_math.Dot(dnet[0], v), power);
+                            }
+                            double[] HistL = Audio.Pach_SP.FFT_Convolution_double(hist1d, hrtf.HeadRelatedIR(d)[0], 0);
+                            double[] HistR = Audio.Pach_SP.FFT_Convolution_double(hist1d, hrtf.HeadRelatedIR(d)[1], 0);
+
+                            for (int i = 0; i < hist1d.Length; i++)
+                            {
+                                Histogram[0][i] += HistL[i];
+                                Histogram[1][i] += HistR[i];
+                            }
+                        }
+                    }
+
+                    if (ISData != null)
+                    {
+                        foreach (Deterministic_Reflection value in ISData.Paths[Rec_ID])
+                        {
+                            if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
+                            {
+                                double[][] filter = new double[6][];
+                                filter[0] = value.Dir_Filter(Direct.SWL, alt, azi, true, false, Sampling_Frequency, true);
+                                filter[1] = value.Dir_Filter(Direct.SWL, alt, (azi + 180) % 360, true, false, Sampling_Frequency, true);
+                                filter[2] = value.Dir_Filter(Direct.SWL, alt, (azi + 90) % 360, true, false, Sampling_Frequency, true);
+                                filter[3] = value.Dir_Filter(Direct.SWL, alt, (azi + 270) % 360, true, false, Sampling_Frequency, true);
+                                if (alt > 0)
+                                {
+                                    filter[4] = value.Dir_Filter(Direct.SWL, 90 - alt, (azi + 180) % 360, true, false, Sampling_Frequency, true);
+                                    filter[5] = value.Dir_Filter(Direct.SWL, -(90 - alt), azi, true, false, Sampling_Frequency, true);
+                                }
+                                else
+                                {
+                                    filter[5] = value.Dir_Filter(Direct.SWL, 90 - alt, (azi + 180) % 360, true, false, Sampling_Frequency, true);
+                                    filter[4] = value.Dir_Filter(Direct.SWL, -(90 - alt), azi, true, false, Sampling_Frequency, true);
+                                }
+                                double[][] hist = hrtf.Filter(filter);
+                                int end = hist[0].Length < Histogram.Length - (int)Math.Ceiling(Sampling_Frequency * value.TravelTime) ? hist[0].Length : Histogram.Length - (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                                int R_start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                                for (int t = 0; t < end; t++)
+                                {
+                                    int t_s = R_start + t;
+                                    if (t_s >= 0 && t_s + t < Histogram[0].Length)
+                                    {
+                                        Histogram[0][t_s + t] += hist[0][t];
+                                        Histogram[1][t_s + t] += hist[1][t];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return Histogram;
+            }
+
+            public static double[] Aurfilter_Directional(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
             {
                 double[] Histogram;
                 if (RTData != null)
                 {
                     int[] ids = new int[3];
-                    ids[0] = (azi > 90 && azi < 270) ? 1 : 0;
-                    ids[1] = (azi <= 180) ? 2 : 3;
-                    ids[2] = (alt < 0) ? 5 : 4;
-                    int SIGN = 1;
-                    for (int i = 1; i < 2; i++) SIGN *= (ids[i] % 2 == 1) ? -1 : 1;
+                    ids[0] = (azi > 90 && azi < 270) ? 0 : 1;
+                    ids[1] = (azi <= 180) ? 3 : 2;
+                    ids[2] = (alt < 0) ? 4 : 5;
+                    //int SIGN = 1;
+                    //for (int i = 1; i < 2; i++) SIGN *= (ids[i] % 2 == 1) ? -1 : 1;
 
                     double[][] hist_temp = flat ? RTData.Filter_3Axis(Rec_ID) : RTData.Create_Filter(Direct.SWL, Rec_ID, VB);
                     Histogram = new double[hist_temp[0].Length];
-                    for (int i = 0; i < hist_temp[0].Length; i++)
+                    for (int i = 0; i < hist_temp[0].Length; i++)                                                                                                                             
                     {
-                        Hare.Geometry.Vector V = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_temp[ids[0]][i], hist_temp[ids[1]][i], hist_temp[ids[2]][i]), azi, 0, true), 0, alt, true);
-                        Histogram[i] = V.dx * SIGN;
+                        //Hare.Geometry.Vector V = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_temp[ids[0]][i], hist_temp[ids[1]][i], hist_temp[ids[2]][i]), azi, 0, true), 0, alt, true);
+                        Hare.Geometry.Vector V = new Hare.Geometry.Vector(hist_temp[ids[0]][i], hist_temp[ids[1]][i], hist_temp[ids[2]][i]);
+                        Histogram[i] += V.dx * Math.Abs(Math.Cos(azi * Math.PI / 180));
+                        Histogram[i] += V.dy * Math.Abs(Math.Sin(azi * Math.PI / 180));
+                        Histogram[i] += V.dz * Math.Abs(Math.Sin(alt * Math.PI / 180));
                     }
                 }
                 else
@@ -1687,6 +1811,69 @@ namespace Pachyderm_Acoustic
                 return Histogram;
             }
 
+            //public static double[][] AurFilter_Binaural(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double xpos_alt, double xpos_azi, bool degrees, bool flat)
+            //{
+            //    double[][] Histogram = new double[2][];
+            //    if (RTData != null)
+            //    {
+            //        double[][] hist_temp = RTData.Filter_3Axis(Rec_ID);
+            //        Histogram[0] = new double[hist_temp[0].Length];
+            //        Histogram[1] = new double[hist_temp[0].Length];
+            //        Histogram[2] = new double[hist_temp[0].Length];
+            //        for (int i = 0; i < hist_temp[0].Length; i++)
+            //        {
+            //            AurFilter_Directional()
+
+            //            Histogram[0][i] = V.dx;
+            //            Histogram[1][i] = V.dy;
+            //            Histogram[2][i] = V.dz;
+            //        }
+            //    }
+            //    else
+            //    {
+            //        Histogram[0] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 4096];
+            //        Histogram[1] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 4096];
+            //        Histogram[2] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 4096];
+            //    }
+
+            //    if (Direct != null && Direct.IsOccluded(Rec_ID))
+            //    {
+            //        int D_Start = 0;
+            //        if (!Start_at_Zero) D_Start = (int)Math.Ceiling(Direct.Time(Rec_ID) * Sampling_Frequency);
+
+            //        double[][] V = Direct.Dir_Filter(Rec_ID, xpos_alt, xpos_azi, degrees, Sampling_Frequency, true, flat);
+            //        for (int i = 0; i < V.Length; i++)
+            //        {
+            //            Histogram[0][D_Start + i] += V[i][0];
+            //            Histogram[1][D_Start + i] += V[i][1];
+            //            Histogram[2][D_Start + i] += V[i][2];
+            //        }
+            //    }
+
+            //    if (ISData != null)
+            //    {
+            //        foreach (Deterministic_Reflection value in ISData.Paths[Rec_ID])
+            //        {
+            //            if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
+            //            {
+            //                int R_Start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+            //                double[][] V = value.Dir_Filter(Direct.SWL, xpos_alt, xpos_azi, degrees, Sampling_Frequency, flat);
+
+            //                //Hare.Geometry.Vector dir = value.Path[0][value.Path[0].Length - 1] - value.Path[0][value.Path[0].Length - 2];
+            //                //dir.Normalize();
+            //                //for (int i = 0; i < value.Filter.Length; i++)
+            //                for (int i = 0; i < V.Length; i++)
+            //                {
+            //                    Histogram[0][R_Start + i] += V[i][0];
+            //                    Histogram[1][R_Start + i] += V[i][1];
+            //                    Histogram[2][R_Start + i] += V[i][2];
+            //                }
+            //            }
+            //        }
+            //    }
+            //    return Histogram; //XYZ - Furse Malham (FUMA)
+            //}
+
             public static double[][] AurFilter_Fig8_3Axis(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double xpos_alt, double xpos_azi, bool degrees, bool flat)
             {
                 double[][] Histogram = new double[3][];
@@ -1698,10 +1885,18 @@ namespace Pachyderm_Acoustic
                     Histogram[2] = new double[hist_temp[0].Length];
                     for (int i = 0; i < hist_temp[0].Length; i++)
                     {
-                        Hare.Geometry.Vector V = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_temp[0][i] - hist_temp[1][i], hist_temp[2][i] - hist_temp[3][i], hist_temp[4][i] - hist_temp[5][i]), xpos_azi, 0, true), 0, xpos_alt, true);
-                        Histogram[0][i] = V.dx;
-                        Histogram[1][i] = V.dy;
-                        Histogram[2][i] = V.dz;
+                        Hare.Geometry.Vector V = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_temp[0][i] + hist_temp[1][i], hist_temp[2][i] + hist_temp[3][i], hist_temp[4][i] + hist_temp[5][i]), -xpos_azi, 0, true), 0, -xpos_alt, true);
+                        //Hare.Geometry.Vector V = new Hare.Geometry.Vector(hist_temp[0][i] + hist_temp[1][i], hist_temp[2][i] + hist_temp[3][i], hist_temp[4][i] + hist_temp[5][i]); 
+                        //double cos_azi = Math.Abs(Math.Cos(xpos_azi* Math.PI / 180));
+                        //double sin_azi = Math.Abs(Math.Sin(xpos_azi * Math.PI / 180));
+                        //double cos_alt = Math.Abs(Math.Cos(xpos_alt * Math.PI / 180));
+                        //double sin_alt = Math.Abs(Math.Sin(xpos_alt * Math.PI / 180));
+                        //Histogram[0][i] = V.dx * cos_azi * cos_alt + V.dy * sin_azi * cos_alt + V.dz * sin_alt;
+                        //Histogram[1][i] = V.dx * sin_azi * cos_alt + V.dy * cos_azi * cos_alt + V.dz * sin_alt;
+                        //Histogram[2][i] = V.dx * sin_azi + V.dy * cos_azi + V.dz * cos_alt;
+                        Histogram[0][i] += V.dx;
+                        Histogram[1][i] += V.dy;
+                        Histogram[2][i] += V.dz;
                     }
                 }
                 else
@@ -1732,7 +1927,6 @@ namespace Pachyderm_Acoustic
                         if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
                         {
                             int R_Start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
-
                             double[][] V = value.Dir_Filter(Direct.SWL, xpos_alt, xpos_azi, degrees, Sampling_Frequency, flat);
 
                             //Hare.Geometry.Vector dir = value.Path[0][value.Path[0].Length - 1] - value.Path[0][value.Path[0].Length - 2];
@@ -1997,7 +2191,7 @@ namespace Pachyderm_Acoustic
                 return Histogram;
             }
             
-            public static double[] Auralization_Filter(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, bool flat, IProgressFeedback VB)
+            public static double[] Auralization_Filter(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, bool flat, IProgressFeedback VB = null)
             {
                 if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
                 if (ISData == null) ISData = new ImageSourceData[SrcIDs[SrcIDs.Count - 1] + 1];
@@ -2030,7 +2224,7 @@ namespace Pachyderm_Acoustic
 
                 foreach (int s in SrcIDs)
                 {
-                    double[] P = Auralization_Filter(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Rec_ID, s, 0, StartAtZero, flat, VB);
+                    double[] P = Auralization_Filter(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Rec_ID, s, StartAtZero, flat, VB);
                     for (int i = 0; i < P.Length; i++)
                     {
                         Histogram[i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += P[i];
@@ -2039,7 +2233,7 @@ namespace Pachyderm_Acoustic
                 return Histogram;
             }
 
-            public static double[] PressureTimeCurve(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, bool flat, IProgressFeedback VB)
+            public static double[] PressureTimeCurve(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, bool flat, IProgressFeedback VB = null)
             {
                 if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
                 if (ISData == null) ISData = new ImageSourceData[SrcIDs[SrcIDs.Count - 1] + 1];
@@ -2081,7 +2275,7 @@ namespace Pachyderm_Acoustic
 
                 foreach (int s in SrcIDs)
                 {
-                    double[] P = Auralization_Filter(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Rec_ID, s, 0, StartAtZero, flat, VB);
+                    double[] P = Auralization_Filter(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Rec_ID, s, StartAtZero, flat, VB);
                     P = Audio.Pach_SP.Filter2Signal(P, Direct[s].SWL, Sampling_Frequency, 0);
                     for (int i = 0; i < P.Length; i++)
                     {
@@ -2331,8 +2525,111 @@ namespace Pachyderm_Acoustic
                 return Histogram;
             }
 
+            public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
+            {
+                //This version of the function achieves an HRTF filter by dividing up the 3 dimensional signal according to a set number of equidistant points on a sphere.
+                //Each direction is weighted according to spherical harmonics to achieve an approximately spherical weighting when all directions are combined.
+                //The signal is then filtered according to the HRTF at each of these points and then recombined to form the final signal.
 
-            public static double[] AurFilter_Directional(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB)
+                if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
+                if (ISData == null) ISData = new ImageSourceData[SrcIDs[SrcIDs.Count - 1] + 1];
+                if (RTData == null) RTData = new Environment.Receiver_Bank[SrcIDs[SrcIDs.Count - 1] + 1];
+
+                double maxdelay = 0;
+                List<double> delays = new List<double>();
+
+                if (Direct.ElementAt<Direct_Sound>(0) != null)
+                {
+                    foreach (Direct_Sound d in Direct)
+                    {
+                        delays.Add(d.Delay_ms);
+                        maxdelay = Math.Max(maxdelay, d.Delay_ms);
+                    }
+                }
+                else if (RTData.ElementAt<Receiver_Bank>(0) != null && RTData.ElementAt(0) is PachMapReceiver)
+                {
+                    foreach (Receiver_Bank r in RTData)
+                    {
+                        delays.Add((r as PachMapReceiver).delay_ms);
+                        maxdelay = Math.Max(maxdelay, (r as PachMapReceiver).delay_ms);
+                    }
+                }
+                maxdelay *= Sampling_Frequency / 1000;
+
+                double[][] Histogram = new double[2][];
+
+                foreach (int s in SrcIDs)
+                {
+                    double[][] IR = Aurfilter_HRTF(Direct.ElementAt<Direct_Sound>(s), ISData.ElementAt<ImageSourceData>(s), RTData.ElementAt<Receiver_Bank>(s), hrtf, CO_Time_ms, Sampling_Frequency, Rec_ID, StartAtZero, alt, azi, degrees, flat, VB);
+                    if (Histogram[0] == null)
+                    {
+                        Histogram[0] = new double[IR[0].Length];
+                        Histogram[1] = new double[IR[0].Length];
+                    }
+
+                    for (int i = 0; i < IR[0].Length; i++)
+                    {
+                        Histogram[0][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[0][i];
+                        Histogram[1][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[1][i];
+                    }
+                }
+                return Histogram;
+            }
+
+            public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
+            {
+                //This version of the function achieves an HRTF filter by dividing up the 3 dimensional signal according to a set number of equidistant points on a sphere.
+                //Each directionis weighted according to spherical harmonics to achieve an approximately spherical weighting when all directions are combined.
+                //The signal is then filtered according to the HRTF at each of these points and then recombined to form the final signal.
+
+                if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
+                if (ISData == null) ISData = new ImageSourceData[SrcIDs[SrcIDs.Count - 1] + 1];
+                if (RTData == null) RTData = new Environment.Receiver_Bank[SrcIDs[SrcIDs.Count - 1] + 1];
+
+                double maxdelay = 0;
+                List<double> delays = new List<double>();
+
+                if (Direct.ElementAt<Direct_Sound>(0) != null)
+                {
+                    foreach (Direct_Sound d in Direct)
+                    {
+                        delays.Add(d.Delay_ms);
+                        maxdelay = Math.Max(maxdelay, d.Delay_ms);
+                    }
+                }
+                else if (RTData.ElementAt<Receiver_Bank>(0) != null && RTData.ElementAt(0) is PachMapReceiver)
+                {
+                    foreach (Receiver_Bank r in RTData)
+                    {
+                        delays.Add((r as PachMapReceiver).delay_ms);
+                        maxdelay = Math.Max(maxdelay, (r as PachMapReceiver).delay_ms);
+                    }
+                }
+                maxdelay *= Sampling_Frequency / 1000;
+
+                double[][] Histogram = new double[2][];
+
+                foreach (int s in SrcIDs)
+                {
+                    hrtf.Load(Direct.ElementAt<Direct_Sound>(s), ISData.ElementAt<ImageSourceData>(s), RTData.ElementAt<Receiver_Bank>(s), CO_Time_ms, Sampling_Frequency, Rec_ID, StartAtZero, flat);
+                    
+                    double[][] IR = hrtf.Binaural_IR(azi, alt);
+                    if (Histogram[0] == null)
+                    {
+                        Histogram[0] = new double[IR[0].Length];
+                        Histogram[1] = new double[IR[0].Length];
+                    }
+
+                    for (int i = 0; i < IR[0].Length; i++)
+                    {
+                        Histogram[0][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[0][i];
+                        Histogram[1][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[1][i];
+                    }
+                }
+                return Histogram;
+            }
+
+            public static double[] AurFilter_Directional(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
             {
                 if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
                 if (ISData == null) ISData = new ImageSourceData[SrcIDs[SrcIDs.Count - 1] + 1];
@@ -2467,6 +2764,76 @@ namespace Pachyderm_Acoustic
                 radius = (ctr - a).Length();
             }
 
+            /// <summary>
+            /// Rotates the positive x axis of a vector rose so that it aligns with a direction by Euler coordinates.
+            /// </summary>
+            /// <param name=""></param>
+            /// <param name="azi"></param>
+            /// <param name="alt"></param>
+            /// <param name="degrees"></param>
+            /// <returns></returns>
+            public static double[][] Rotate_Vector_Rose(double[][] V, double azi, double alt, bool degrees)
+            {
+                double yaw, pitch;
+                if (degrees)
+                {
+                    yaw = Math.PI * alt / 180.0;
+                    pitch = Math.PI * azi / 180.0;
+                }
+                else
+                {
+                    yaw = alt;
+                    pitch = azi;
+                }
+
+                ///Implicit Sparse Rotation Matrix
+                Hare.Geometry.Vector fwd = new Hare.Geometry.Vector(Math.Cos(yaw), 0, Math.Sin(yaw));
+                Hare.Geometry.Vector up = new Hare.Geometry.Vector(0, 0, 1) - Hare.Geometry.Hare_math.Dot(new Hare.Geometry.Vector(0, 0, 1), fwd) * fwd;
+                Hare.Geometry.Vector right = Hare.Geometry.Hare_math.Cross(up, fwd);
+
+                ///Implicit Sparse Rotation Matrix
+                Vector fwdazi = new Hare.Geometry.Vector(Math.Cos(pitch), Math.Sin(pitch), 0);
+                Vector upazi = new Hare.Geometry.Vector(0, 0, 1) - Hare.Geometry.Hare_math.Dot(new Hare.Geometry.Vector(0, 0, 1), fwdazi) * fwdazi;
+                upazi.Normalize();
+                Vector rightazi = Hare.Geometry.Hare_math.Cross(up, fwdazi);
+
+                double[][] V_new = new double[V[0].Length][];
+
+                for (int i = 0; i < V[0].Length; i++)
+                {
+                    double[] Vt = new double[6];
+
+                    double PM = Math.Sqrt(V[0][i] * V[0][i] + V[2][i] * V[2][i] + V[4][i] * V[4][i]);
+                    if (PM > 0)
+                    {
+                        Vector PV = new Vector(Math.Abs(V[0][i]), Math.Abs(V[2][i]), Math.Abs(V[4][i]));
+                        PV.Normalize();
+                        Vector PS = new Vector(V[0][i]< 0 ? -1:1, V[2][i]<0? -1:1, V[4][i] < 0? -1:1);
+                        PV = new Vector(fwd.dx * PV.dx + fwd.dy * PV.dy + fwd.dz * PV.dz, right.dx * PV.dx + right.dy * PV.dy + right.dz * PV.dz, up.dx * PV.dx + up.dy * PV.dy + up.dz * PV.dz);
+                        PV = new Vector(fwdazi.dx * PV.dx + fwdazi.dy * PV.dy + fwdazi.dz * PV.dz, rightazi.dx * PV.dx + rightazi.dy * PV.dy + rightazi.dz * PV.dz, upazi.dx * PV.dx + upazi.dy * PV.dy + upazi.dz * PV.dz);
+                        if (PV.dx > 0) Vt[0] += PV.dx * PM * PS.dx; else Vt[1] += PV.dx * PM * PS.dx;
+                        if (PV.dy > 0) Vt[2] += PV.dy * PM * PS.dy; else Vt[3] += PV.dy * PM * PS.dy;
+                        if (PV.dz > 0) Vt[4] += PV.dz * PM * PS.dz; else Vt[5] += PV.dz * PM * PS.dz;
+                    }
+                    
+                    double NM = Math.Sqrt(V[1][i] * V[1][i] + V[3][i] * V[3][i] + V[5][i] * V[5][i]);
+                    if (NM > 0)
+                    {
+                        Vector NV = new Vector(Math.Abs(V[1][i]), Math.Abs(V[3][i]), Math.Abs(V[5][i]));
+                        NV.Normalize();
+                        Vector NS = new Vector(V[1][i]< 9? -1:1, V[3][i] < 0? -1:1, V[5][i] < 0? -1:1);
+                        NV = new Vector(fwd.dx * NV.dx + fwd.dy * NV.dy + fwd.dz * NV.dz, right.dx * NV.dx + right.dy * NV.dy + right.dz * NV.dz, up.dx * NV.dx + up.dy * NV.dy + up.dz * NV.dz);
+                        NV = new Vector(fwdazi.dx * NV.dx + fwdazi.dy * NV.dy + fwdazi.dz * NV.dz, rightazi.dx * NV.dx + rightazi.dy * NV.dy + rightazi.dz * NV.dz, upazi.dx * NV.dx + upazi.dy * NV.dy + upazi.dz * NV.dz);
+                        if (NV.dx > 0) Vt[1] += NV.dx * NM * NS.dx; else Vt[0] += NV.dx * NM * NS.dx;
+                        if (NV.dy > 0) Vt[3] += NV.dy * NM * NS.dy; else Vt[2] += NV.dy * NM * NS.dy;
+                        if (NV.dz > 0) Vt[5] += NV.dz * NM * NS.dz; else Vt[4] += NV.dz * NM * NS.dz;
+                    }
+                    V_new[i] = Vt;
+                }
+
+                return V_new;
+            }
+
             public static Hare.Geometry.Vector Rotate_Vector(Hare.Geometry.Vector V, double azi, double alt, bool degrees)
             {
                 double yaw, pitch;
@@ -2552,7 +2919,6 @@ namespace Pachyderm_Acoustic
                 double[] function = new double[samplect];
                 double sigma2 = samplect / 2;
                 sigma2 *= sigma2;
-
                 double k = 1 / Math.Sqrt(Utilities.Numerics.PiX2 * sigma2);
 
                 for(int i = 0; i < samplect; i++)
@@ -2560,9 +2926,6 @@ namespace Pachyderm_Acoustic
                     double num = i - (double)samplect / 2;
                     function[i] = k * Math.Exp(- num * num / (2 * sigma2));
                 }
-
-                //double max = function.Max();
-                //for (int i = 0; i < samplect; i++) function[i] *= sum / max;
                 return function;
             }
 
@@ -2990,11 +3353,10 @@ namespace Pachyderm_Acoustic
                 return Code;
             }
 
-
             public static bool DecodeAcoustics(string Code, ref double[] Absorption, ref double[] Scattering, ref double[] Transparency)
             {
                 if (Code == null) return false;
-                int abslength = Code.Length > 48 ? 24 : 8;  
+                int abslength = Code.Length > 56 ? 24 : 8;  
                 Absorption = new double[abslength];
                 Scattering = new double[8];
                 Transparency = new double[8];

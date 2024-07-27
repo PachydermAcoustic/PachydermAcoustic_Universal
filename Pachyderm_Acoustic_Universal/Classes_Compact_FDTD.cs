@@ -3,6 +3,7 @@ using System.Linq;
 using System.Collections.Generic;
 using Pachyderm_Acoustic.Environment;
 using Hare.Geometry;
+using System.Threading;
 
 namespace Pachyderm_Acoustic
 {

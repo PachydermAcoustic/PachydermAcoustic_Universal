@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Hare.Geometry;
 using Pachyderm_Acoustic.Environment;
 
@@ -59,10 +60,11 @@ namespace Pachyderm_Acoustic
         public override void Begin()
         {
             Random Rnd = new Random();
-            processorCT = Pach_Properties.Instance.ProcessorCount();
+            processorCT = System.Environment.ProcessorCount;
             Current_Ray = new int[processorCT];
             Detections = new List<int[]>[Receiver.Count, processorCT];
             SequenceList = new List<int[]>[Receiver.Count];
+            BroadRayPool.Initialize();
 
             T_List = new System.Threading.Thread[processorCT];
 
@@ -88,7 +90,7 @@ namespace Pachyderm_Acoustic
         {
             foreach (System.Threading.Thread T in T_List)
             {
-                if (T != null && T.ThreadState == System.Threading.ThreadState.Running) return System.Threading.ThreadState.Running;
+                if (T != null && T.ThreadState != System.Threading.ThreadState.Stopped) return System.Threading.ThreadState.Running;
             }
             return System.Threading.ThreadState.Stopped;
         }
@@ -140,7 +142,7 @@ namespace Pachyderm_Acoustic
                     R.Ray_ID = RND.Next();
                     if (Room.shoot(R, out u, out v, out ChosenIndex, out Start, out leg, out code))
                     {
-                        if (!Room.IsPlanar(Room.PlaneID(ChosenIndex))) break;
+                        if (!Room.IsPlanar(Room.ObjectID(ChosenIndex))) break;
                         Reflections ++;
                         Room.ReflectRay(ref R, ref u, ref v, ref ChosenIndex);
                         if (Reflections > ImageOrder + 1)
@@ -154,7 +156,6 @@ namespace Pachyderm_Acoustic
                     }
                     else
                     {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddCurve(new LineCurve(Pachyderm_Acoustic.Utilities.PachTools.HPttoRPt(R.Origin), Pachyderm_Acoustic.Utilities.PachTools.HPttoRPt(R.Origin + R.direction) * 5));
                         break;
                     }
                     Sequence.Add(Room.ObjectID(ChosenIndex));
@@ -163,6 +164,8 @@ namespace Pachyderm_Acoustic
                     R.z = Start[0].z;
                 }
                 while (SumLength < CutoffLength);
+
+                BroadRayPool.Instance.release();
             }
         }
 
