@@ -1592,6 +1592,7 @@ namespace Pachyderm_Acoustic
             Random RndGen = new Random();
             LineSource LSrc = Src as LineSource;
             double dmod = C_Sound / SampleFreq;
+            double limit = 1000;
 
             int[] rnd = new int[Receiver.Count];
             for (int i = 0; i < Receiver.Count; i++) rnd[i] = RndGen.Next();
@@ -1659,7 +1660,7 @@ namespace Pachyderm_Acoustic
 
                     double tdbl = dist / C_Sound;
 
-                    if (dist > 300)
+                    if (dist > limit)
                     {
                         lock (LOCKED)
                         {
@@ -1725,7 +1726,7 @@ namespace Pachyderm_Acoustic
                             //obstructed connection.
                             if (Screen_atten)
                             {
-                                if (dist > 200)
+                                if (dist > limit)
                                 {
                                     lock (LOCKED)
                                     {

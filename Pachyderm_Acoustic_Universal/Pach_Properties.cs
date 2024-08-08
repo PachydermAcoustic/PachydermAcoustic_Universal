@@ -79,7 +79,8 @@ namespace Pachyderm_Acoustic
             try
             {
                 string p_version = Reader.ReadString();
-                if (p_version != Utilities.PachTools.Version()) newSettings(ref Reader, ref Writer);
+                string newversion = Utilities.PachTools.Version();
+                if (p_version != newversion) newSettings(ref Reader, ref Writer);
 
                 //2. Geometry System(int)
                 GeometrySystem = Reader.ReadInt32();
@@ -155,10 +156,11 @@ namespace Pachyderm_Acoustic
             }
             catch (Exception x)
             {
-                if (x is EndOfStreamException)
-                { newSettings(ref Reader, ref Writer); }
-                else
-                { throw x; }
+                //if (x is EndOfStreamException)
+                //{ 
+                    newSettings(ref Reader, ref Writer); //}
+                //else
+                //{ throw x; }
             }
         }
 

@@ -299,19 +299,42 @@ namespace Pachyderm_Acoustic
                 {
                     double theta = a * dt - (Math.PI / 2);
                     double d_mod = Math.Abs(Math.Sin(theta) * dt);//; * Math.Abs(dt);
-                                                                  //denominator += d_mod;
-                                                                  //denominator += d_mod;
+                    //denominator += d_mod;
                     for (int f = 0; f < absorption_Coefficient[a].Length; f++)
                     {
-                        numerator[f] += Math.Abs(absorption_Coefficient[a][f]) * d_mod;
+                        numerator[f] += Math.Abs(absorption_Coefficient[a][f] * d_mod);
                     }
                 }
+
                 //for (int f = 0; f < absorption_Coefficient[0].Length; f++)
                 //{
                 //    numerator[f] /= denominator;
                 //}
+
                 return numerator;
             }
+
+            //public static double[] Random_Incidence_Paris_Finite(double[][] absorption_Coefficient)
+            //{
+            //    double dt = Math.PI / (absorption_Coefficient.Length);
+            //    double[] numerator = new double[absorption_Coefficient[0].Length];
+            //    double denominator = 0;
+            //    for (int a = 0; a < absorption_Coefficient.Length; a++)
+            //    {
+            //        double theta = a * dt - (Math.PI / 2);
+            //        double d_mod = Math.Abs(Math.Sin(theta) * Math.Abs(dt));//; * Math.Abs(dt);
+            //        denominator += d_mod * Math.Cos(theta);
+            //        for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+            //        {
+            //            numerator[f] += Math.Abs(absorption_Coefficient[a][f]) * d_mod;
+            //        }
+            //    }
+            //    for (int f = 0; f < absorption_Coefficient[0].Length; f++)
+            //    {
+            //        numerator[f] /= denominator;
+            //    }
+            //    return numerator;
+            //}
 
             //public static double[] Random_Incidence_Paris_Finite(double[][] absorption_Coefficient)
             //{
@@ -337,6 +360,30 @@ namespace Pachyderm_Acoustic
             //    return numerator;
             //}
 
+            //public static double[] Random_Incidence_Paris_Finite(double[][] absorption_Coefficient)
+            //{
+            //    double dt = Math.PI / (absorption_Coefficient.Length);
+            //    double[] numerator = new double[absorption_Coefficient[0].Length];
+            //    //double denominator = 0;
+            //    for (int a = 0; a < absorption_Coefficient.Length; a++)
+            //    {
+            //        double theta = a * dt - (Math.PI / 2);
+            //        double d_mod = Math.Abs(Math.Sin(theta) * dt);//; * Math.Abs(dt);
+            //                                                      //denominator += d_mod;
+            //        for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+            //        {
+            //            numerator[f] += Math.Abs(absorption_Coefficient[a][f] * d_mod);
+            //        }
+            //    }
+
+            //    //for (int f = 0; f < absorption_Coefficient[0].Length; f++)
+            //    //{
+            //    //    numerator[f] /= denominator;
+            //    //}
+
+            //    return numerator;
+            //}
+
             public static Complex[] Random_Incidence_Paris_Finite(Complex[][] absorption_Coefficient)
             {
                 double dt = Math.PI / (absorption_Coefficient.Length);
@@ -346,17 +393,94 @@ namespace Pachyderm_Acoustic
                 {
                     double theta = (a + .5) * dt - (Math.PI / 2);
                     double d_mod = Math.Abs(Math.Sin(theta) * dt);//; * Math.Abs(dt);
-                                                                  //denominator += d_mod;
+                    
+	//denominator += d_mod;
                     for (int f = 0; f < absorption_Coefficient[a].Length; f++)
                     {
                         numerator[f] += Complex.Abs(absorption_Coefficient[a][f] * d_mod);
                     }
                 }
 
-                //for (int f = 0; f < absorption_Coefficient[0].Length; f++)
-                //{
-                //    numerator[f] /= denominator;
-                //}
+                // for (int f = 0; f < absorption_Coefficient[0].Length; f++)
+                // {
+                // numerator[f] /= denominator;
+                // }
+
+                return numerator;
+            }
+
+            //public static Complex[] Random_Incidence_Paris_Finite(Complex[][] absorption_Coefficient)
+            //{
+            //    double dt = Math.PI / (absorption_Coefficient.Length);
+            //    Complex[] numerator = new Complex[absorption_Coefficient[0].Length];
+            //    //double denominator = 0;
+            //    for (int a = 0; a < absorption_Coefficient.Length; a++)
+            //    {
+            //        double theta = (a + .5) * dt - (Math.PI / 2);
+            //        double d_mod = Math.Abs(Math.Sin(theta) * dt);//; * Math.Abs(dt);
+            //                                                      //denominator += d_mod;
+            //        for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+            //        {
+            //            numerator[f] += Complex.Abs(absorption_Coefficient[a][f] * d_mod);
+            //        }
+            //    }
+            //}
+
+            public static double[] Random_Incidence_Paris(Complex[][] Za, Complex[][] Zr = null, double rho = 1.2, double soundspeed = 343)
+            {
+                double dt = Math.PI / Za.Length;
+                double[] theta = new double[36];
+                Complex[][] Zrn = new Complex[36][];
+                Complex[][] Zan = new Complex[Zr.Length][];
+
+                if (Zr == null)
+                {
+                    Zr = new Complex[36][];
+                    for (int a = 0; a < 36; a++)
+                    {
+                        theta[a] = Math.Abs(a * dt - Math.PI / 2);
+                        Zr[a] = new Complex[4096];
+                        for (int i = 0; i < 4096; i++)
+                        {
+                            Zr[Math.Abs(a - Zr.Length)][i] = 1 / Math.Cos(theta[a]);
+                        }
+                    }
+                }
+
+                for (int a = 0; a < 36; a++)
+                {
+                    Zrn[a] = new Complex[4096];
+                    Zan[a] = new Complex[4096];
+                    theta[a] = Math.Abs(a * dt - Math.PI / 2);
+
+                    for (int i = 0; i < 4096; i++)
+                    {
+                        Zrn[a][i] = Zr[i][a] / (rho * soundspeed);
+                        Zan[a][i] = Za[a][i] / (rho * soundspeed);
+                    }
+                }
+
+                double[] numerator = new double[Za[0].Length];
+                double denominator = 0;
+                for (int a = 0; a < Za.Length; a++)
+                {
+                    double d_mod = Math.Abs(Math.Cos(theta[a]) * Math.Sin(theta[a]) * dt);
+                    denominator += d_mod;
+                    for (int f = 0; f < Za[a].Length; f++)
+                    {
+                        double ZanZrn = (Zan[a][f] + Zrn[a][f]).Magnitude;
+                        double costheta = Math.Cos(theta[a]);
+                        double sintheta = Math.Sin(theta[a]);
+                        
+                        if (costheta == 0 || sintheta == 0 ) continue;
+                        numerator[f] += ((4 * Zan[a][f].Real * Zrn[a][f].Real) * sintheta * dt / (ZanZrn * ZanZrn));
+                    }
+                }
+
+                for (int f = 0; f < Za[0].Length; f++)
+                {
+                    numerator[f] /= (denominator * Math.PI/2);// (Math.PI/2);
+                }
 
                 return numerator;
             }
@@ -369,12 +493,12 @@ namespace Pachyderm_Acoustic
                 for (int a = 0; a < absorption_Coefficient.Length; a++)
                 {
                     double theta = a * dt - (Math.PI / 2);
-                    double d_mod = Math.Abs(Math.Cos(theta) * dt);
-                    denominator += d_mod;
+                    double d_mod = Math.Abs(Math.Sin(theta) * Math.Cos(theta) * dt); 
                     for (int f = 0; f < absorption_Coefficient[a].Length; f++)
                     {
                         numerator[f] += absorption_Coefficient[a][f] * d_mod;
                     }
+                    denominator += d_mod;
                 }
 
                 for (int f = 0; f < absorption_Coefficient[0].Length; f++)
@@ -387,27 +511,51 @@ namespace Pachyderm_Acoustic
 
             public static double[] Random_Incidence_Paris(double[][] absorption_Coefficient)
             {
-                double dt = Math.PI / (absorption_Coefficient.Length);
+                    double dt = Math.PI / (absorption_Coefficient.Length);
                 double[] numerator = new double[absorption_Coefficient[0].Length];
                 double denominator = 0;
                 for (int a = 0; a < absorption_Coefficient.Length; a++)
                 {
                     double theta = a * dt - (Math.PI / 2);
-                    double d_mod = Math.Abs(Math.Cos(theta) * dt);
-                    denominator += d_mod;
+                    double d_mod = Math.Abs(Math.Sin(theta) * Math.Cos(theta) * dt);
                     for (int f = 0; f < absorption_Coefficient[a].Length; f++)
                     {
-                        numerator[f] += absorption_Coefficient[a][f] * d_mod;
+                        numerator[f] += absorption_Coefficient[a][f] * d_mod;// * d_mod;
                     }
+                    denominator += d_mod;
                 }
 
                 for (int f = 0; f < absorption_Coefficient[0].Length; f++)
                 {
-                    numerator[f] /= denominator;
+                    numerator[f] /= denominator;// (Math.PI/2);
                 }
 
                 return numerator;
             }
+
+            //public static double[] Random_Incidence_Paris(double[][] absorption_Coefficient)
+            //{
+            //    double dt = Math.PI / (absorption_Coefficient.Length);
+            //    double[] numerator = new double[absorption_Coefficient[0].Length];
+            //    double denominator = 0;
+            //    for (int a = 0; a < absorption_Coefficient.Length; a++)
+            //    {
+            //        double theta = a * dt - (Math.PI / 2);
+            //        double d_mod = Math.Abs(Math.Cos(theta) * dt);
+            //        denominator += d_mod;
+            //        for (int f = 0; f < absorption_Coefficient[a].Length; f++)
+            //        {
+            //            numerator[f] += absorption_Coefficient[a][f] * d_mod;
+            //        }
+            //    }
+
+            //    for (int f = 0; f < absorption_Coefficient[0].Length; f++)
+            //    {
+            //        numerator[f] /= denominator;
+            //    }
+
+            //    return numerator;
+            //}
 
             public static Complex[] Random_Incidence_Paris(Complex[][] absorption_Coefficient, Complex[][] Zr, double rho_C)
             {
@@ -779,21 +927,20 @@ namespace Pachyderm_Acoustic
 
                 for (int j = 0; j < Angles.Length; j++)
                 {
-                    double theta = Angles[j] * Utilities.Numerics.Pi_180;
+                    double theta = Math.Abs(Angles[j] * Utilities.Numerics.Pi_180);
                     Alpha[j] = new double[Z[j].Length];
                     for (int i = 0; i < Z[0].Length; i++)
                     {
                         if (double.IsNaN(Z[j][i].Real) || double.IsNaN(Z[j][i].Imaginary)) continue;
 
-                        //Complex Za = Z[j][i];
-                        //Complex Zrn = Zr[i][j];
                         Complex Za = Z[j][i] / (rho * c_sound);
                         Complex Zrn = Zr[i][j] / (rho * c_sound);
                         double a_denom = (Za + Zrn).Magnitude;//Math.Cos(theta);
-                        Alpha[j][i] = 4 * Za.Real / (a_denom * a_denom);// * Math.Abs(Math.Sin(theta));
-                                                                        //Alpha[j][i] = 4 * Za.Real / (a_denom * a_denom);                        
-                                                                        //Alpha[j][i] = Absorption_Coef(Reflection_Coef(Za + Zrn, rho * c_sound));
-                                                                        //Alpha[j][i] = Absorption_Coef(Reflection_Coef(Z[j][i], rho * c_sound) * Reflection_Coef(Zr[i][j], rho * c_sound));
+                                                              //Alpha[j][i] = 8 * Za.Real * Math.Sin(theta) / (a_denom * a_denom);
+                                                              //Alpha[j][i] = 4 * Za.Real / (a_denom * a_denom);// * Math.Abs(Math.Cos(theta));
+                        Alpha[j][i] = 4 * (Za.Real * Zrn.Real) / (a_denom * a_denom);///Math.Cos(theta);                        
+                        //Alpha[j][i] = Absorption_Coef(Reflection_Coef(Za + Zrn, rho * c_sound));
+                        //Alpha[j][i] = Absorption_Coef(Reflection_Coef(Z[j][i], rho * c_sound) * Reflection_Coef(Zr[i][j], rho * c_sound));
                     }
                 }
                 return Alpha;
@@ -976,6 +1123,7 @@ namespace Pachyderm_Acoustic
                     double stepy = 1 / (4 * Ydim / (lambda / 10));
                     Complex integral_Mod = Complex.ImaginaryOne * Rho0 * Utilities.Numerics.PiX2 * freq[i] * Ydim * stepx * stepy / (phi_ct * 4 * Math.PI);
                     Parallel.For(0, angles.Length, j =>
+                    //for (int j = 0; j < angles.Length; j++)
                     {
                         Complex FnMod = Kmod * sintheta[j];
                         for (double u = -1 + stepx / 2; u < 1; u += stepx)
@@ -1012,11 +1160,102 @@ namespace Pachyderm_Acoustic
                         rad_effM[j] = 10 * Math.Log10(Zr[i][j].Magnitude / (Rho0 * C_Sound));
                     }
 
-                    if (Graph != null) Graph.Fill(angles, rad_eff, angles, rad_effI, angles, rad_effM, angles, ComparisonCurve, "Angle of Incidence (theta)", "Radiation Efficiency (dB)",  0, (int)(100f * i / freq.Length));
+                    //B.Populate(angles, rad_eff, angles, rad_effI, angles, rad_effM, angles, "Angle of Incidence (theta)", "Radiation Efficiency (dB)", ComparisonCurve, 0, (int)(100f * i / freq.Length));
+                    try 
+                    {
+                        if (Graph != null) Graph.Fill(angles, rad_eff, angles, rad_effI, angles, rad_effM, angles, ComparisonCurve, "Angle of Incidence (theta)", "Radiation Efficiency (dB)", 0, (int)(100f * i / freq.Length));
+                    }
+                    catch
+                    {
+
+                    }
                 }
 
                 return Zr;
             }
+
+            //public static Complex[][] Finite_Radiation_Impedance_Atalla_Rect(double Xdim, double Ydim, double[] freq, double[] angles, double C_Sound, double Rho0, IReporting Graph = null)
+            //{
+            //    Complex[][] Zr = new Complex[freq.Length][];
+            //    double phistep = Utilities.Numerics.PiX2 / 12;
+            //    double mindim = Math.Min(Xdim, Ydim);
+            //    List<double> cosphi = new List<double>(), sinphi = new List<double>(), sintheta = new List<double>();
+
+            //    int phi_ct = 0;
+
+            //    List<double> AnglePhi = new List<double>();
+
+            //    for (double phi = 0; phi < Utilities.Numerics.PiX2; phi += phistep)
+            //    {
+            //        cosphi.Add(Math.Cos(phi)); sinphi.Add(Math.Sin(phi)); phi_ct++;
+            //        AnglePhi.Add(phi);
+            //    }
+
+            //    for (int i = 0; i < angles.Length; i++)
+            //    {
+            //        sintheta.Add(Math.Abs(Math.Sin(Math.PI * angles[i] / 180)));
+            //    }
+
+            //    ///For progress feedback.
+            //    //VisualizationBox B = new VisualizationBox(-90, 90, -10, 10);
+            //    double[] ComparisonCurve = new double[angles.Length];
+            //    for (int j = 0; j < angles.Length; j++)
+            //    {
+            //        ComparisonCurve[j] = 10 * Math.Log10(1 / (Math.Cos(angles[j] * Math.PI / 180)));
+            //    }
+            //    //B.Show();
+
+            //    for (int i = 0; i < freq.Length; i++)
+            //    {
+            //        Complex Kmod = Complex.ImaginaryOne * Utilities.Numerics.PiX2 * freq[i] * Xdim / (C_Sound * 2);
+            //        double r = Xdim / Ydim;
+            //        Zr[i] = new Complex[angles.Length];
+            //        double lambda = C_Sound / freq[i];
+            //        double stepx = 1 / (4 * Xdim / (lambda / 10));
+            //        double stepy = 1 / (4 * Ydim / (lambda / 10));
+            //        Complex integral_Mod = Complex.ImaginaryOne * Rho0 * Utilities.Numerics.PiX2 * freq[i] * Ydim * stepx * stepy / (phi_ct * 4 * Math.PI);
+            //        Parallel.For(0, angles.Length, j =>
+            //        {
+            //            Complex FnMod = Kmod * sintheta[j];
+            //            for (double u = -1 + stepx / 2; u < 1; u += stepx)
+            //                for (double u_ = -1; u_ < 1; u_ += stepy)
+            //                {
+            //                    Complex[] Zphi = new Complex[cosphi.Count];
+            //                    double[] real = new double[cosphi.Count];
+            //                    double[] imag = new double[cosphi.Count];
+            //                    double u1 = u + 1, u_1 = u_ + 1;
+            //                    double rtR = Math.Sqrt((u1) * (u1) + ((u_1 * u_1) / (r * r)));
+            //                    Complex K = Complex.Exp(-Kmod * rtR) / rtR; //Typographical Error Identified and Fixed.
+
+            //                    for (int phi = 0; phi < cosphi.Count; phi++)
+            //                    {
+            //                        Complex Fn = Complex.Exp(FnMod * (u1 * cosphi[phi] + (u_1 / r) * sinphi[phi]));
+            //                        Zr[i][j] += K * Fn * (1 - u) * (1 - u_);
+            //                    }
+            //                }
+            //            Zr[i][j] *= integral_Mod;
+            //            /////////////
+            //            //Let's just try this for a moment:
+            //            //Zr[i][j] *= Math.Cos((angles[j]) * Math.PI / 180);
+            //            /////////////
+            //        });
+
+            //        double[] rad_eff = new double[angles.Length];
+            //        double[] rad_effI = new double[angles.Length];
+            //        double[] rad_effM = new double[angles.Length];
+
+            //        for (int j = 0; j < angles.Length; j++)
+            //        {
+            //            rad_eff[j] = 10 * Math.Log10(Zr[i][j].Real / (Rho0 * C_Sound));
+            //            rad_effI[j] = 10 * Math.Log10(Zr[i][j].Imaginary / (Rho0 * C_Sound));
+            //            rad_effM[j] = 10 * Math.Log10(Zr[i][j].Magnitude / (Rho0 * C_Sound));
+            //        }
+
+            //        if (Graph != null) Graph.Fill(angles, rad_eff, angles, rad_effI, angles, rad_effM, angles, ComparisonCurve, "Angle of Incidence (theta)", "Radiation Efficiency (dB)",  0, (int)(100f * i / freq.Length));
+            //    }
+
+            //    return Zr;
+            //}
 
             //public static Complex Angular_Impedance(double angle, Complex Specific_Impedance, bool radians)
             //{

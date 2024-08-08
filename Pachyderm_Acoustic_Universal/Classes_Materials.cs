@@ -398,10 +398,10 @@ namespace Pachyderm_Acoustic
             public double[][] Ang_tau_Oct;//[oct][angle]
             public double[] RI_Coef = new double[8];
             public double[] TI_Coef = new double[8];
-
+            public double[] RI_Averages;
             private double angle_incr;
             
-            public Smart_Material(bool Trans, List<AbsorptionModels.ABS_Layer> Layers, int Samplefreq, double Air_Density, double SoundSpeed, Finite_Field_Impedance Zr, double step, int Averaging_Choice, int Zf_incorp_Choice)
+            public Smart_Material(bool Trans, List<AbsorptionModels.ABS_Layer> Layers, int Samplefreq, double Air_Density, double SoundSpeed, Finite_Field_Impedance Zr, double step)
             {
                 Buildup = Layers;
                 Fs = Samplefreq;
@@ -447,17 +447,20 @@ namespace Pachyderm_Acoustic
 
                 System.Numerics.Complex [][] Zr_interp = Zr.Interpolate(frequency);
 
-                if (Zf_incorp_Choice == 0)
-                {
-                    Reflection_Coefficient = Pachyderm_Acoustic.AbsorptionModels.Operations.Reflection_Coef(Z, Air_Density, SoundSpeed); //No defined way to build a complex finite reflection coefficient.
-                    Angular_Absorption = Pachyderm_Acoustic.AbsorptionModels.Operations.Finite_Absorption_Coefficient(Zr_interp, Z, a_real, rho, 343);
-                }
-                else if (Zf_incorp_Choice == 1)
-                {
-                    Reflection_Coefficient = Pachyderm_Acoustic.AbsorptionModels.Operations.Reflection_Coef(Z, Zr_interp, Air_Density, SoundSpeed); //No defined way to build a complex finite reflection coefficient.
-                    Angular_Absorption = Pachyderm_Acoustic.AbsorptionModels.Operations.Absorption_Coef(Reflection_Coefficient);
-                }
-                else throw new Exception("Field Impedance Incorporation choice not valid or not implemented...");
+                Reflection_Coefficient = Pachyderm_Acoustic.AbsorptionModels.Operations.Reflection_Coef(Z, Zr_interp); //(Z, Air_Density, SoundSpeed); //No defined way to build a complex finite reflection coefficient.
+                Angular_Absorption = Pachyderm_Acoustic.AbsorptionModels.Operations.Finite_Absorption_Coefficient(Zr_interp, Z, a_real, rho, 343);
+
+                //if (Zf_incorp_Choice == 0)
+                //{
+                //Reflection_Coefficient = Pachyderm_Acoustic.AbsorptionModels.Operations.Reflection_Coef(Z, Zr_interp); //(Z, Air_Density, SoundSpeed); //No defined way to build a complex finite reflection coefficient.
+                //Angular_Absorption = Pachyderm_Acoustic.AbsorptionModels.Operations.Finite_Absorption_Coefficient(Zr_interp, Z, a_real, rho, 343);
+                //}
+                //else if (Zf_incorp_Choice == 1)
+                //{
+                //    Reflection_Coefficient = Pachyderm_Acoustic.AbsorptionModels.Operations.Reflection_Coef(Z, Zr_interp, Air_Density, SoundSpeed); //No defined way to build a complex finite reflection coefficient.
+                //    Angular_Absorption = Pachyderm_Acoustic.AbsorptionModels.Operations.Absorption_Coef(Reflection_Coefficient);
+                //}
+                //else throw new Exception("Field Impedance Incorporation choice not valid or not implemented...");
 
                 Transfer_FunctionR = new MathNet.Numerics.Interpolation.CubicSpline[Angles.Length / 2];
                 Transfer_FunctionI = new MathNet.Numerics.Interpolation.CubicSpline[Angles.Length / 2];
@@ -472,44 +475,47 @@ namespace Pachyderm_Acoustic
                     Transfer_FunctionR[Angles.Length/2 - i - 1] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(frequency, real);
                     Transfer_FunctionI[Angles.Length/2 - i - 1] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(frequency, imag);
                 }
-                double[] RI_Averages;
+
                 System.Numerics.Complex[] TI_Averages;
 
-                if (Averaging_Choice == 0)
-                    if (Zf_incorp_Choice == 0)
-                    {
-                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Angular_Absorption);
+                //if (Averaging_Choice == 0)
+                    //if (Zf_incorp_Choice == 0)
+                    //{
+                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Z, Zr_interp);
+                        //RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Angular_Absorption);
+                        //RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Angular_Absorption);
                         //RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Angular_Absorption, Zr_interp, SoundSpeed * Air_Density);
+                        //RI_Averages = AbsorptionModels.Operations.Finite_Absorption_Coefficient(Zr_interp, Z, Angles, rho, SoundSpeed);
                         TI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Trans_Coefficient, Zr_interp, SoundSpeed * Air_Density);
-                    }
-                    else
-                    {
-                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Angular_Absorption);
-                        TI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Trans_Coefficient);
-                    }
-                else if (Averaging_Choice == 1)
-                    if (Zf_incorp_Choice == 0)
-                    {
-                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Angular_Absorption, Zr_interp, SoundSpeed * Air_Density);
-                        TI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Trans_Coefficient, Zr_interp, SoundSpeed * Air_Density);
-                    }
-                    else
-                    {
-                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Angular_Absorption);
-                        TI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Trans_Coefficient, Zr_interp, SoundSpeed * Air_Density);
-                    }
-                else if (Averaging_Choice == 2)
-                    if (Zf_incorp_Choice == 0)
-                    {
-                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Angular_Absorption, Zr_interp, SoundSpeed * Air_Density);
-                        TI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Trans_Coefficient, Zr_interp, SoundSpeed * Air_Density);
-                    }
-                    else
-                    {
-                        RI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Angular_Absorption);
-                        TI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Trans_Coefficient);
-                    }
-                else throw new Exception("Averaging choice not valid or not implemented...");
+                    //}
+                    //else
+                    //{
+                    //    RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Angular_Absorption);
+                    //    TI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris_Finite(Trans_Coefficient);
+                    //}
+                //else if (Averaging_Choice == 1)
+                //    if (Zf_incorp_Choice == 0)
+                //    {
+                //        RI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Angular_Absorption, Zr_interp, SoundSpeed * Air_Density);
+                //        TI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Trans_Coefficient, Zr_interp, SoundSpeed * Air_Density);
+                //    }
+                //    else
+                //    {
+                //        RI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Angular_Absorption);
+                //        TI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Trans_Coefficient, Zr_interp, SoundSpeed * Air_Density);
+                //    }
+                //else if (Averaging_Choice == 2)
+                //    if (Zf_incorp_Choice == 0)
+                //    {
+                //        RI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Angular_Absorption, Zr_interp, SoundSpeed * Air_Density);
+                //        TI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Trans_Coefficient, Zr_interp, SoundSpeed * Air_Density);
+                //    }
+                //    else
+                //    {
+                //        RI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Angular_Absorption);
+                //        TI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Trans_Coefficient);
+                //    }
+                //else throw new Exception("Averaging choice not valid or not implemented...");
 
                 NI_Coef = Angular_Absorption[18];
                 Ang_Coef_Oct = new double[8][];
@@ -582,7 +588,7 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            public Smart_Material(bool Trans, List<AbsorptionModels.ABS_Layer> Layers, int Samplefreq, double Air_Density, double SoundSpeed, int Averaging_Choice)
+            public Smart_Material(bool Trans, List<AbsorptionModels.ABS_Layer> Layers, int Samplefreq, double Air_Density, double SoundSpeed)
             {
                 Buildup = Layers;
                 Fs = Samplefreq;
@@ -642,22 +648,22 @@ namespace Pachyderm_Acoustic
                 double[] RI_Averages;
                 System.Numerics.Complex[] TI_Averages = new System.Numerics.Complex[0];
 
-                if (Averaging_Choice == 0)
-                {
+                //if (Averaging_Choice == 0)
+                //{
                     RI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Angular_Absorption);
                     TI_Averages = AbsorptionModels.Operations.Random_Incidence_Paris(Trans_Coefficient);
-                }
-                else if (Averaging_Choice == 1)
-                {
-                    RI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Angular_Absorption);
-                    TI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Trans_Coefficient);
-                }
-                else if (Averaging_Choice == 2)
-                {
-                    RI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Angular_Absorption);
-                    TI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Trans_Coefficient);
-                }
-                else throw new Exception("Averaging choice not valid or not implemented...");
+                //}
+                //else if (Averaging_Choice == 1)
+                //{
+                //    RI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Angular_Absorption);
+                //    TI_Averages = AbsorptionModels.Operations.Random_Incidence_0_78(Trans_Coefficient);
+                //}
+                //else if (Averaging_Choice == 2)
+                //{
+                //    RI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Angular_Absorption);
+                //    TI_Averages = AbsorptionModels.Operations.Random_Incidence_NoWeights(Trans_Coefficient);
+                //}
+                //else throw new Exception("Averaging choice not valid or not implemented...");
 
                 Ang_Coef_Oct = new double[8][];
 

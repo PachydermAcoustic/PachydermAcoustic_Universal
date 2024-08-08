@@ -48,5 +48,8 @@
       <Private>False</Private>
     </Reference>
   </ItemGroup>
-  <PropertyGroup />
+  <PropertyGroup>
+    <FileVersion>2.6.0.0</FileVersion>
+    <AssemblyVersion>2.6.0.0</AssemblyVersion>
+  </PropertyGroup>
 </Project>

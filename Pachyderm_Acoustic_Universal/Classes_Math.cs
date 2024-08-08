@@ -960,6 +960,136 @@ namespace Pachyderm_Acoustic
             }
         }
 
+        public static class Geometry
+        {
+            /// <summary>
+            /// creates a voxel-optimized geodesic sphere.
+            /// </summary>
+            /// <param name="order"></param>
+            public static Hare.Geometry.Voxel_Grid GeoSphere(int order)
+            {
+                double sqr5 = System.Math.Sqrt(5.0);
+                double phi = (1.0 + sqr5) * 0.5; // golden ratio
+                double ratio = System.Math.Sqrt(10.0 + (2.0 * sqr5)) / (4.0 * phi);
+                double a = (.25 / ratio) * 0.5;
+                double b = (.25 / ratio) / (2.0 * phi);
+
+                // Define the icosahedron's 12 vertices
+                Vector P0 = new Vector(0, b, -a);
+                Vector P1 = new Vector(b, a, 0);
+                Vector P2 = new Vector(-b, a, 0);
+                Vector P3 = new Vector(0, b, a);
+                Vector P4 = new Vector(0, -b, a);
+                Vector P5 = new Vector(-a, 0, b);
+                Vector P6 = new Vector(0, -b, -a);
+                Vector P7 = new Vector(a, 0, -b);
+                Vector P8 = new Vector(a, 0, b);
+                Vector P9 = new Vector(-a, 0, -b);
+                Vector P10 = new Vector(b, -a, 0);
+                Vector P11 = new Vector(-b, -a, 0);
+
+                P0.Normalize();
+                P1.Normalize();
+                P2.Normalize();
+                P3.Normalize();
+                P4.Normalize();
+                P5.Normalize();
+                P6.Normalize();
+                P7.Normalize();
+                P8.Normalize();
+                P9.Normalize();
+                P10.Normalize();
+                P11.Normalize();
+
+                Hare.Geometry.Point[][] P = new Hare.Geometry.Point[20 * (int)Math.Pow(4, order)][];
+                int Fnum = 0;
+
+                //Create the icosahedron's 20 triangular faces
+                triangle(ref P, ref Fnum, P0, P1, P2, 0, order);
+                triangle(ref P, ref Fnum, P3, P2, P1, 0, order);
+                triangle(ref P, ref Fnum, P3, P4, P5, 0, order);
+                triangle(ref P, ref Fnum, P3, P8, P4, 0, order);
+                triangle(ref P, ref Fnum, P0, P6, P7, 0, order);
+                triangle(ref P, ref Fnum, P0, P9, P6, 0, order);
+                triangle(ref P, ref Fnum, P4, P10, P11, 0, order);
+                triangle(ref P, ref Fnum, P6, P11, P10, 0, order);
+                triangle(ref P, ref Fnum, P2, P5, P9, 0, order);
+                triangle(ref P, ref Fnum, P11, P9, P5, 0, order);
+                triangle(ref P, ref Fnum, P1, P7, P8, 0, order);
+                triangle(ref P, ref Fnum, P10, P8, P7, 0, order);
+                triangle(ref P, ref Fnum, P3, P5, P2, 0, order);
+                triangle(ref P, ref Fnum, P3, P1, P8, 0, order);
+                triangle(ref P, ref Fnum, P0, P2, P9, 0, order);
+                triangle(ref P, ref Fnum, P0, P7, P1, 0, order);
+                triangle(ref P, ref Fnum, P6, P9, P11, 0, order);
+                triangle(ref P, ref Fnum, P6, P10, P7, 0, order);
+                triangle(ref P, ref Fnum, P4, P11, P5, 0, order);
+                triangle(ref P, ref Fnum, P4, P8, P10, 0, order);
+
+                Hare.Geometry.Topology T = new Topology(P);
+                T.Finish_Topology();
+                return new Voxel_Grid(new Topology[1] { T }, 4);
+            }
+
+            public static Hare.Geometry.Topology GeoHemiSphere(int order, double radius)
+            {
+                double sqr5 = System.Math.Sqrt(5.0);
+                double phi = (1.0 + sqr5) * 0.5; // golden ratio
+                double ratio = System.Math.Sqrt(10.0 + (2.0 * sqr5)) / (4.0 * phi);
+                double a = (.25 / ratio) * 0.5;
+                double b = (.25 / ratio) / (2.0 * phi);
+
+                // Define the half-octahedron's 5 vertices
+                Vector P0 = new Vector(0, 0, 1);
+                Vector P1 = new Vector(1, 0, 0);
+                Vector P2 = new Vector(0, 1, 0);
+                Vector P3 = new Vector(-1, 0, 0);
+                Vector P4 = new Vector(0, -1, 0);
+                
+                Hare.Geometry.Point[][] P = new Hare.Geometry.Point[4 * (int)Math.Pow(4, order)][];
+                int Fnum = 0;
+
+                //Create the icosahedron's 20 triangular faces
+                triangle(ref P, ref Fnum, P1, P2, P0, 0, order);
+                triangle(ref P, ref Fnum, P2, P3, P0, 0, order);
+                triangle(ref P, ref Fnum, P3, P4, P0, 0, order);
+                triangle(ref P, ref Fnum, P4, P1, P0, 0, order);
+
+                for (int i = 0; i < P.Length; i++) for (int j = 0; j < P[i].Length; j++) P[i][j] *= radius;
+
+                Hare.Geometry.Topology T = new Topology(P);
+                T.Finish_Topology();
+                return T;
+            }
+
+            private static void triangle(ref Point[][] P, ref int Fnum, Vector P0, Vector P1, Vector P2, int Ord, int max)
+            {
+                if (Ord < max)
+                {
+                    //Vector P3 = (P0 + P1) / 2;
+                    Vector P3 = new Vector(P0.dx + P1.dx, P0.dy + P1.dy, P0.dz + P1.dz);
+                    P3.Normalize();
+
+                    //Vector P4 = (P1 + P2) / 2;
+                    Vector P4 = new Vector(P1.dx + P2.dx, P1.dy + P2.dy, P1.dz + P2.dz);
+                    P4.Normalize();
+
+                    //Vector P5 = (P2 + P0) / 2;
+                    Vector P5 = new Vector(P2.dx + P0.dx, P2.dy + P0.dy, P2.dz + P0.dz);
+                    P5.Normalize();
+
+                    triangle(ref P, ref Fnum, P0, P3, P5, Ord + 1, max);
+                    triangle(ref P, ref Fnum, P1, P4, P3, Ord + 1, max);
+                    triangle(ref P, ref Fnum, P2, P5, P4, Ord + 1, max);
+                    triangle(ref P, ref Fnum, P3, P4, P5, Ord + 1, max);
+                }
+                else
+                {
+                    P[Fnum] = new Hare.Geometry.Point[3] { new Point(P0.dx, P0.dy, P0.dz), new Point(P1.dx, P1.dy, P1.dz), new Point(P2.dx, P2.dy, P2.dz) };
+                    Fnum++;
+                }
+            }
+        }
         public class IR_Construction
         {
             public static double[] ETCurve(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, List<int> SrcIDs, bool StartAtZero)
@@ -1629,7 +1759,7 @@ namespace Pachyderm_Acoustic
                 return F;
             }
 
-            public static double[][] Aurfilter_HRTF(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
+            public static double[][] Aurfilter_HRTF(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, Audio.HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
             {
                 double[][] Histogram = new double[2][];
                 Histogram[0] = new double[(int)(RTData.CO_Time / 1000 * Sampling_Frequency) + 4096 + hrtf.SampleCt];
@@ -2525,7 +2655,7 @@ namespace Pachyderm_Acoustic
                 return Histogram;
             }
 
-            public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
+            public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, Audio.HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
             {
                 //This version of the function achieves an HRTF filter by dividing up the 3 dimensional signal according to a set number of equidistant points on a sphere.
                 //Each direction is weighted according to spherical harmonics to achieve an approximately spherical weighting when all directions are combined.
@@ -2576,7 +2706,7 @@ namespace Pachyderm_Acoustic
                 return Histogram;
             }
 
-            public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
+            public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, Audio.HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
             {
                 //This version of the function achieves an HRTF filter by dividing up the 3 dimensional signal according to a set number of equidistant points on a sphere.
                 //Each directionis weighted according to spherical harmonics to achieve an approximately spherical weighting when all directions are combined.
@@ -2706,7 +2836,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public static string Version()
             {
-                System.Reflection.Assembly me = System.Reflection.Assembly.GetExecutingAssembly();
+                System.Reflection.Assembly me = System.Reflection.Assembly.Load("Pachyderm_Acoustic");
                 return me.GetName().Version.ToString();
             }
 

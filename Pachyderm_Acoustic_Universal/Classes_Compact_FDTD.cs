@@ -53,7 +53,6 @@ namespace Pachyderm_Acoustic
                 public int[] RDD_Location(Hare.Geometry.Point p)
                 {
                     int[] loc = new int[3];
-
                     loc[0] = (int)Math.Floor((p.x - Bounds.Min_PT.x) / dx);
                     loc[1] = (int)Math.Floor((p.y - Bounds.Min_PT.y) / dy);// (4 * dx / Utilities.Numerics.rt2));
                     loc[2] = (int)Math.Floor((p.z - Bounds.Min_PT.z) / dz);// (2 * dx / Utilities.Numerics.rt2));
@@ -1837,6 +1836,7 @@ namespace Pachyderm_Acoustic
                 double tmax;
                 double Sample_Freq;
                 int no_of_samples;
+                public Topology grid_template;
 
                 public Microphone_Compact()
                 {
@@ -1968,8 +1968,8 @@ namespace Pachyderm_Acoustic
                     List<int> Yl = new List<int>();
                     List<int> Zl = new List<int>();
 
-                    ///Revise this appraoch given the known coordinates on the surface of a sphere... this appraoch is inefective...
-                    //for(int i = 0; i < Frame.Length; i++)
+                    // Revise this appraoch given the known coordinates on the surface of a sphere... this appraoch is ineffective...
+                    //for (int i = 0; i < Frame.Length; i++)
                     //{
                     //    for (int j = 0; j < Frame[i].Length; j++)
                     //    {
@@ -1990,22 +1990,38 @@ namespace Pachyderm_Acoustic
                     //    }
                     //}
 
-                    for (int phi = 0; phi < 72; phi++)
-                    {
-                        for (int theta = 0; theta < 20; theta++)
-                        {
-                            Point p = radius * new Point(Math.Cos(phi * Math.PI / 36) * Math.Cos(theta * Math.PI / 36), Math.Sin(phi * Math.PI / 36) * Math.Cos(theta * Math.PI / 36), Math.Sin(theta * Math.PI / 36));
-                            int x = (int)Math.Floor((p.x - Bounds.Min_PT.x) / (dx));
-                            int y = (int)Math.Floor((p.y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));
-                            int z = (int)Math.Floor((p.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));
+                    grid_template = Utilities.Geometry.GeoHemiSphere(5, radius);
 
-                            Xl.Add(x);
-                            Yl.Add(y);
-                            Zl.Add(z);
-                            ptlist.Add(p);
-                            Rec.Add(Frame[x][y][z]);
-                        }
+                    for (int i = 0; i < grid_template.Vertex_Count; i++)
+                    {
+                        Point p = grid_template[i];            
+                        int x = (int)Math.Floor((p.x - Bounds.Min_PT.x) / (dx));
+                        int y = (int)Math.Floor((p.y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));
+                        int z = (int)Math.Floor((p.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));
+
+                        Xl.Add(x);
+                        Yl.Add(y);
+                        Zl.Add(z);
+                        ptlist.Add(p);
+                        Rec.Add(Frame[x][y][z]);
                     }
+
+                    //for (int phi = 0; phi < 72; phi++)
+                    //{
+                    //    for (int theta = 0; theta < 20; theta++)
+                    //    {
+                    //        Point p = radius * new Point(Math.Cos(phi * Math.PI / 36) * Math.Cos(theta * Math.PI / 36), Math.Sin(phi * Math.PI / 36) * Math.Cos(theta * Math.PI / 36), Math.Sin(theta * Math.PI / 36));
+                    //        int x = (int)Math.Floor((p.x - Bounds.Min_PT.x) / (dx));
+                    //        int y = (int)Math.Floor((p.y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));
+                    //        int z = (int)Math.Floor((p.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));
+
+                    //        Xl.Add(x);
+                    //        Yl.Add(y);
+                    //        Zl.Add(z);
+                    //        ptlist.Add(p);
+                    //        Rec.Add(Frame[x][y][z]);
+                    //    }
+                    //}
 
                     Loc = ptlist.ToArray();
                     X = Xl.ToArray();
