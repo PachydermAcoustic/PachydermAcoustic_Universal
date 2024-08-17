@@ -2739,23 +2739,33 @@ namespace Pachyderm_Acoustic
 
                 double[][] Histogram = new double[2][];
 
+                int no_of_irs = 0;
                 foreach (int s in SrcIDs)
                 {
                     hrtf.Load(Direct.ElementAt<Direct_Sound>(s), ISData.ElementAt<ImageSourceData>(s), RTData.ElementAt<Receiver_Bank>(s), CO_Time_ms, Sampling_Frequency, Rec_ID, StartAtZero, flat);
-                    
                     double[][] IR = hrtf.Binaural_IR(azi, alt);
+
                     if (Histogram[0] == null)
                     {
+                        no_of_irs++;
                         Histogram[0] = new double[IR[0].Length];
                         Histogram[1] = new double[IR[0].Length];
                     }
 
                     for (int i = 0; i < IR[0].Length; i++)
                     {
-                        Histogram[0][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[0][i];
-                        Histogram[1][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[1][i];
+
+                        Histogram[0][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[0][i] / hrtf.SampleCt;
+                        Histogram[1][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[1][i] / hrtf.SampleCt;
                     }
                 }
+
+                for (int i = 0; i < Histogram[0].Length; i++)
+                {
+                    Histogram[0][i] /= no_of_irs;
+                    Histogram[1][i] /= no_of_irs;
+                }
+
                 return Histogram;
             }
 

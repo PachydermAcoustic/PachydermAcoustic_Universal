@@ -70,8 +70,11 @@ namespace Pachyderm_Acoustic
         /// <param name="partitionedReceiver">Is the receiver partitioned... i.e., did you use a mapping receiver bank?</param>
         public SplitRayTracer(Source sourceIn, Receiver_Bank receiverIn, Scene roomIn, double cutoffTime, int[] octaveRange, int isOrderIn, int rayCountIn, I_Conv_Progress Vis_Feedback)
         {
-            Canceler = Vis_Feedback.Canceler;
-            Cancelled = Vis_Feedback.CancellationToken;
+            if (Vis_Feedback != null)
+            {
+                Canceler = Vis_Feedback.Canceler;
+                Cancelled = Vis_Feedback.CancellationToken;
+            }
             BroadRayPool.Initialize();
             OctaveRayPool.Initialize();
             IS_Order = isOrderIn;
@@ -820,7 +823,7 @@ namespace Pachyderm_Acoustic
                 oct = _oct;
                 RunningSim = R.Rec_List[id].Recs.Energy[oct];
                 check_no = check_id;
-                On_Convergence_Check += Vis_Feedback.Fill;
+                if (Vis_Feedback != null) On_Convergence_Check += Vis_Feedback.Fill;
             }
 
             protected async void Plot_Feedback(double[] diff, double conv, double ConvInf, int ID, int count, double corr)

@@ -47,7 +47,8 @@ namespace Pachyderm_Acoustic
                     Fs = 48000;
 
                     //Create a reference sphere...
-                    Pachyderm_Acoustic.Utilities.Geometry.GeoSphere(1);
+                    VG = Pachyderm_Acoustic.Utilities.Geometry.GeoSphere(1);
+                    T = VG.Model[0];
                     PrincipalDirections = new Vector[T.Polygon_Count];
                     for (int i = 0; i < T.Polygon_Count; i++)
                     {

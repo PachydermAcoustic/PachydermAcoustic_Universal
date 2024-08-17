@@ -2459,10 +2459,8 @@ namespace Pachyderm_Acoustic
 
         public override double[] Dir_Filter(double[] SWL, double alt, double azi, bool degrees, bool Figure8, int sampleFreq, bool flat)
         {
-            double[] Fn = new double[H.Length];
-
             double[][] Hdir_out = (sampleFreq == 44100 && flat) ? Fdir : Create_Filter(SWL, sampleFreq, 4096, 0);
-
+            double[] Fn = new double[Hdir_out[0].Length];
             if (Figure8)
             {
                 for (int i = 0; i < Hdir_out.Length; i++)
@@ -2475,8 +2473,8 @@ namespace Pachyderm_Acoustic
             {
                 int[] ids = new int[3];
                 ids[0] = (azi > 90 && azi < 270) ? 1 : 0;
-                ids[0] = (azi <= 180) ? 3 : 4;
-                ids[0] = (alt > 0) ? 4 : 5;
+                ids[1] = (azi <= 180) ? 2 : 3;
+                ids[2] = (alt > 0) ? 4 : 5;
                 for (int i = 0; i < Hdir_out[0].Length; i++)
                 {
                     Hare.Geometry.Vector V = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(new Hare.Geometry.Vector(Hdir_out[ids[0]][i], Hdir_out[ids[1]][i], Hdir_out[ids[2]][i]), azi, 0, true), 0, alt, true);
