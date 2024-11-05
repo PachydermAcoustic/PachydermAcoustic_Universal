@@ -815,10 +815,10 @@ namespace Pachyderm_Acoustic
             protected int oct;
             public int check_no;
 
-            public delegate void PlotHandler(double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr);
+            public delegate void PlotHandler(double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr, Queue<double[]> IR1 = null, Queue<double[]> IR2 = null);
             public event PlotHandler On_Convergence_Check;
 
-            public Convergence_Check(Receiver_Bank R, int id, int _oct, int check_id, I_Conv_Progress Vis_Feedback)
+            public Convergence_Check(Receiver_Bank R, int id, int _oct, int check_id, I_Conv_Progress Vis_Feedback, double[] IR1 = null, double[] IR2 = null)
             {
                 oct = _oct;
                 RunningSim = R.Rec_List[id].Recs.Energy[oct];
@@ -826,9 +826,9 @@ namespace Pachyderm_Acoustic
                 if (Vis_Feedback != null) On_Convergence_Check += Vis_Feedback.Fill;
             }
 
-            protected async void Plot_Feedback(double[] diff, double conv, double ConvInf, int ID, int count, double corr)
+            protected async void Plot_Feedback(double[] diff, double conv, double ConvInf, int ID, int count, double corr, Queue<double[]> IR1 = null, Queue<double[]> IR2 = null)
             {
-                if (On_Convergence_Check != null) On_Convergence_Check(diff, conv, ConvInf, ID, count, corr);
+                if (On_Convergence_Check != null) On_Convergence_Check(diff, conv, ConvInf, ID, count, corr, IR1, IR2);
             }
 
             public abstract bool Check();
@@ -921,6 +921,7 @@ namespace Pachyderm_Acoustic
             int RayNo = 0;
             double[] Schr_old;
             double conv1, conv2, convinf, r;
+            Queue<double[]> IR = new Queue<double[]>();
 
             public Minimum_Convergence_Check(Source S, Scene Sc, Receiver_Bank R, int id, int _oct, int check_id, I_Conv_Progress Vis_Feedback)
                 : base(R, id, _oct, check_id, Vis_Feedback)
@@ -936,6 +937,16 @@ namespace Pachyderm_Acoustic
                 double sn50 = 0;
                 double sn80 = 0;
                 double sninf = 0;
+                if (RunningSim != null)
+                {
+                    double[] IR0 = new double[RunningSim.Length];
+                    for(int i = 0; i < IR0.Length; i++)
+                    {
+                        IR0[i] = RunningSim[i] == 0 ? -190 : 10 * Math.Log10(RunningSim[i] * RunningSim[i]);
+                    }
+                    IR.Enqueue(IR0);
+                    if (IR.Count > 5) IR.Dequeue();
+                }
                 for (int i = SampleStart; i < Sample50; i++)
                 {
                     sn50 += RunningSim[i];
@@ -985,7 +996,8 @@ namespace Pachyderm_Acoustic
 
             public override void Update()
             {
-                Plot_Feedback(new double[1] { conv1 }, conv2, convinf, 0, check_no, r);
+
+                Plot_Feedback(new double[1] { conv1 }, conv2, convinf, 0, check_no, r, IR);
                 //return true;
             }
 
@@ -999,6 +1011,14 @@ namespace Pachyderm_Acoustic
                 double sn50 = 0;
                 double sn80 = 0;
                 double sninf = 0;
+                if (RunningSim != null)
+                {
+                    double[] IR0 = new double[RunningSim.Length];
+                    RunningSim.CopyTo(IR0, 0);
+                    IR.Enqueue(IR0);
+                    if (IR.Count > 5) IR.Dequeue();
+                }
+
                 for (int i = SampleStart; i < Sample50; i++)
                 {
                     sn50 += RunningSim[i];
@@ -1033,7 +1053,7 @@ namespace Pachyderm_Acoustic
                 snapshot80 = sn80;
                 snapshotinf = sninf;
 
-                Plot_Feedback(new double[1] { conv1 }, conv2, convinf, check_no, count, 1);
+                Plot_Feedback(new double[1] { conv1 }, conv2, convinf, check_no, count, 1, IR, null);
 
                 if (count > 10) return true;
                 return false;
@@ -1044,7 +1064,7 @@ namespace Pachyderm_Acoustic
     public interface I_Conv_Progress
     {
         void Populate();
-        void Fill(double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr);
+        void Fill(double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr, Queue<double[]> IR1 = null, Queue<double[]> IR2 = null);
         CancellationToken CancellationToken { get; }
         CancellationTokenSource Canceler { get; }
     }

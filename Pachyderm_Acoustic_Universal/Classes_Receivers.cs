@@ -623,7 +623,7 @@ namespace Pachyderm_Acoustic
 
             private bool CreatingFilter = false;
 
-            public async virtual void Create_Filter(IProgressFeedback VB)
+            public async virtual void Create_Filter(IProgressFeedback VB = null)
             {
                 CreatingFilter = true;
                 //if (VB != null) VB.Report((int)(100 * (1f - ((float)CDE.CurrentCount / (float)IR.Length))));
@@ -780,7 +780,6 @@ namespace Pachyderm_Acoustic
             /// <summary>
             /// This method checks a receiver for a ray using a Broadband Ray (these typically occur before rays are split in the Raytracing simulation.
             /// </summary>
-            /// <param name="Length">The length of the ray at the reflection point before potential intersection</param>
             /// <param name="R">the ray.</param>
             /// <param name="EndPt">The point at which the ray intersects the model after potential receiver intersection.</param>
             public virtual void CheckBroadbandRay(BroadRay R, Hare.Geometry.Point EndPt)

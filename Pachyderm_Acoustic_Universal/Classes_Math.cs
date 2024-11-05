@@ -63,15 +63,29 @@ namespace Pachyderm_Acoustic
                 return Math.Sqrt((re * re) + (im * im));
             }
 
-            public static System.Numerics.Complex jBessel(int order, System.Numerics.Complex X)
-            {
-                //Asymptotic Solution
-                //Get Angle
-                double Arg = X.Phase;
-                int asy_sign = (Arg >= 0) ? -1 : 1;
+            //public static System.Numerics.Complex jBessel(int order, System.Numerics.Complex X)
+            //{
+            //    //Asymptotic Solution
+            //    //Get Angle
+            //    double Arg = X.Phase;
+            //    int asy_sign = (Arg >= 0) ? -1 : 1;
 
-                return (1 / System.Numerics.Complex.Sqrt(2 * Math.PI * X)) * System.Numerics.Complex.Exp(asy_sign * System.Numerics.Complex.ImaginaryOne * (X - order * Math.PI / 2 - Math.PI / 4));
-            }
+            //    return (1 / System.Numerics.Complex.Sqrt(2 * Math.PI * X)) * System.Numerics.Complex.Exp(asy_sign * System.Numerics.Complex.ImaginaryOne * (X - order * Math.PI / 2 - Math.PI / 4));
+            //}
+
+            //public static System.Numerics.Complex yBessel(int order, System.Numerics.Complex X)
+            //{
+            //    // Asymptotic Solution for Bessel function of the second kind
+            //    // Get Angle
+            //    double Arg = X.Phase;
+            //    int asy_sign = (Arg >= 0) ? -1 : 1;
+
+            //    // Bessel function of the second kind
+            //    System.Numerics.Complex jBessel = (1 / System.Numerics.Complex.Sqrt(2 * Math.PI * X)) * System.Numerics.Complex.Exp(asy_sign * System.Numerics.Complex.ImaginaryOne * (X - order * Math.PI / 2 - Math.PI / 4));
+            //    System.Numerics.Complex yBessel = (1 / System.Numerics.Complex.Sqrt(2 * Math.PI * X)) * System.Numerics.Complex.Exp(-asy_sign * System.Numerics.Complex.ImaginaryOne * (X - order * Math.PI / 2 - Math.PI / 4));
+
+            //    return (jBessel - yBessel) / (2 * System.Numerics.Complex.ImaginaryOne);
+            //}
         }
 
         ///<summary>

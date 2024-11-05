@@ -23,6 +23,7 @@ using Pachyderm_Acoustic.Pach_Graphics;
 using Pachyderm_Acoustic.Utilities;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 
@@ -415,8 +416,18 @@ namespace Pachyderm_Acoustic
                     if (PathVertices[r] == null) continue;
                     if (Sequence[0] < Room.ObjectCount)
                     {
-                        if (FinalOcclusion(PathVertices[r][0], PathVertices[r][1], Sequence[0], ref Trans_Mod[r], Threadid))
-                            PathVertices[r] = null;
+                        for (int i = 0; i < PathVertices[r].Length - 2; i++)
+                        {
+                            Hare.Geometry.Vector d1 = PathVertices[r][i] - PathVertices[r][i + 1], d2 = PathVertices[r][i + 2] - PathVertices[r][i + 1], n = Room.Normal(Room.ObjectMembers[Sequence[i]][0]);
+                            d1.Normalize(); d2.Normalize();
+                            if (Math.Sign(Hare_math.Dot(n, d1)) != Math.Sign(Hare_math.Dot(n, d2)))
+                            {
+                                PathVertices[r] = null;break;
+                            }
+                            else if ((i == PathVertices[r].Length - 3) && FinalOcclusion(PathVertices[r][0], PathVertices[r][1], Sequence[0], ref Trans_Mod[r], Threadid))
+                            { PathVertices[r] = null; break; }
+                        }
+
                     }
                     else
                     {
@@ -1765,7 +1776,7 @@ namespace Pachyderm_Acoustic
             }
         }
 
-        public void Create_Filter(double[] SWL, int length, IProgressFeedback VB)
+        public void Create_Filter(double[] SWL, int length, IProgressFeedback VB = null)
         {
             //Pachyderm_Acoustic.ProgressBox VB = new ProgressBox("Calculating pressure from deterministic reflections...");
             //VB.Show();
@@ -1932,7 +1943,7 @@ namespace Pachyderm_Acoustic
 
             for (int oct = 0; oct < 8; oct++)
             {
-                double H_rc = AcousticalMath.Intensity_Pressure(H[0], Room.Rho_C(0));
+                double H_rc = AcousticalMath.Intensity_Pressure(H[oct], Room.Rho_C(0));
                 PathEnergy[oct] = Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * Length) * H_rc ;
                 PathEnergy[oct] *= Trans_Mod[oct];
             }

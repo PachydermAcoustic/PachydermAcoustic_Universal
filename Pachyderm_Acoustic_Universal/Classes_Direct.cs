@@ -1063,6 +1063,14 @@ namespace Pachyderm_Acoustic
             }
         }
 
+        public int rec_count
+        {
+            get 
+            {
+                return this.Receiver.Count();
+            }
+        }
+
         public double Cutoff_Time
         {
             get 

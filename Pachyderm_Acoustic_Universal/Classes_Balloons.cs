@@ -165,7 +165,9 @@ namespace Pachyderm_Acoustic
                 }
 
                 m_HareMesh[oct] = new Topology(new Hare.Geometry.Point(Minx, Miny, Minz), new Hare.Geometry.Point(Maxx, Maxy, Maxz));
-                foreach (Hare.Geometry.Point[] Poly in list) m_HareMesh[oct].Add_Polygon(Poly);
+                //foreach (Hare.Geometry.Point[] Poly in list) m_HareMesh[oct].Add_Polygon(Poly);
+                m_HareMesh[oct].Build_Topology(list.ToArray());
+                m_HareMesh[oct].Finish_Topology();
                 if (oct == 4)
                 {
                     m_DisplayMesh = new Topology(new Hare.Geometry.Point(Minx, Miny, Minz), new Hare.Geometry.Point(Maxx, Maxy, Maxz));

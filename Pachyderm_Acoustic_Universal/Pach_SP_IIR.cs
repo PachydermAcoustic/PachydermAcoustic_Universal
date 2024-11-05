@@ -20,13 +20,6 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Linq;
-using System.ComponentModel.Design;
-using MathNet.Numerics;
-using MathNet.Numerics.LinearAlgebra;
-using MathNet.Numerics.Integration;
-//using LibOptimization.BenchmarkFunction;
-using System.ComponentModel;
-using FFTWSharp;
 
 namespace Pachyderm_Acoustic
 {
@@ -151,20 +144,36 @@ namespace Pachyderm_Acoustic
                     return H;
                 }
 
-                public static Complex[] AB_FreqResponse(List<double> b, List<double> a, double[] frequencies)
+                public static Complex[] AB_FreqResponse(List<double> b, List<double> a, double[] frequencies, double fs)
                 {
-                    Complex[] response = new Complex[frequencies.Length];
+                    int N = frequencies.Length;
+                    Complex[] H_f = new Complex[N];
 
-                    for (int f = 0; f < frequencies.Length; f++)
+                    for (int i = 0; i < N; i++)
                     {
-                        Complex s = Complex.ImaginaryOne * Utilities.Numerics.PiX2 * frequencies[f];
-                        Complex num = 0, den = 0;
-                        for (int i = 0; i < b.Count(); i++) num += b[i] * Complex.Pow(s, b.Count - i - 1);
-                        for (int i = 0; i < a.Count(); i++) den += a[i] * Complex.Pow(s, a.Count - i - 1);
-                        response[f] = num / den;
+                        double f = frequencies[i];
+                        double omega = 2 * Math.PI * f / fs;
+                        Complex z = Complex.Exp(new Complex(0, -omega));
+
+                        // Compute B(z) and A(z)
+                        Complex B_z = 0;
+                        Complex A_z = 0;
+
+                        for (int k = 0; k < b.Count; k++)
+                        {
+                            B_z += b[k] * Complex.Pow(z, -k);
+                        }
+
+                        for (int k = 0; k < a.Count; k++)
+                        {
+                            A_z += a[k] * Complex.Pow(z, -k);
+                        }
+
+                        // Compute the frequency response H(f) = B(z) / A(z)
+                        H_f[i] = B_z / A_z;
                     }
 
-                    return response;
+                    return H_f;
                 }
 
                 //public class IIR_Fitting_Spectrum_Objective : LibOptimization.Optimization.absObjectiveFunction

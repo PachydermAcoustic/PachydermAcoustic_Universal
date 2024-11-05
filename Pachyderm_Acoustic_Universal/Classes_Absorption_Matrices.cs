@@ -243,11 +243,26 @@ namespace Pachyderm_Acoustic
                 Complex sinkzh = Complex.Sin(kzh);
                 Complex coskzh = Complex.Cos(kzh);
                 //Complex pr2 = w * K * Zc / w;
-                Complex pr2 =  K * Zc;
+                Complex pr2 = K * Zc;
 
                 M[0, 0] = 1d * coskzh;
                 M[0, 1] = (Complex.ImaginaryOne * pr2 / kz) * sinkzh;
                 M[1, 0] = (Complex.ImaginaryOne * kz / pr2) * sinkzh;
+                M[1, 1] = 1d * coskzh;
+
+                return M;
+            }
+
+            public static SparseMatrix AirMatrix(double h, Complex kz, Complex K, Complex Zc)
+            {
+                SparseMatrix M = new SparseMatrix(2, 2);
+                Complex kzh = kz * h;
+                Complex sinkzh = Complex.Sin(kzh);
+                Complex coskzh = Complex.Cos(kzh);
+
+                M[0, 0] = 1d * coskzh;
+                M[0, 1] = (Complex.ImaginaryOne * Zc / kz) * sinkzh;
+                M[1, 0] = (Complex.ImaginaryOne * kz / Zc) * sinkzh;
                 M[1, 1] = 1d * coskzh;
 
                 return M;

@@ -22,8 +22,6 @@ using Hare.Geometry;
 using Pachyderm_Acoustic.Environment;
 using Pachyderm_Acoustic.Utilities;
 using System.Linq;
-using System.CodeDom.Compiler;
-using MathNet.Numerics;
 
 namespace Pachyderm_Acoustic
 {
@@ -580,6 +578,7 @@ namespace Pachyderm_Acoustic
 
         public static double[] Get_EchoCritPercent_Map(PachMapReceiver[] Rec_List, int Octave, List<int> SrcID)
         {
+            if (Rec_List.Length != 1) return null;
             //T in ms.
             //Calculate C values...
             double[] E_Values = new double[Rec_List[0].Rec_List.Length];
@@ -623,7 +622,7 @@ namespace Pachyderm_Acoustic
 
                 if (Octave < 8) hist = Audio.Pach_SP.FIR_Bandpass(hist, Octave, 44100, 0);
 
-                AcousticalMath.EchoCriterion(hist, Rec_List[0].SampleRate, 0, true, out EKG, out PercEcho, out Echo10, out Echo50);
+                AcousticalMath.EchoCriterion(hist, Rec_List[0].SampleRate, (Rec_List[0].Rec_List[i] as Map_Receiver).Direct_Time, true, out EKG, out PercEcho, out Echo10, out Echo50);
                 E_Values[i] = PercEcho.Max();
             }
 
