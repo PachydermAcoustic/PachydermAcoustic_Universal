@@ -30,8 +30,8 @@ namespace Pachyderm_Acoustic
         int Thread_Spec;
         int Spatial_Partition;
 
-        int VGDomain;
-        int OctDepth;
+        int SPDepth;
+        int MaxPolys;
         string LibraryPath;
         bool Save;
         int FiltPhase;
@@ -55,10 +55,6 @@ namespace Pachyderm_Acoustic
             SettingsPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData) + "\\Pachyderm";
             if (!System.IO.Directory.Exists(SettingsPath)) System.IO.Directory.CreateDirectory(SettingsPath);
             SettingsPath += "\\Pach_Settings.pset";
-
-            //FileStream S = new FileStream(SettingsPath, FileMode.OpenOrCreate);
-            //BinaryReader Reader = new BinaryReader(S);
-            //BinaryWriter Writer = new BinaryWriter(S);
 
             Recover_Settings();
         }
@@ -128,12 +124,11 @@ namespace Pachyderm_Acoustic
                 //        OCT_CHECK.Checked = true;
                 //        break;
                 //}
-                //6. Voxel Grid Domain(int)
-
-                VGDomain = Reader.ReadInt32();
-                //7. Octree Depth(int)
-                //OCT_DEPTH.Value = Reader.ReadInt32();
-                OctDepth = Reader.ReadInt32();
+                //6. Spatial_Partition Depth(int)
+                SPDepth = Reader.ReadInt32();
+                //7. Max number of polys per node(int)
+                //Spatial division will stop when it has reached the max depth, or number of polys falls below thisnumber.
+                MaxPolys = Reader.ReadInt32();
                 //8. Material Library Path
                 LibraryPath = Reader.ReadString();
                 //9. Save Results after simulation?
@@ -194,10 +189,10 @@ namespace Pachyderm_Acoustic
             Spatial_Partition = 1;
             Writer.Write(1);
             //6. Voxel Grid Domain(int)
-            VGDomain = 7;
+            SPDepth = 7;
             Writer.Write(7);
-            //7. Octree Depth(int)
-            OctDepth = 3;
+            //7. Maximum polygons per node(int)
+            MaxPolys = 3;
             Writer.Write(3);
             //8. Material Library Path
             LibraryPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData) + "\\Pachyderm";
@@ -272,8 +267,9 @@ namespace Pachyderm_Acoustic
         {
             get
             {
-                if (Spatial_Partition == 1) return 0;
-                if (Spatial_Partition == 2) return 1;
+                if (Spatial_Partition == 1) return 1;
+                if (Spatial_Partition == 2) return 2;
+                if (Spatial_Partition == 3) return 3;
                 throw new Exception("Is there a new spatial partition to be implemented?");
             }
             set 
@@ -318,38 +314,36 @@ namespace Pachyderm_Acoustic
             }
         }
 
-
         /// <summary>
         /// Returns the user selected domain of the voxel grid (how many times to subdivide voxels. Functionally 8^x voxels.)
         /// </summary>
         /// <returns></returns>
-        public int VoxelGrid_Domain
+        public int Spatial_Depth
         {
             get
             {
-                return (int)VGDomain;
+                return (int)SPDepth;
             }
             set
             {
-                VGDomain = value;
+                SPDepth = value;
                 Commit_Settings();
             }
         }
-
 
         /// <summary>
         /// If octree is chosen, returns the depth of the octree (how many branches deep)
         /// </summary>
         /// <returns></returns>
-        public int Oct_Depth
+        public int Max_Polys_Per_Node
         {
             get
             {
-                return (int)OctDepth;
+                return (int)MaxPolys;
             }
             set 
             {
-                OctDepth = value;
+                MaxPolys = value;
                 Commit_Settings();
             }
         }
@@ -382,7 +376,7 @@ namespace Pachyderm_Acoustic
             }
             set 
             {
-                Save = value; 
+                Save = value;
                 Commit_Settings();
             }
         }
@@ -392,6 +386,7 @@ namespace Pachyderm_Acoustic
         /// </summary>
         private void Commit_Settings()
         {
+
             File.Delete(SettingsPath);
             FileStream S = new FileStream(SettingsPath, FileMode.CreateNew);
             BinaryWriter Writer = new BinaryWriter(S);
@@ -425,11 +420,10 @@ namespace Pachyderm_Acoustic
             //else
             //{ Writer.Write(2); }
             Writer.Write(Spatial_Partition);
-
-            //6. Voxel Grid Domain(int)
-            Writer.Write(VGDomain);
-            //7. Octree Depth(int)
-            Writer.Write(OctDepth);
+            //6. Spatial Partition Depth(int)
+            Writer.Write(SPDepth);
+            //7. Max Polys per node(int)
+            Writer.Write(MaxPolys);
             //8. Material Library Path
             Writer.Write(LibraryPath);
             //9. Save Results after simulation?

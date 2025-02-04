@@ -1955,69 +1955,6 @@ namespace Pachyderm_Acoustic
                 return Histogram;
             }
 
-            //public static double[][] AurFilter_Binaural(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double xpos_alt, double xpos_azi, bool degrees, bool flat)
-            //{
-            //    double[][] Histogram = new double[2][];
-            //    if (RTData != null)
-            //    {
-            //        double[][] hist_temp = RTData.Filter_3Axis(Rec_ID);
-            //        Histogram[0] = new double[hist_temp[0].Length];
-            //        Histogram[1] = new double[hist_temp[0].Length];
-            //        Histogram[2] = new double[hist_temp[0].Length];
-            //        for (int i = 0; i < hist_temp[0].Length; i++)
-            //        {
-            //            AurFilter_Directional()
-
-            //            Histogram[0][i] = V.dx;
-            //            Histogram[1][i] = V.dy;
-            //            Histogram[2][i] = V.dz;
-            //        }
-            //    }
-            //    else
-            //    {
-            //        Histogram[0] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 4096];
-            //        Histogram[1] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 4096];
-            //        Histogram[2] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 4096];
-            //    }
-
-            //    if (Direct != null && Direct.IsOccluded(Rec_ID))
-            //    {
-            //        int D_Start = 0;
-            //        if (!Start_at_Zero) D_Start = (int)Math.Ceiling(Direct.Time(Rec_ID) * Sampling_Frequency);
-
-            //        double[][] V = Direct.Dir_Filter(Rec_ID, xpos_alt, xpos_azi, degrees, Sampling_Frequency, true, flat);
-            //        for (int i = 0; i < V.Length; i++)
-            //        {
-            //            Histogram[0][D_Start + i] += V[i][0];
-            //            Histogram[1][D_Start + i] += V[i][1];
-            //            Histogram[2][D_Start + i] += V[i][2];
-            //        }
-            //    }
-
-            //    if (ISData != null)
-            //    {
-            //        foreach (Deterministic_Reflection value in ISData.Paths[Rec_ID])
-            //        {
-            //            if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
-            //            {
-            //                int R_Start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
-            //                double[][] V = value.Dir_Filter(Direct.SWL, xpos_alt, xpos_azi, degrees, Sampling_Frequency, flat);
-
-            //                //Hare.Geometry.Vector dir = value.Path[0][value.Path[0].Length - 1] - value.Path[0][value.Path[0].Length - 2];
-            //                //dir.Normalize();
-            //                //for (int i = 0; i < value.Filter.Length; i++)
-            //                for (int i = 0; i < V.Length; i++)
-            //                {
-            //                    Histogram[0][R_Start + i] += V[i][0];
-            //                    Histogram[1][R_Start + i] += V[i][1];
-            //                    Histogram[2][R_Start + i] += V[i][2];
-            //                }
-            //            }
-            //        }
-            //    }
-            //    return Histogram; //XYZ - Furse Malham (FUMA)
-            //}
-
             public static double[][] AurFilter_Fig8_3Axis(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double xpos_alt, double xpos_azi, bool degrees, bool flat)
             {
                 double[][] Histogram = new double[3][];

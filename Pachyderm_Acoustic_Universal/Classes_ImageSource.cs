@@ -1524,7 +1524,6 @@ namespace Pachyderm_Acoustic
                         BW.Write(ValidPaths[q][i].Path[0].Length);
                         //int ptct = BR.ReadInt32();
 
-
                         //5. Write the reflection path:double
                         for (int r = 0; r < ValidPaths[q][i].Path.Length; r++)
                         {
@@ -1571,13 +1570,13 @@ namespace Pachyderm_Acoustic
                         //9.1a - Write the number of points
                         int filterlength = (ValidPaths[q][i] as Compound_Path).H.Length;
                         BW.Write(filterlength);
-                        //9.1b - Write the H Function (omno, time, octave)
+                        //9.1b - Write the H Function (omni, time, octave)
                         foreach (double[] w in (ValidPaths[q][i] as Compound_Path).H) for(int oct = 0; oct < 8; oct++) BW.Write(w[oct]);
                         //9.2 Write the H function (directional 6 channels, time)
                         for (int d = 0; d < 6; d++) foreach (double[] w in (ValidPaths[q][i] as Compound_Path).Hdir[d])
-                            {    //9.2a (octave band)
-                                for (int oct = 0; oct < 8; oct++) BW.Write(w[oct]);
-                            }
+                        {    //9.2a (octave band)
+                            for (int oct = 0; oct < 8; oct++) BW.Write(w[oct]);
+                        }
                     }
                 }
             }
@@ -1610,7 +1609,7 @@ namespace Pachyderm_Acoustic
                     int ReflectionType = BR.ReadInt16();
                     if (ReflectionType == 0)
                     {
-                        //Speculare Reflection
+                        //Specular Reflection
                         //4. Write the number of reflection path points
                         Hare.Geometry.Point[] PTS = new Hare.Geometry.Point[BR.ReadInt32()];
 
@@ -2091,7 +2090,10 @@ namespace Pachyderm_Acoustic
         {
             Hare.Geometry.Vector Dir = Path[0][Path[0].Length - 1] - Path[0][Path[0].Length - 2];
             Dir.Normalize();
-            return new Hare.Geometry.Vector[] { Dir * PathEnergy[Octave] };
+            double I = 0;
+            if (Octave == 8) for (int oct = 0; oct < 8; oct++) I += PathEnergy[oct];
+            else I = PathEnergy[Octave];
+            return new Hare.Geometry.Vector[] { Dir * I };
         }
 
         public override Hare.Geometry.Vector[] Dir_Energy(int Octave, double alt, double azi, bool degrees, bool Figure8 = false)

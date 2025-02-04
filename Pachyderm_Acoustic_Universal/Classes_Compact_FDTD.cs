@@ -81,7 +81,7 @@ namespace Pachyderm_Acoustic
                     Mic = M_in;
                     fmax = fmax_in;
                     tmax = tmax_ms_in;
-                    Rm.partition(5);
+                    Rm.partition();
                     if (GT == GridType.Freefield)
                     {
                         Build_Freefield_FVM13(ref xDim, ref yDim, ref zDim, PML, mindimx, mindimy, mindimz);
@@ -1105,7 +1105,9 @@ namespace Pachyderm_Acoustic
 
                     double dx2 = 2 * dy + double.Epsilon;
 
+
                     XPt = new X_Event();
+                    //new Vector(0, -1, 0)
                     if (Rm.shoot(new Ray(Center, -1 * Dir[1], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[1] * 2 * dx)));
@@ -1121,6 +1123,7 @@ namespace Pachyderm_Acoustic
                     }
 
                     XPt = new X_Event();
+                    //new Vector(0, 0, -1),
                     if (Rm.shoot(new Ray(Center, -1 * Dir[2], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[2] * 2 * dx)));
@@ -1136,6 +1139,7 @@ namespace Pachyderm_Acoustic
                     }
 
                     XPt = new X_Event();
+                    //new Vector(-dx, -dy, dz),
                     if (Rm.shoot(new Ray(Center, Dir[9], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[9] * 2 * dx)));
@@ -1151,6 +1155,7 @@ namespace Pachyderm_Acoustic
                     }
 
                     XPt = new X_Event();
+                    //new Vector(dx, -dy, dz),
                     if (Rm.shoot(new Ray(Center, Dir[10], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[10] * 2 * dx)));
@@ -1166,6 +1171,7 @@ namespace Pachyderm_Acoustic
                     }
 
                     XPt = new X_Event();
+                    //new Vector(dx, dy, dz),
                     if (Rm.shoot(new Ray(Center, Dir[11], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[11] * 2 * dx)));
@@ -1181,6 +1187,7 @@ namespace Pachyderm_Acoustic
                     }
 
                     XPt = new X_Event();
+                    //new Vector(-dx, dy, dz)
                     if (Rm.shoot(new Ray(Center, Dir[12], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[12] * 2 * dx)));

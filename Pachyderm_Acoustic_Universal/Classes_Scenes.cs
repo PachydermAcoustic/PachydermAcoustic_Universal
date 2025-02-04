@@ -42,7 +42,6 @@ namespace Pachyderm_Acoustic
             protected int AC_S;
             protected double[] Area;
             protected Medium_Properties Env_Prop;
-            protected double SplitRatio = 0.25;
             public Random R_Seed;
             public bool Valid;
             public bool Custom_Method;
@@ -196,7 +195,7 @@ namespace Pachyderm_Acoustic
             /// Optimizes the model using the chosen spatial partition system.
             /// </summary>
             /// <param name="SP_Param">a parameter describing some aspect of the partition</param>
-            public abstract void partition(int SP_Param);
+            public abstract void partition(int SP_Param, int Max_Polys);
             ///// <summary>
             ///// Optimizes the model using the chosen spatial partition system.
             ///// </summary>
@@ -208,7 +207,7 @@ namespace Pachyderm_Acoustic
             /// </summary>
             /// <param name="P">points to add to the spatial partition system.</param>
             /// <param name="SP_PARAM">a parameter describing some aspect of the partition</param>
-            public abstract void partition(List<Hare.Geometry.Point> P, int SP_PARAM);
+            public abstract void partition(List<Hare.Geometry.Point> P, int SP_PARAM, int Max_Polys);
             ///// <summary>
             /////a parameter describing some aspect of the partition
             ///// </summary>
@@ -220,7 +219,7 @@ namespace Pachyderm_Acoustic
             /// </summary>
             /// <param name="P">points to add to the spatial partition system.</param>
             /// <param name="SP_PARAM">a parameter describing some aspect of the partition</param>
-            public abstract void partition(Hare.Geometry.Point[] P, int SP_PARAM);
+            public abstract void partition(Hare.Geometry.Point[] P, int SP_PARAM, int Max_Polys);
             /// <summary>
             /// Checks whether the specified surface is planar.
             /// </summary>
@@ -713,19 +712,19 @@ namespace Pachyderm_Acoustic
                 partition(new List<Point>());
             }
 
-            public override void partition(int SP_Param)
+            public override void partition(int SP_Param, int Max_Polys)
             {
                 Partitioned = true;
-                partition(new List<Point>(), SP_Param);
+                partition(new List<Point>(), SP_Param, Max_Polys);
             }
 
-            public override void partition(Point[] P, int SP_PARAM)
+            public override void partition(Point[] P, int SP_PARAM, int Max_Polys)
             {
                 Partitioned = true;
-                partition(new List<Point>(P), SP_PARAM);
+                partition(new List<Point>(P), SP_PARAM, Max_Polys);
             }
 
-            public override void partition(List<Hare.Geometry.Point> P, int SP_PARAM)
+            public override void partition(List<Hare.Geometry.Point> P, int SP_PARAM, int MaxPolys)
             {
                 Partitioned = true;
                 for (int i = 0; i < Topo.Length; i++)
@@ -734,21 +733,25 @@ namespace Pachyderm_Acoustic
                 }
 
                 int spspec = Pach_Properties.Instance.Spatial_Optimization;
-                if (spspec == 0)
+                if (spspec == 1)
                 {
-                    SP = new Hare.Geometry.Voxel_Grid(Topo, SP_PARAM, 3);
+                    //SP = new Hare.Geometry.Voxel_Grid(Topo, SP_PARAM, MaxPolys);
+                    SP = new Hare.Geometry.Voxel_Grid(Topo, SP_PARAM, MaxPolys);
                 }
-                else if (spspec == 1)
+                else if (spspec == 2)
                 {
-                    //TODO: implement an Octree...
-                    throw new NotImplementedException();
+                    SP = new Hare.Geometry.Octree(Topo, SP_PARAM, MaxPolys);
+                }
+                else if (spspec == 3)
+                {
+                    SP = new Hare.Geometry.KDTree(Topo, SP_PARAM, MaxPolys);
                 }
             }
 
             public void partition(List<Hare.Geometry.Point> P)
             {
                 Partitioned = true;
-                partition(P, Pach_Properties.Instance.VoxelGrid_Domain);
+                partition(P, Pach_Properties.Instance.Spatial_Depth, Pach_Properties.Instance.Max_Polys_Per_Node);
             }
             
             public override bool shoot(Hare.Geometry.Ray R, out double u, out double v, out int Poly_ID, out Hare.Geometry.Point X_PT, out double t)
@@ -985,36 +988,6 @@ namespace Pachyderm_Acoustic
                 return Object_ID[i];
             }
 
-            public bool Box_Intersect(AABB box, out double abs, out Vector V)//, out int[] PolyIds, out double[] Abs, out double[] Trans, out double[] Scat)
-            {
-                List<int> isect;
-                abs = 0;
-                V = new Vector();
-                SP.Box_Intersect(box, out isect);
-                if (isect.Count == 0) return false;
-
-                //if (isect.Count > 1)
-                //{
-                //    Rhino.RhinoApp.WriteLine(isect.Count.ToString());
-                //}
-
-                foreach(int i in isect)
-                {
-                    V += this.Normal(i);
-                    abs += (1 - this.AbsorptionData[i].Reflection_Narrow(0)).Magnitude;
-                    ///TODO:Find some intelligent way of applying absorption.
-                }
-
-                //if (double.IsNaN(V.y))
-                //{
-                //    Rhino.RhinoApp.WriteLine("Doh!");
-                //}
-
-                V.Normalize();
-                abs /= isect.Count;
-
-                return true;
-            }
 
             /// <summary>
             /// gets the list of polygons on a each plane.
@@ -1119,17 +1092,17 @@ namespace Pachyderm_Acoustic
                 return;
             }
 
-            public override void partition(Hare.Geometry.Point[] P, int SP_PARAM)
+            public override void partition(Hare.Geometry.Point[] P, int SP_PARAM, int Max_Polys)
             {
                 return;
             }
 
-            public override void partition(int SP_Param)
+            public override void partition(int SP_Param, int Max_Polys)
             {
                 return;
             }
 
-            public override void partition(List<Hare.Geometry.Point> P, int SP_PARAM)
+            public override void partition(List<Hare.Geometry.Point> P, int SP_PARAM, int Max_Polys)
             {
                 return;
             }

@@ -829,18 +829,18 @@ namespace Pachyderm_Acoustic
                         Io[i][7][0] = Power[7] * Math.Pow(10, -.1 * Room.Attenuation(0)[7] * Length) * transmod[7] / (4 * Math.PI * Length * Length);
                     }
                      
-                     float time = (float)(Length / C_Sound);
+                    float time = (float)(Length / C_Sound);
 
-                     for (int oct = 0; oct < 8; oct++)
-                     {
-                         Vector V = dir * Io[i][oct][0];
-                         if (-V.dx > 0) Dir_Rec_Pos[i][oct][0][0] -= (float)V.dx; else Dir_Rec_Neg[i][oct][0][0] -= (float)V.dx;
-                         if (-V.dy > 0) Dir_Rec_Pos[i][oct][0][1] -= (float)V.dy; else Dir_Rec_Neg[i][oct][0][1] -= (float)V.dy;
-                         if (-V.dz > 0) Dir_Rec_Pos[i][oct][0][2] -= (float)V.dz; else Dir_Rec_Neg[i][oct][0][2] -= (float)V.dz;
-                     }
+                    for (int oct = 0; oct < 8; oct++)
+                    {
+                        Vector V = dir * Io[i][oct][0];
+                        if (-V.dx > 0) Dir_Rec_Pos[i][oct][0][0] -= (float)V.dx; else Dir_Rec_Neg[i][oct][0][0] -= (float)V.dx;
+                        if (-V.dy > 0) Dir_Rec_Pos[i][oct][0][1] -= (float)V.dy; else Dir_Rec_Neg[i][oct][0][1] -= (float)V.dy;
+                        if (-V.dz > 0) Dir_Rec_Pos[i][oct][0][2] -= (float)V.dz; else Dir_Rec_Neg[i][oct][0][2] -= (float)V.dz;
+                    }
 
-                     Time_Pt[i] = Length / C_Sound + Delay_ms;
-                 });
+                    Time_Pt[i] = Length / C_Sound + Delay_ms;
+                });
             }
         }
 
@@ -1101,27 +1101,62 @@ namespace Pachyderm_Acoustic
 
         public virtual Vector[] Directions_Pos(int Octave, int Rec_Index, double alt, double azi, bool degrees)
         {
-            int length = Dir_Rec_Pos[Rec_Index][Octave].Length;
+            int length = Dir_Rec_Pos[Rec_Index][0].Length;
             Vector[] V = new Vector[length];
 
-            for (int i = 0; i < length; i++)
+            if (Octave == 8)
             {
-                V[i] = new Vector(Dir_Rec_Pos[Rec_Index][Octave][i][0], Dir_Rec_Pos[Rec_Index][Octave][i][1], Dir_Rec_Pos[Rec_Index][Octave][i][2]);
-                V[i] = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V[i], azi, 0, degrees), 0, alt, degrees);
+                for (int oct = 0; oct < 7; oct++)
+                {
+                    for (int i = 0; i < length; i++)
+                    {
+                        V[i] = new Vector(Dir_Rec_Pos[Rec_Index][oct][i][0], Dir_Rec_Pos[Rec_Index][oct][i][1], Dir_Rec_Pos[Rec_Index][oct][i][2]);
+                        V[i] = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V[i], azi, 0, degrees), 0, alt, degrees);
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    V[i] = new Vector(Dir_Rec_Pos[Rec_Index][Octave][i][0], Dir_Rec_Pos[Rec_Index][Octave][i][1], Dir_Rec_Pos[Rec_Index][Octave][i][2]);
+                    V[i] = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V[i], azi, 0, degrees), 0, alt, degrees);
+                }
             }
             return V;
         }
 
         public virtual Vector[] Directions_Neg(int Octave, int Rec_Index, double alt, double azi, bool degrees)
         {
-            int length = Dir_Rec_Neg[Rec_Index][Octave].Length;
+            int length = Dir_Rec_Neg[Rec_Index][0].Length;
             Vector[] V = new Vector[length];
 
-            for (int i = 0; i < length; i++)
+            if (Octave == 8)
             {
-                V[i] = new Vector(Dir_Rec_Neg[Rec_Index][Octave][i][0], Dir_Rec_Neg[Rec_Index][Octave][i][1], Dir_Rec_Neg[Rec_Index][Octave][i][2]);
-                V[i] = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V[i], azi, 0, degrees), 0, alt, degrees);
+                for (int oct = 0; oct < 7; oct++)
+                {
+                    for (int i = 0; i < length; i++)
+                    {
+                        V[i] = new Vector(Dir_Rec_Neg[Rec_Index][oct][i][0], Dir_Rec_Neg[Rec_Index][oct][i][1], Dir_Rec_Neg[Rec_Index][oct][i][2]);
+                        V[i] = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V[i], azi, 0, degrees), 0, alt, degrees);
+                    }
+                }
             }
+            else
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    V[i] = new Vector(Dir_Rec_Neg[Rec_Index][Octave][i][0], Dir_Rec_Neg[Rec_Index][Octave][i][1], Dir_Rec_Neg[Rec_Index][Octave][i][2]);
+                    V[i] = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V[i], azi, 0, degrees), 0, alt, degrees);
+                }
+            }
+            return V;
+
+            //for (int i = 0; i < length; i++)
+            //{
+            //    V[i] = new Vector(Dir_Rec_Neg[Rec_Index][Octave][i][0], Dir_Rec_Neg[Rec_Index][Octave][i][1], Dir_Rec_Neg[Rec_Index][Octave][i][2]);
+            //    V[i] = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V[i], azi, 0, degrees), 0, alt, degrees);
+            //}
             return V;
         }
 
@@ -1166,9 +1201,15 @@ namespace Pachyderm_Acoustic
 
             for (int i = 0; i < V.Length; i++)
             {
-                V[i] = Vpos[i] - Vneg[i];
+                V[i] = Vpos[i] + Vneg[i];
                 V[i].Normalize();
-                V[i] *= Io[Rec_ID][Octave][0];
+                double I = 0;
+                if (Octave == 8)
+                    for (int oct = 0; oct < 8; oct++) I += Io[Rec_ID][oct][i];
+                else
+                    I = Io[Rec_ID][Octave][0];
+                
+                V[i] *= I;
             }
 
             return V;
@@ -1444,22 +1485,31 @@ namespace Pachyderm_Acoustic
         private void Record_Line_Segment(ref List<double> t, ref List<double[]> I, ref List<Vector> d, int rec_id)
         {
             int no_of_bands = Io[0].Length - 1;
-            if (SPL_Only)
+            if (SPL_Only || t.Count < 5)
             {
                 for (int j = 0; j < t.Count; j++)
                 {
+                    int time = SPL_Only ? 0 : (int)(t[j] * 44100);
                     for (int oct = 0; oct < no_of_bands; oct++)
                     {
-                        Io[rec_id][oct][0] += I[j][oct];
+                        if (Io[rec_id][oct][time] == double.NaN)
+                            return;
+                        
+                        Io[rec_id][oct][time] += I[j][oct];
 
-                        if (d[j].dx > 0) this.Dir_Rec_Pos[rec_id][oct][0][0] += (float)(d[j].dx * I[j][oct]);
-                        else this.Dir_Rec_Neg[rec_id][oct][0][0] += (float)(d[j].dx * I[j][oct]);
-                        if (d[j].dy > 0) this.Dir_Rec_Pos[rec_id][oct][0][0] += (float)(d[j].dy * I[j][oct]);
-                        else this.Dir_Rec_Neg[rec_id][oct][0][0] += (float)(d[j].dy * I[j][oct]);
-                        if (d[j].dz > 0) this.Dir_Rec_Pos[rec_id][oct][0][0] += (float)(d[j].dz * I[j][oct]);
-                        else this.Dir_Rec_Neg[rec_id][oct][0][0] += (float)(d[j].dz * I[j][oct]);
+                        if (d[j].dx > 0) this.Dir_Rec_Pos[rec_id][oct][time][0] += (float)(d[j].dx * I[j][oct]);
+                        else this.Dir_Rec_Neg[rec_id][oct][time][0] += (float)(d[j].dx * I[j][oct]);
+                        if (d[j].dy > 0) this.Dir_Rec_Pos[rec_id][oct][time][1] += (float)(d[j].dy * I[j][oct]);
+                        else this.Dir_Rec_Neg[rec_id][oct][time][1] += (float)(d[j].dy * I[j][oct]);
+                        if (d[j].dz > 0) this.Dir_Rec_Pos[rec_id][oct][time][2] += (float)(d[j].dz * I[j][oct]);
+                        else this.Dir_Rec_Neg[rec_id][oct][time][2] += (float)(d[j].dz * I[j][oct]);
                     }
                 }
+
+                t = new List<double>();
+                I = new List<double[]>();
+                d = new List<Vector>();
+
                 return;
             }
 
@@ -1762,7 +1812,7 @@ namespace Pachyderm_Acoustic
                                     I.Add(W_temp);
                                     time.Add(tdbl);
                                 }
-                                break;
+                                //break;
                                 ///TODO: Set W_Temp to zero, and devise means of storing screen atten for later addition to power.
                             }
                             if (time.Count > 0)

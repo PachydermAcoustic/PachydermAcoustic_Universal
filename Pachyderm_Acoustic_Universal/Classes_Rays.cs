@@ -17,16 +17,13 @@
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
 
 using Hare.Geometry;
-using MathNet.Numerics.RootFinding;
-using System;
-using System.Net.Http.Headers;
+using System.Collections.Concurrent;
 using System.Threading;
 
 namespace Pachyderm_Acoustic
 {
     namespace Environment
     {
-
         /// <summary>
         /// Ray for a single octave band.
         /// </summary>
@@ -382,7 +379,7 @@ namespace Pachyderm_Acoustic
             private new BroadRay[] Pool;
             object lockpos = new object();
 
-            private BroadRayPool(int capacity = 20000) 
+            private BroadRayPool(int capacity = 200000) 
             {
                 instance = this;
                 count = capacity; 
@@ -477,25 +474,27 @@ namespace Pachyderm_Acoustic
         }
 
         public class OctaveRayPool
-        { 
+        {
             protected int count;
-            protected int position = 0;
             private SemaphoreSlim ctr;
+            private SemaphoreSlim memmod;
             private static OctaveRayPool instance = null;
             protected bool initialized;
+            private ConcurrentBag<OctaveRay> Pool;
             public static void Initialize()
             {
                 instance = new OctaveRayPool();
                 instance.initialized = true;
             }
 
-            private OctaveRayPool(int capacity = 10000000) 
+            private OctaveRayPool(int capacity = 5000)
             {
                 instance = this;
                 count = capacity;
-                ctr = new SemaphoreSlim(0, count);
-                Pool = new OctaveRay[count];
-                for (int i = 0; i < Pool.Length; i++) { Pool[i] = new OctaveRay(); }
+                ctr = new SemaphoreSlim(0,10000000);
+                memmod = new SemaphoreSlim(1, 1);
+                Pool = new ConcurrentBag<OctaveRay>();
+                for (int i = 0; i < capacity; i++) { Pool.Add(new OctaveRay()); }
                 ctr.Release(count);
             }
             public static OctaveRayPool Instance
@@ -508,10 +507,7 @@ namespace Pachyderm_Acoustic
                     }
                     return instance;
                 }
-            }
-
-            private new OctaveRay[] Pool;
-            object lockpos = new object();
+            }            
 
             public OctaveRay new_OctaveRay(double x, double y, double z, double dx, double dy, double dz, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave, int SrcID, double Decimation_in, double Decimation_Inv, short ScatterMask, int srf_id = -1)
             {
@@ -543,34 +539,37 @@ namespace Pachyderm_Acoustic
                 OR.Octave = octave;
                 OR.Source_ID = SrcID;
                 OR.Decimation = Decimation_in;
-                OR.Decim_Inv = 1.0/Decimation_in;
+                OR.Decim_Inv = 1.0 / Decimation_in;
                 OR.Scatter_Mask = ScatterMask;
                 OR.Surf_ID = srf_id;
                 return OR;
-            }
-            private int increment
-            {
-                get
-                {
-                    int p;
-                    lock (lockpos)
-                    {
-                        position++;
-                        if (position >= count) position = 0;
-                        p = position;
-                    }
-                    return p;
-                }
             }
 
             public OctaveRay pull
             {
                 get
                 {
-                    ctr.Wait();
+                    if (!ctr.Wait(0))
+                    {
+                        // If the pool is empty, expand the pool...                        
+                        if (memmod.Wait(0))
+                        {
+                            do
+                            {
+                                if (count + 100 < 10000000)
+                                {
+                                    for (int i = 0; i < 100; i++) Pool.Add(new OctaveRay());
+                                    count += 100;
+                                    ctr.Release(100);
+                                }
+                            } while (ctr.CurrentCount == 0);
+                            memmod.Release();
+                        }
+                        ctr.Wait();
+                    }
+
                     OctaveRay R;
-                    int p = increment;
-                    R = Pool[p];
+                    Pool.TryTake(out R);
                     R.x = 0;
                     R.y = 0;
                     R.z = 0;
@@ -590,8 +589,9 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            public void release()
+            public void release(OctaveRay R)
             {
+                Pool.Add(R);
                 ctr.Release();
             }
         }

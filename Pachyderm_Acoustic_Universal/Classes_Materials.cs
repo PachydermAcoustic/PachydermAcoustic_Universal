@@ -1207,11 +1207,10 @@ namespace Pachyderm_Acoustic
             }
         }
 
-
         public class Lambert_Scattering : Scattering
         {
             double[,] Scattering_Coefficient;
-            public Lambert_Scattering(double[] Scattering, double SplitRatio)
+            public Lambert_Scattering(double[] Scattering)
             {
                 Scattering_Coefficient = new double[8, 3];
                 for (int oct = 0; oct < 8; oct++)
@@ -1288,14 +1287,16 @@ namespace Pachyderm_Acoustic
                     R.dx = vect.dx;
                     R.dy = vect.dy;
                     R.dz = vect.dz;
+                    R.SetScattered();
 
                     if (Transmission != null && Transmission[oct] > 0)
                     {
                         OctaveRay tr = Ray.SplitRay(oct, Transmission[oct]);
                         Rays.Enqueue(tr);
-
+                        tr.SetSpecular();
                         OctaveRay td = R.SplitRay(Transmission[oct]);
                         td.Reverse();
+                        td.SetScattered();
                         Rays.Enqueue(td);
                     }
 
@@ -1349,6 +1350,7 @@ namespace Pachyderm_Acoustic
                     Ray.dx = vect.dx;
                     Ray.dy = vect.dy;
                     Ray.dz = vect.dz;
+                    Ray.SetScattered();
                 }
                 else
                 {
@@ -1356,6 +1358,7 @@ namespace Pachyderm_Acoustic
                     Ray.dx -= Normal.dx * Cos_Theta * 2;
                     Ray.dy -= Normal.dy * Cos_Theta * 2;
                     Ray.dz -= Normal.dz * Cos_Theta * 2;
+                    Ray.SetSpecular();
                 }
 
                 if (Transmit) Ray.Reverse();
@@ -1371,6 +1374,7 @@ namespace Pachyderm_Acoustic
                     Ray.dy -= Normal.dy * Cos_Theta * 2;
                     Ray.dz -= Normal.dz * Cos_Theta * 2;
                     if (Transmit) Ray.Reverse();
+                    Ray.SetSpecular();
                     return;
                 }
                 else if (scat_sel > Scattering_Coefficient[Ray.Octave, 0])
@@ -1380,12 +1384,13 @@ namespace Pachyderm_Acoustic
                     //// b. Modify E (E * 1 - Scattering).
                     //Create a new ray...
                     OctaveRay tr = Ray.SplitRay(1 - Scattering_Coefficient[Ray.Octave,1]);
+                    tr.SetSpecular();
                     // this is the specular reflection. Save it for later.
                     tr.dx -= Normal.dx * Cos_Theta * 2;
                     tr.dy -= Normal.dy * Cos_Theta * 2;
                     tr.dz -= Normal.dz * Cos_Theta * 2;
                     if (Transmit) tr.Reverse();
-
+                    tr.SetSpecular();
                     Rays.Enqueue(tr);
                 }
 
@@ -1429,6 +1434,7 @@ namespace Pachyderm_Acoustic
                 Ray.dx = vect.dx;
                 Ray.dy = vect.dy;
                 Ray.dz = vect.dz;
+                Ray.SetScattered();
                 if (Transmit) Ray.Reverse();
             }
         }

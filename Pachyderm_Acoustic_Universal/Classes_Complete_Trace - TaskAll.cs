@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2024, Arthur van der Harten 
+//'Copyright (c) 2008-2025, Arthur van der Harten 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -20,13 +20,10 @@ using System;
 using System.Collections.Generic;
 using Hare.Geometry;
 using Pachyderm_Acoustic.Environment;
-using System.Linq;
 using System.Threading;
 using System.Collections.Concurrent;
 using Pachyderm_Acoustic.Utilities;
 using System.Threading.Tasks;
-using Pachyderm_Acoustic.Pach_Graphics;
-using System.Threading.Tasks.Sources;
 
 namespace Pachyderm_Acoustic
 {
@@ -83,7 +80,7 @@ namespace Pachyderm_Acoustic
             Raycount = rayCountIn;
             _octaves = new int[octaveRange[1] - octaveRange[0] + 1];
             for (int o = octaveRange[0]; o <= octaveRange[1]; o++) _octaves[o - octaveRange[0]] = o;
-            COTime = cutoffTime;
+            COTime = cutoffTime / Room.Sound_speed(0);
             Source = sourceIn;
             double[] totalAbs = new double[8];
             this.Vis_Feedback = Vis_Feedback;
@@ -234,7 +231,7 @@ namespace Pachyderm_Acoustic
             }
             else
             {
-                Prime = new ValueTask(Task.Run(() => Calculate_Conv(_processorCt, Rnd.Next())));
+                Prime = Calculate_Conv(_processorCt, Rnd.Next());//Task.Run(() => Calculate_Conv(_processorCt, Rnd.Next())));
             }
         }
 
@@ -259,7 +256,7 @@ namespace Pachyderm_Acoustic
         /// Called by each thread from the begin method for calculations with a user-defined length.
         /// </summary>
         /// <param name="i">the object is type "Calc_Params" which holds all the necessary information to run a portion of the simulation.</param>
-        public async void Calculate(object i)
+        public async ValueTask Calculate(object i)
         {
             ///Homogeneous media only...
             Calc_Params Params = (Calc_Params)i;
@@ -284,7 +281,7 @@ namespace Pachyderm_Acoustic
         /// Called by each thread from the begin method.
         /// </summary>
         /// <param name="i">the object is type "Calc_Params" which holds all the necessary information to run a portion of the simulation.</param>
-        public async void Calculate_Conv(object i, object seed)
+        public async ValueTask Calculate_Conv(object i, object seed)
         {
             ///Homogeneous media only...
             Random rnd = new Random((int)seed);
@@ -437,7 +434,7 @@ namespace Pachyderm_Acoustic
                         {
                             RecMain.CheckRay(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000));
                             lock (lostlock) { _lost += OR.Intensity; }
-                            OctaveRayPool.Instance.release();
+                            OctaveRayPool.Instance.release(OR);
                             goto Do_Scattered;
                         }
 
@@ -453,6 +450,7 @@ namespace Pachyderm_Acoustic
                         Room.Absorb(ref OR, out cos_theta, u, v);
 
                         // 2. Apply Transmission (if any).
+                        //Transmission moved to scattering model.
                         //if (Room.TransmissionValue[OR.Surf_ID][OR.Octave] > 0.0)
                         //{
                         //    //_rayTotal[Params.ThreadID]++;
@@ -473,18 +471,18 @@ namespace Pachyderm_Acoustic
                     int seed = Rnd.Next();
                     OR.Ray_ID = seed;
 
-                    ValueTask t = new ValueTask(Task.Run(() => End_Trace(OR)));
+                    ValueTask t = End_Trace(OR);
                     LastRays.Add(t);
                 }
                 while (Rays.Count > 0);
             }
 
-            for (int i = 0; i < LastRays.Count; i++)
-                await LastRays[i];
+            //for (int i = 0; i < LastRays.Count; i++)
+            foreach (var task in LastRays) await task;
         }
 
         object rt_Lock = new object();
-        private void End_Trace(OctaveRay OR)
+        private async ValueTask End_Trace(OctaveRay OR)
         {
             lock (rt_Lock) { _rayTotal[0]++; }
             double u, v;
@@ -508,7 +506,7 @@ namespace Pachyderm_Acoustic
                 OR.Intensity *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[OR.Octave] * leg[0]);
                 OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
                 OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
-
+                                                                                                      
                 ///Standard Energy Conservation Routine-
                 // 1. Multiply by Reflection energy. (1 - Absorption)
                 double cos_theta;
@@ -530,7 +528,7 @@ namespace Pachyderm_Acoustic
                 Room.Scatter_Simple(ref OR, ref Rnd, cos_theta, u, v, Rnd.NextDouble() < Room.TransmissionValue[OR.Surf_ID][OR.Octave]);
             }
             while (OR.t_sum < COTime && OR.Intensity > OR.Decimation_threshold);
-            OctaveRayPool.Instance.release();
+            OctaveRayPool.Instance.release(OR);
         }
 
         private void cast_ray(Scene Room, int ThreadID, ref Random Rnd)
@@ -630,7 +628,7 @@ namespace Pachyderm_Acoustic
                         {
                             RecMain.CheckRay(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000));
                             lock (lostlock) { _lost += OR.Intensity; }
-                            OctaveRayPool.Instance.release();
+                            OctaveRayPool.Instance.release(OR);
                             goto Do_Scattered;
                         }
 
@@ -671,7 +669,7 @@ namespace Pachyderm_Acoustic
                         {
                             RecMain.CheckRay(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000));
                             lock (lostlock) { _lost += OR.Intensity; }
-                            OctaveRayPool.Instance.release();
+                            OctaveRayPool.Instance.release(OR);
                             goto Do_Scattered;
                         }
 
@@ -702,7 +700,7 @@ namespace Pachyderm_Acoustic
                         Room.Scatter_Simple(ref OR, ref Rnd, cos_theta, u, v, Rnd.NextDouble() < Room.TransmissionValue[OR.Surf_ID][OR.Octave]);
                     }
                     while (OR.t_sum < COTime && OR.Intensity > Threshold_Power_3[OR.Octave]);
-                    OctaveRayPool.Instance.release();
+                    OctaveRayPool.Instance.release(OR);
                 }
                 while (Rays.Count > 0);
             }
@@ -942,7 +940,7 @@ namespace Pachyderm_Acoustic
                     double[] IR0 = new double[RunningSim.Length];
                     for(int i = 0; i < IR0.Length; i++)
                     {
-                        IR0[i] = RunningSim[i] == 0 ? -190 : 10 * Math.Log10(RunningSim[i] * RunningSim[i]);
+                        IR0[i] = RunningSim[i] == 0 ? -95 : 5 * Math.Log10(RunningSim[i] * RunningSim[i]);
                     }
                     IR.Enqueue(IR0);
                     if (IR.Count > 5) IR.Dequeue();

@@ -49,7 +49,7 @@
     </Reference>
   </ItemGroup>
   <PropertyGroup>
-    <FileVersion>2.6.0.4</FileVersion>
-    <AssemblyVersion>2.6.0.4</AssemblyVersion>
+    <FileVersion>2.6.0.9</FileVersion>
+    <AssemblyVersion>2.6.0.9</AssemblyVersion>
   </PropertyGroup>
 </Project>
