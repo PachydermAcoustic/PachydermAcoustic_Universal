@@ -1,8 +1,8 @@
-﻿//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL) by Arthur van der Harten 
+﻿//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL)   
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Arthur van der Harten 
+//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -24,7 +24,6 @@ using System.Numerics;
 using MathNet.Numerics.LinearAlgebra.Complex;
 using Pachyderm_Acoustic.Pach_Graphics;
 using MathNet.Numerics;
-using System.Runtime.CompilerServices;
 
 namespace Pachyderm_Acoustic
 {
@@ -34,6 +33,7 @@ namespace Pachyderm_Acoustic
         public class ABS_Layer
         {
             public LayerType T;
+            public string Material_Name = "";
             public double depth;
             public double pitch;
             public double width;
@@ -47,16 +47,18 @@ namespace Pachyderm_Acoustic
             public double Viscous_Characteristic_Length;
             public double Thermal_Permeability;
             public double SpeedOfSound;
+            public double Embodied_Carbon = 0;
 
             public ABS_Layer()
             { }
 
-            public static ABS_Layer CreateBiot(bool rigid, double depth_in, double density_in, double YoungsModulus_in, double PoissonsRatio_in, double SpeedOfSound_In, double tortuosity_in, double flow_resistivity_in, double porosity_in, double Viscous_Characteristic_Length, double Thermal_Permeability)
+            public static ABS_Layer CreateBiot(bool rigid, double depth_in, double density_in, double YoungsModulus_in, double PoissonsRatio_in, double SpeedOfSound_In, double tortuosity_in, double flow_resistivity_in, double porosity_in, double Viscous_Characteristic_Length, double Thermal_Permeability, double Embodied_Carbon, string name = "Unknown_Porous")
             {
                 ABS_Layer Layer = new ABS_Layer();
                 if (rigid) Layer.T = LayerType.BiotPorousAbsorber_Rigid;
                 else Layer.T = LayerType.BiotPorousAbsorber_Limp;
 
+                Layer.Material_Name = name;
                 Layer.depth = depth_in;
                 Layer.density = density_in;
                 Layer.YoungsModulus = YoungsModulus_in;
@@ -67,57 +69,104 @@ namespace Pachyderm_Acoustic
                 Layer.porosity = porosity_in;
                 Layer.Viscous_Characteristic_Length = Viscous_Characteristic_Length;
                 Layer.Thermal_Permeability = Thermal_Permeability;
+                Layer.Embodied_Carbon = Embodied_Carbon;
                 return Layer;
             }
 
-            public static ABS_Layer CreateSolid(double depth_in, double density_in, double YoungsModulus_in, double PoissonsRatio_in)
+            public static ABS_Layer CreateSolid(double depth_in, double density_in, double YoungsModulus_in, double PoissonsRatio_in, double Embodied_Carbon, string name = "Unknown_Solid")
             {
                 ABS_Layer Layer = new ABS_Layer();
+                Layer.Material_Name = name;
                 Layer.T = LayerType.SolidPlate;
                 Layer.depth = depth_in;
                 Layer.density = density_in;
                 Layer.YoungsModulus = YoungsModulus_in;
                 Layer.PoissonsRatio = PoissonsRatio_in;
+                Layer.Embodied_Carbon = Embodied_Carbon;
                 return Layer;
             }
 
-            public ABS_Layer(LayerType T_in, double depth_in, double pitch_in, double width_in, double Flow_Resistivity, double _porosity)
+            public ABS_Layer(LayerType T_in, double depth_in, double pitch_in, double width_in, double Flow_Resistivity, double _porosity, double Embodied_Carbon, string name = null)
             {
+                if (name == null)
+                {
+                    switch (T_in)
+                    {
+                        case LayerType.AirSpace:
+                            name = "Air Space";
+                            break;
+                        case LayerType.PorousDB:
+                            name = "Unknown Delaney-Bazley Porous";
+                            break;
+                        case LayerType.PorousCA:
+                            name = "Unknown Champoux-Allard Porous";
+                            break;
+                        case LayerType.PorousM:
+                            name = "Unknown Miki Porous";
+                            break;
+                        case LayerType.Perforated_Modal:
+                            name = "Unknown Perforated Modal";
+                            break;
+                        case LayerType.Slotted_Modal:
+                            name = "Unknown Slotted Modal";
+                            break;
+                        case LayerType.CircularPerforations:
+                            name = "Unknown Circular Perforations";
+                            break;
+                        case LayerType.SquarePerforations:
+                            name = "Unknown Square Perforations";
+                            break;
+                        case LayerType.Slots:
+                            name = "Unknown Slots";
+                            break;
+                        case LayerType.MicroPerforated:
+                            name = "Unknown Micro Perforated";
+                            break;
+                    }
+                }
                 T = T_in;
+                Material_Name = name;
                 depth = depth_in;
                 pitch = pitch_in;
                 width = width_in;
                 Flow_Resist = Flow_Resistivity;
                 porosity = _porosity;
+                this.Embodied_Carbon = Embodied_Carbon;
             }
 
-            public static ABS_Layer Create_CA(double depth_in, double Flow_Resistance, double _porosity, double YoungsModulus, double density, double PoissonsRatio, double tortuosity, double Viscous_Characteristic_Length, double Thermal_Permeability, double SpeedofSound)
+            public static ABS_Layer Create_CA(double depth_in, double Flow_Resistance, double _porosity, double YoungsModulus, double density, double PoissonsRatio, double tortuosity, double Viscous_Characteristic_Length, double Thermal_Permeability, double SpeedofSound, double Embodied_Carbon, string name = "Unknown_Porous")
             {
                 ABS_Layer Layer = new ABS_Layer();
+                Layer.Material_Name = name;
                 Layer.T = LayerType.PorousCA;
                 Layer.depth = depth_in;
                 Layer.Flow_Resist = Flow_Resistance;
                 Layer.porosity = _porosity;
+                Layer.Embodied_Carbon = Embodied_Carbon;
                 return Layer;
             }
 
-            public static ABS_Layer Create_DB(double depth_in, double Flow_Resistance, double _porosity, double YoungsModulus, double density, double PoissonsRatio, double tortuosity, double Viscous_Characteristic_Length, double Thermal_Permeability, double SpeedofSound)
+            public static ABS_Layer Create_DB(double depth_in, double Flow_Resistance, double _porosity, double YoungsModulus, double density, double PoissonsRatio, double tortuosity, double Viscous_Characteristic_Length, double Thermal_Permeability, double SpeedofSound, double Embodied_Carbon, string name = "Unknown_Porous")
             {
                 ABS_Layer Layer = new ABS_Layer();
+                Layer.Material_Name = name;
                 Layer.T = LayerType.PorousDB;
                 Layer.depth = depth_in;
                 Layer.Flow_Resist = Flow_Resistance;
                 Layer.porosity = _porosity;
+                Layer.Embodied_Carbon = Embodied_Carbon;
                 return Layer;
             }
 
-            public static ABS_Layer Create_Miki(double depth_in, double Flow_Resistance, double _porosity, double YoungsModulus, double density, double PoissonsRatio, double tortuosity, double Viscous_Characteristic_Length, double Thermal_Permeability, double SpeedofSound)
+            public static ABS_Layer Create_Miki(double depth_in, double Flow_Resistance, double _porosity, double YoungsModulus, double density, double PoissonsRatio, double tortuosity, double Viscous_Characteristic_Length, double Thermal_Permeability, double SpeedofSound, double Embodied_Carbon, string name = "Unknown_Porous")
             {
                 ABS_Layer Layer = new ABS_Layer();
+                Layer.Material_Name = name;
                 Layer.T = LayerType.PorousM;
                 Layer.depth = depth_in;
                 Layer.Flow_Resist = Flow_Resistance;
                 Layer.porosity = _porosity;
+                Layer.Embodied_Carbon = Embodied_Carbon;
                 return Layer;
             }
 
@@ -145,23 +194,23 @@ namespace Pachyderm_Acoustic
                 switch (T)
                 {
                     case LayerType.AirSpace:
-                        return string.Format("{0}: T= {1}", T.ToString(), depth);
+                        return string.Format("{0} - {1}: T= {2}", T.ToString(), Material_Name, depth);
                     case LayerType.PorousDB:
-                        return string.Format("{0}: T= {1}, sigma= {2}", T.ToString(), depth, Flow_Resist);
+                        return string.Format("{0} - {1}: T= {2}, sigma= {3}", T.ToString(), Material_Name, depth, Flow_Resist);
                     case LayerType.PorousCA:
-                        return string.Format("{0}: T= {1}, sigma= {2}", T.ToString(), depth, Flow_Resist);
+                        return string.Format("{0} - {1}: T= {2}, sigma= {3}", T.ToString(), Material_Name, depth, Flow_Resist);
                     case LayerType.PorousM:
-                        return string.Format("{0}: T= {1}, sigma= {2}", T.ToString(), depth, Flow_Resist);
+                        return string.Format("{0}c: T= {2}, sigma= {3}", T.ToString(), Material_Name, depth, Flow_Resist);
                     case LayerType.BiotPorousAbsorber_Limp:
-                        return string.Format("{0}: T = {1}, sigma = {2}, YM = {3}", T.ToString(), depth, Flow_Resist, YoungsModulus);
+                        return string.Format("{0} - {1}: T = {2}, sigma = {3}, YM = {4}", T.ToString(), Material_Name, depth, Flow_Resist, YoungsModulus);
                     case LayerType.BiotPorousAbsorber_Rigid:
-                        return string.Format("{0}: T = {1}, sigma = {2}, YM = {3}", T.ToString(), depth, Flow_Resist, YoungsModulus);
+                        return string.Format("{0} - {1}: T = {2}, sigma = {3}, YM = {4}", T.ToString(), Material_Name, depth, Flow_Resist, YoungsModulus);
                     case LayerType.SolidPlate:
-                        return string.Format("{0}: T = {1}, density = {2}, YM = {3}", T.ToString(), depth, density, YoungsModulus);
+                        return string.Format("{0} - {1}: T = {2}, density = {3}, YM = {4}", T.ToString(), Material_Name, depth, density, YoungsModulus);
                     case LayerType.ThinPlate:
-                        return string.Format("{0}: T = {1}, density = {2}", T.ToString(), depth, density, YoungsModulus);
+                        return string.Format("{0} - {1}: T = {2}, density = {3}", T.ToString(), Material_Name, depth, density, YoungsModulus);
                     default:
-                        return string.Format("{0}: T= {1}, diam= {2}, pitch= {3}", T.ToString(), depth, width, pitch);
+                        return string.Format("{0} - {1}: T= {2}, diam= {3}, pitch= {4}", T.ToString(), Material_Name, depth, width, pitch);
                 }
             }
 
@@ -172,31 +221,31 @@ namespace Pachyderm_Acoustic
                     case LayerType.AirSpace:
                         return string.Format("0:{0};", depth);
                     case LayerType.PorousDB:
-                        return string.Format("1:{0}:{1};", depth, Flow_Resist);
+                        return string.Format("1:{0}:{1}:{2}:{3};", depth, Flow_Resist, Embodied_Carbon, Material_Name);
                     case LayerType.PorousCA:
-                        return string.Format("2:{0}:{1};", depth, Flow_Resist);
+                        return string.Format("2:{0}:{1}:{2}:{3};", depth, Flow_Resist, Embodied_Carbon, Material_Name);
                     case LayerType.PorousM:
-                        return string.Format("3:{0}:{1};", depth, Flow_Resist);
+                        return string.Format("3:{0}:{1}:{2}:{3};", depth, Flow_Resist, Embodied_Carbon, Material_Name);
                     case LayerType.Perforated_Modal:
-                        return string.Format("4:{0}:{1}:{2};", depth, width, pitch);
+                        return string.Format("4:{0}:{1}:{2}:{3}:{4};", depth, width, pitch, Embodied_Carbon, Material_Name);
                     case LayerType.Slotted_Modal:
-                        return string.Format("5:{0}:{1}:{2};", depth, width, pitch);
+                        return string.Format("5:{0}:{1}:{2}:{3}:{4};", depth, width, pitch, Embodied_Carbon, Material_Name);
                     case LayerType.CircularPerforations:
-                        return string.Format("6:{0}:{1}:{2};", depth, width, pitch);
+                        return string.Format("6:{0}:{1}:{2}:{3}:{4};", depth, width, pitch, Embodied_Carbon, Material_Name);
                     case LayerType.SquarePerforations:
-                        return string.Format("7:{0}:{1}:{2};", depth, width, pitch);
+                        return string.Format("7:{0}:{1}:{2}:{3}:{4};", depth, width, pitch, Embodied_Carbon, Material_Name);
                     case LayerType.Slots:
-                        return string.Format("8:{0}:{1}:{2};", depth, width, pitch);
+                        return string.Format("8:{0}:{1}:{2}:{3}:{4};", depth, width, pitch, Embodied_Carbon, Material_Name);
                     case LayerType.MicroPerforated:
-                        return string.Format("9:{0}:{1}:{2};", depth, width, pitch);
+                        return string.Format("9:{0}:{1}:{2}:{3}:{4};", depth, width, pitch, Embodied_Carbon, Material_Name);
                     case LayerType.Microslit:
-                        return string.Format("10:{0}:{1}:{2};", depth, width, pitch);
+                        return string.Format("10:{0}:{1}:{2}:{3}:{4};", depth, width, pitch, Embodied_Carbon, Material_Name);
                     case LayerType.SolidPlate:
-                        return string.Format("11:{0}:{1}:{2}:{3}", depth, density, YoungsModulus, PoissonsRatio);
+                        return string.Format("11:{0}:{1}:{2}:{3}:{4}:{5}", depth, density, YoungsModulus, PoissonsRatio, Embodied_Carbon, Material_Name);
                     case LayerType.BiotPorousAbsorber_Limp:
-                        return string.Format("12:false:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}", depth, density, YoungsModulus, PoissonsRatio, SpeedOfSound, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability);
+                        return string.Format("12:false:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10}:{11}", depth, density, YoungsModulus, PoissonsRatio, SpeedOfSound, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, Material_Name);
                     case LayerType.BiotPorousAbsorber_Rigid:
-                        return string.Format("12:true:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}", depth, density, YoungsModulus, PoissonsRatio, SpeedOfSound, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability);
+                        return string.Format("12:true:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10}:{11}", depth, density, YoungsModulus, PoissonsRatio, SpeedOfSound, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, Material_Name);
                     default:
                         throw new Exception("Unknown Layer Type");
                 }
@@ -209,31 +258,43 @@ namespace Pachyderm_Acoustic
                 switch (elements[0])
                 {
                     case "0":
-                        return new ABS_Layer(LayerType.AirSpace, double.Parse(elements[1]), 0, 0, 0, 0);
+                        return new ABS_Layer(LayerType.AirSpace, double.Parse(elements[1]), 0, 0, 0, 0, 0, elements[2]);
                     case "1":
-                        return new ABS_Layer(LayerType.PorousDB, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0);
+                        if (elements.Length == 2) Array.Resize(ref elements, elements.Length + 1);
+                        return new ABS_Layer(LayerType.PorousDB, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, double.Parse(elements[3]), elements[4]);
                     case "2":
-                        return new ABS_Layer(LayerType.PorousCA, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0);
+                        if (elements.Length == 2) Array.Resize(ref elements, elements.Length + 1);
+                        return new ABS_Layer(LayerType.PorousCA, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, double.Parse(elements[3]), elements[4]);
                     case "3":
-                        return new ABS_Layer(LayerType.PorousM, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0);
+                        if (elements.Length == 2) Array.Resize(ref elements, elements.Length + 1);
+                        return new ABS_Layer(LayerType.PorousM, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, double.Parse(elements[3]), elements[4]);
                     case "4":
-                        return new ABS_Layer(LayerType.Perforated_Modal, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0);
+                        if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
+                        return new ABS_Layer(LayerType.Perforated_Modal, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
                     case "5":
-                        return new ABS_Layer(LayerType.Slotted_Modal, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0);
+                        if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
+                        return new ABS_Layer(LayerType.Slotted_Modal, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
                     case "6":
-                        return new ABS_Layer(LayerType.CircularPerforations, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0);
+                        if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
+                        return new ABS_Layer(LayerType.CircularPerforations, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
                     case "7":
-                        return new ABS_Layer(LayerType.CircularPerforations, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0);
+                        if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
+                        return new ABS_Layer(LayerType.CircularPerforations, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
                     case "8":
-                        return new ABS_Layer(LayerType.Slots, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0);
+                        if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
+                        return new ABS_Layer(LayerType.Slots, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
                     case "9":
-                        return new ABS_Layer(LayerType.MicroPerforated, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0);
+                        if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
+                        return new ABS_Layer(LayerType.MicroPerforated, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
                     case "10":
-                        return new ABS_Layer(LayerType.Microslit, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0);
+                        if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
+                        return new ABS_Layer(LayerType.Microslit, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
                     case "11":
-                        return ABS_Layer.CreateSolid(double.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]));
+                        if (elements.Length == 5) Array.Resize(ref elements, elements.Length + 1);
+                        return ABS_Layer.CreateSolid(double.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), double.Parse(elements[5]), elements[6]);
                     case "12":
-                        return ABS_Layer.CreateBiot(bool.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), double.Parse(elements[5]), double.Parse(elements[6]), double.Parse(elements[7]), double.Parse(elements[8]), double.Parse(elements[9]), double.Parse(elements[10]), double.Parse(elements[11]));
+                        if (elements.Length == 12) Array.Resize(ref elements, elements.Length + 1);
+                        return ABS_Layer.CreateBiot(bool.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), double.Parse(elements[5]), double.Parse(elements[6]), double.Parse(elements[7]), double.Parse(elements[8]), double.Parse(elements[9]), double.Parse(elements[10]), double.Parse(elements[11]), double.Parse(elements[12]), elements[13]);
                     default:
                         throw new Exception("Unknown Layer Type");
                 }
@@ -241,51 +302,60 @@ namespace Pachyderm_Acoustic
 
             public static ABS_Layer Airspace(double depth)
             {
-                return new ABS_Layer(LayerType.AirSpace, depth, 0, 0, 0, 0);
+                return new ABS_Layer(LayerType.AirSpace, depth, 0, 0, 0, 0, 0, "Air");
             }
 
-            public static ABS_Layer Porous_DelaneyBazley(double depth, double flow_resistivity)
+            public static ABS_Layer Porous_DelaneyBazley(double depth, double flow_resistivity, double Embodied_Carbon = 150)
             {
-                return new ABS_Layer(LayerType.PorousDB, depth, 0, 0, flow_resistivity, 0);
+                //Embodied carbon based on worst case for mineral wool - 150 kgCO2e/m3.
+                return new ABS_Layer(LayerType.PorousDB, depth, 0, 0, flow_resistivity, 0, Embodied_Carbon, "Unknown Porous");
             }
 
-            public static ABS_Layer Porous_Miki(double depth, double flow_resistivity)
+            public static ABS_Layer Porous_Miki(double depth, double flow_resistivity, double Embodied_Carbon = 150)
             {
-                return new ABS_Layer(LayerType.PorousM, depth, 0, 0, flow_resistivity, 0);
+                //Embodied carbon based on worst case for mineral wool - 150 kgCO2e/m3.
+                return new ABS_Layer(LayerType.PorousM, depth, 0, 0, flow_resistivity, 0, Embodied_Carbon, "Unknown Porous");
             }
 
-            public static ABS_Layer Porous_ChampouxAllard(double depth, double flow_resistivity)
+            public static ABS_Layer Porous_ChampouxAllard(double depth, double flow_resistivity, double Embodied_Carbon = 150)
             {
-                return new ABS_Layer(LayerType.PorousCA, depth, 0, 0, flow_resistivity, 0);
+                //Embodied carbon based on worst case for mineral wool - 150 kgCO2e/m3.
+                return new ABS_Layer(LayerType.PorousCA, depth, 0, 0, flow_resistivity, 0, Embodied_Carbon, "Unknown Porous");
             }
-            public static ABS_Layer Perforated_Modal(double depth, double hole_pitch, double hole_width)
+            public static ABS_Layer Perforated_Modal(double depth, double hole_pitch, double hole_width, double Embodied_Carbon = 469)
             {
-                return new ABS_Layer(LayerType.Perforated_Modal, depth, hole_pitch, hole_width, 0, 0);
-            }
-
-            public static ABS_Layer Slotted_Modal(double depth, double slot_pitch, double slot_width)
-            {
-                return new ABS_Layer(LayerType.Slotted_Modal, depth, slot_pitch, slot_width, 0, 0);
+                //Embodied carbon based on worst case for mdf - 469 kgCO2e/m3.
+                return new ABS_Layer(LayerType.Perforated_Modal, depth, hole_pitch, hole_width, 0, 0, Embodied_Carbon, "Unknown Perforated");
             }
 
-            public static ABS_Layer Perforated_EndCorrection(double depth, double hole_pitch, double hole_width)
+            public static ABS_Layer Slotted_Modal(double depth, double slot_pitch, double slot_width, double Embodied_Carbon = 469)
             {
-                return new ABS_Layer(LayerType.CircularPerforations, depth, hole_pitch, hole_width, 0, 0);
+                //Embodied carbon based on worst case for mdf - 469 kgCO2e/m3.
+                return new ABS_Layer(LayerType.Slotted_Modal, depth, slot_pitch, slot_width, 0, 0, Embodied_Carbon, "Unknown Slotted");
             }
 
-            public static ABS_Layer Slotted_EndCorrection(double depth, double slot_pitch, double slot_width)
+            public static ABS_Layer Perforated_EndCorrection(double depth, double hole_pitch, double hole_width, double Embodied_Carbon = 469)
             {
-                return new ABS_Layer(LayerType.Slots, depth, slot_pitch, slot_width, 0, 0);
+                //Embodied carbon based on worst case for mdf - 469 kgCO2e/m3.
+                return new ABS_Layer(LayerType.CircularPerforations, depth, hole_pitch, hole_width, 0, 0, Embodied_Carbon, "Unknown Perforated");
             }
 
-            public static ABS_Layer MicroPerf_EndCorrection(double depth, double hole_pitch, double hole_width)
+            public static ABS_Layer Slotted_EndCorrection(double depth, double slot_pitch, double slot_width, double Embodied_Carbon)
             {
-                return new ABS_Layer(LayerType.MicroPerforated, depth, hole_pitch, hole_width, 0, 0);
+                //Embodied carbon based on worst case for mdf - 469 kgCO2e/m3.
+                return new ABS_Layer(LayerType.Slots, depth, slot_pitch, slot_width, 0, 0, Embodied_Carbon, "Unknown Slotted");
             }
 
-            public static ABS_Layer MicroSlot_EndCorrection(double depth, double slot_pitch, double slot_width)
+            public static ABS_Layer MicroPerf_EndCorrection(double depth, double hole_pitch, double hole_width, double Embodied_Carbon)
             {
-                return new ABS_Layer(LayerType.Microslit, depth, slot_pitch, slot_width, 0, 0);
+                //Embodied carbon based on worst case for mdf - 469 kgCO2e/m3.
+                return new ABS_Layer(LayerType.MicroPerforated, depth, hole_pitch, hole_width, 0, 0, Embodied_Carbon, "Unknown Microperf");
+            }
+
+            public static ABS_Layer MicroSlot_EndCorrection(double depth, double slot_pitch, double slot_width, double Embodied_Carbon)
+            {
+                //Embodied carbon based on worst case for mdf - 469 kgCO2e/m3.
+                return new ABS_Layer(LayerType.Microslit, depth, slot_pitch, slot_width, 0, 0, Embodied_Carbon, "Unknown Microslot");
             }
         }
 
@@ -296,12 +366,11 @@ namespace Pachyderm_Acoustic
             {
                 double dt = Math.PI / (absorption_Coefficient.Length);
                 double[] numerator = new double[absorption_Coefficient[0].Length];
-                //double denominator = 0;
+
                 for (int a = 0; a < absorption_Coefficient.Length; a++)
                 {
                     double theta = a * dt - (Math.PI / 2);
-                    double d_mod = Math.Abs(Math.Sin(theta) * dt);//; * Math.Abs(dt);
-                    //denominator += d_mod;
+                    double d_mod = Math.Abs(Math.Sin(theta) * dt);
                     for (int f = 0; f < absorption_Coefficient[a].Length; f++)
                     {
                         numerator[f] += Math.Abs(absorption_Coefficient[a][f] * d_mod);
@@ -2049,24 +2118,50 @@ namespace Pachyderm_Acoustic
                 }
 
                 int incr = 5;
-                anglesdeg = new Complex[(int)(180 / incr)];
+                bool custom = true;
+                if (anglesdeg == null)
+                {
+                    custom = false;
+                    anglesdeg = new Complex[(int)(180 / incr)];
+                }
                 double[] Angles = new double[anglesdeg.Length];
                 Complex[][] kxi = new Complex[Angles.Length][];
                 Complex[][] sintheta_inc = new Complex[Angles.Length][];
                 Complex[] K_Air = AbsorptionModels.Operations.Air_Wavenumber(c_sound, frequency);
 
-                for (double a = 2.5, i = 0; a <= 180; a += 5, i++)
+                if (!custom)
                 {
-                    sintheta_inc[(int)i] = new Complex[frequency.Length];
-                    anglesdeg[(int)i] = 90 - a;
-                    if (a <= 90) Angles[(int)i] = (90 - a) * Utilities.Numerics.Pi_180;
-                    if (a > 90) Angles[(int)i] = (a - 90) * Utilities.Numerics.Pi_180;
-                    sintheta_inc[(int)i][0] = Complex.Sin(Angles[(int)i]);//a <= 90 ? Angle[(int)i] : Angle[36 - (int)i]);
-                    kxi[(int)i] = new Complex[frequency.Length];
-                    for (int j = 1; j < sintheta_inc[(int)i].Length; j++)
+                    for (double a = 2.5, i = 0; a <= 180; a += 5, i++)
                     {
-                        sintheta_inc[(int)i][j] = sintheta_inc[(int)i][0];
-                        kxi[(int)i][j] = sintheta_inc[(int)i][j] * K_Air[j];
+                        sintheta_inc[(int)i] = new Complex[frequency.Length];
+                        anglesdeg[(int)i] = 90 - a;
+                        if (a <= 90) Angles[(int)i] = (90 - a) * Utilities.Numerics.Pi_180;
+                        if (a > 90) Angles[(int)i] = (a - 90) * Utilities.Numerics.Pi_180;
+                        sintheta_inc[(int)i][0] = Complex.Sin(Angles[(int)i]);//a <= 90 ? Angle[(int)i] : Angle[36 - (int)i]);
+                        kxi[(int)i] = new Complex[frequency.Length];
+                        for (int j = 1; j < sintheta_inc[(int)i].Length; j++)
+                        {
+                            sintheta_inc[(int)i][j] = sintheta_inc[(int)i][0];
+                            kxi[(int)i][j] = sintheta_inc[(int)i][j] * K_Air[j];
+                        }
+                    }
+                }
+                else 
+                {
+                    for (int i = 0; i < anglesdeg.Length; i++)
+                    {
+                        double a = anglesdeg[i].Real;
+                        sintheta_inc[(int)i] = new Complex[frequency.Length];
+                        anglesdeg[(int)i] = 90 - a;
+                        if (a <= 90) Angles[(int)i] = (90 - a) * Utilities.Numerics.Pi_180;
+                        if (a > 90) Angles[(int)i] = (a - 90) * Utilities.Numerics.Pi_180;
+                        sintheta_inc[(int)i][0] = Complex.Sin(Angles[(int)i]);//a <= 90 ? Angle[(int)i] : Angle[36 - (int)i]);
+                        kxi[(int)i] = new Complex[frequency.Length];
+                        for (int j = 0; j < sintheta_inc[(int)i].Length; j++)
+                        {
+                            sintheta_inc[(int)i][j] = sintheta_inc[(int)i][0];
+                            kxi[(int)i][j] = sintheta_inc[(int)i][j] * K_Air[j];
+                        }
                     }
                 }
 
@@ -3353,8 +3448,8 @@ namespace Pachyderm_Acoustic
                                 Complex[] Ks = Solids.WaveNumber(fr, Layer_i.density, LameL, LameMu);
                                 for (int f = 0; f < 4096; f++)
                                 {
-                                    //Complex Ksintheta = kxi[a][f] / Ks[
-                                    //kzi[a][f] = Complex.Sqrt(Ks[f] * Ks[f] * (1 - Ksintheta * Ksintheta));
+                                    Complex Ksintheta = kxi[a][f] / Ks[f];
+                                    kzi[a][f] = Complex.Sqrt(Ks[f] * Ks[f] * (1 - Ksintheta * Ksintheta));
                                     //tn[a][f] =  Explicit_TMM.Solid_Matrix(K_Air[f], kxi[a][f], Layer_i.depth, fr[f], Layer_i.density, LameMu, LameL);
                                     tn[a][f] = Explicit_TMM.Solid_Matrix(kxi[a][f], Layer_i.depth, fr[f], Layer_i.density, Layer_i.YoungsModulus, Layer_i.PoissonsRatio); //Ks[f] * kxi[a][f] / K_Air[f]
                                 }

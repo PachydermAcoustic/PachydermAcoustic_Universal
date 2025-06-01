@@ -1,8 +1,8 @@
-﻿//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL) by Arthur van der Harten 
+﻿//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL)   
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Arthur van der Harten 
+//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -16,10 +16,15 @@
 //'License along with Pachyderm-Acoustic; if not, write to the Free Software 
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
 
+using Eto.Forms;
+using MathNet.Numerics.Statistics;
+using Pachyderm_Acoustic.Audio;
 using Pachyderm_Acoustic.Pach_Graphics;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Contracts;
 using System.Diagnostics.Eventing.Reader;
+using System.Numerics;
 
 namespace Pachyderm_Acoustic
 {
@@ -36,6 +41,7 @@ namespace Pachyderm_Acoustic
             public abstract double Coefficient_A_Broad(int Octave);
             public abstract double[] Coefficient_A_Broad();
             public abstract System.Numerics.Complex[] Reflection_Spectrum(int sample_frequency, int length, Hare.Geometry.Vector Normal, Hare.Geometry.Vector Dir, int threadid);
+            public abstract (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0);
         }
 
         public abstract class Scattering 
@@ -51,12 +57,8 @@ namespace Pachyderm_Acoustic
         {
             double[] Abs = new double[8];
             double[] Ref = new double[8];
-            //double[] PD = new double[8];
             double[] Abs_3rd = new double[24];
             double[] Ref_3rd = new double[24];
-            //double[] PD = new double[8];
-
-            double[] Pdefault = new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
             MathNet.Numerics.Interpolation.CubicSpline Transfer_Function;
 
             public Basic_Material(double[] ABS)//, double[] Phase_Delay)
@@ -101,16 +103,6 @@ namespace Pachyderm_Acoustic
                     for (int oct = 0; oct < 24; oct++)
                     {
                         double f_center = 50 * Math.Pow(2, oct/3.0);
-                        //double f_lower = (int)((Math.Floor(f_center / thirdmod)));// - min_freq)/df);
-                        //double f_upper = (int)((Math.Floor(f_center * thirdmod)));// - min_freq)/df);
-
-                        //int f_id_l = 0;//(int)Math.Floor((double)((f_lower) / 5));
-
-                        //for (int i = 0; i < frequency.Length; i++)
-                        //{
-                        //    if (frequency[i] < f_lower) f_id_l = i;
-                        //    else break;
-                        //}
                         Abs_3rd[oct] = Alpha.Interpolate(f_center);
                         Ref_3rd[oct] = 1 - Abs_3rd[oct];
                     }
@@ -152,13 +144,6 @@ namespace Pachyderm_Acoustic
 
                 System.Numerics.Complex[] Ref_trns = new System.Numerics.Complex[filter.Length];
                 for (int i = 0; i < filter.Length; i++) Ref_trns[i] = filter[i];
-
-                //System.Numerics.Complex[] Ref_trns = new System.Numerics.Complex[length];
-
-                //for (int j = 0; j < length; j++)
-                //{
-                //    Ref_trns[j] = new System.Numerics.Complex(Transfer_Function.Interpolate(j * (sample_frequency / 2) / length), 0);
-                //}
 
                 return Ref_trns;
             }
@@ -218,6 +203,162 @@ namespace Pachyderm_Acoustic
             public override System.Numerics.Complex Reflection_Narrow(double frequency, Hare.Geometry.Vector Dir, Hare.Geometry.Vector Normal)
             {
                 return new System.Numerics.Complex(Transfer_Function.Interpolate(frequency), 0);
+            }
+
+            int rec_order = 0;
+            double[] rec_a, rec_b;
+
+            public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
+            {
+                // Number of samples for the IIR filter design
+                int samplect = 4096;
+                frequencies = new double[(int)(samplect * max_freq / sample_frequency)];
+
+                // Get reflection spectrum and calculate desired absorption coefficients
+                Complex[] desired_Spectrum = new Complex[(int)(samplect * max_freq / sample_frequency)];
+                Array.Copy(this.Reflection_Spectrum((int)sample_frequency, samplect, new Hare.Geometry.Vector(0, 0, 1), new Hare.Geometry.Vector(0, 0, 1), 0), desired_Spectrum, desired_Spectrum.Length);
+
+                for (int i = 0; i < frequencies.Length; i++)
+                {
+                    frequencies[i] = (double)((i + 1) * (sample_frequency / 2)) / samplect;
+                }
+
+                double[] desired_alpha = AbsorptionModels.Operations.Absorption_Coef(desired_Spectrum);
+
+                // If filter_order is zero or negative, automatically determine the optimal order
+                if (filter_order <= 0)
+                {
+                    if (rec_order == 0)
+                    {
+                        int min_order = 2;
+                        int max_order = 12;
+                        double error_threshold = 0.01; // 1% average error threshold
+                        double best_error = double.MaxValue;
+                        (double[] b, double[] a) best_filter = (new double[min_order + 1], new double[min_order + 1]);
+
+                        for (int order = min_order; order <= max_order; order += 2) // Try even orders
+                        {
+                            try
+                            {
+                                // Design filter with current order
+                                (double[] b, double[] a) current_filter = Pach_SP.IIR_Design.FitIIRToFrequencyResponse(
+                                    frequencies, desired_Spectrum, order, order, sample_frequency);
+
+                                // Normalize the filter
+                                double mag = 0;
+                                Complex[] filter_response = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
+                                    new List<double>(current_filter.b), new List<double>(current_filter.a),
+                                    frequencies, sample_frequency);
+
+                                mag = filter_response.MaximumMagnitudePhase().Magnitude;
+                                if (mag > 1)
+                                {
+                                    for (int j = 0; j < current_filter.b.Length; j++)
+                                        current_filter.b[j] /= mag;
+                                }
+                                else
+                                {
+                                    double mod = mag / desired_Spectrum.MaximumMagnitudePhase().Magnitude;
+                                    for (int j = 0; j < current_filter.b.Length; j++)
+                                        current_filter.b[j] /= mod;
+                                }
+
+                                // Recalculate response after normalization
+                                filter_response = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
+                                    new List<double>(current_filter.b), new List<double>(current_filter.a),
+                                    frequencies, sample_frequency);
+
+                                // Calculate error metric (average magnitude error)
+                                double error_sum = 0;
+                                int count = 0;
+
+                                // Focus on the 125 Hz to 4 kHz range (most important for acoustics)
+                                for (int i = 0; i < frequencies.Length; i++)
+                                {
+                                    if (frequencies[i] >= 125 && frequencies[i] <= 4000)
+                                    {
+                                        double mag_error = Math.Abs(filter_response[i].Magnitude - desired_Spectrum[i].Magnitude);
+                                        error_sum += mag_error / Math.Max(0.01, desired_Spectrum[i].Magnitude); // Relative error
+                                        count++;
+                                    }
+                                }
+
+                                double avg_error = count > 0 ? error_sum / count : double.MaxValue;
+
+                                // Update best filter if this one is better
+                                if (avg_error < best_error)
+                                {
+                                    best_error = avg_error;
+                                    best_filter = current_filter;
+                                }
+
+                                // If error is below threshold, we've found a good enough match
+                                if (avg_error < error_threshold)
+                                    break;
+                            }
+                            catch
+                            {
+                                // If filter design fails, continue to next order
+                                continue;
+                            }
+                        }
+
+                        // Use the best filter found
+                        rec_order = best_filter.a.Length - 1;
+                        rec_a = best_filter.a;
+                        rec_b = best_filter.b;
+                        return best_filter;
+                    }
+                    else 
+                    {
+                        return (rec_a, rec_b); // Return previously calculated coefficients
+                    }
+                }
+                else
+                {
+                    // Original code for specified filter order
+                    int numeratorOrder = filter_order;
+                    int denominatorOrder = filter_order;
+
+                    try
+                    {
+                        // Use the IIR filter design method from Pach_SP.IIR_Design
+                        (double[] b, double[] a) = Pach_SP.IIR_Design.FitIIRToFrequencyResponse(
+                            frequencies, desired_Spectrum, numeratorOrder, denominatorOrder, sample_frequency);
+
+                        // Calculate frequency response of the fitted filter
+                        Complex[] IIR_spec = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
+                            new List<double>(b), new List<double>(a), frequencies, sample_frequency);
+
+                        // Normalize the filter if necessary
+                        double m = IIR_spec.MaximumMagnitudePhase().Magnitude;
+                        if (m > 1)
+                        {
+                            for (int j = 0; j < b.Length; j++) b[j] /= m;
+                        }
+                        else
+                        {
+                            double mod = m / desired_Spectrum.MaximumMagnitudePhase().Magnitude;
+                            for (int j = 0; j < b.Length; j++) b[j] /= mod;
+                        }
+
+                        return (a, b);
+                    }
+                    catch (Exception)
+                    {
+                        // If the fitting process fails, fall back to a simple filter
+                        double[] a = new double[filter_order + 1];
+                        double[] b = new double[filter_order + 1];
+
+                        // Create a basic filter based on octave band coefficients
+                        a[0] = 1.0;
+                        for (int i = 1; i < a.Length; i++) a[i] = -0.7 * Math.Pow(0.8, i - 1);
+                        b[0] = 1.0;
+
+
+                        return (a, b);
+                    }
+                }
             }
         }
 
@@ -910,6 +1051,142 @@ namespace Pachyderm_Acoustic
                 }
 
                 return Ref_trns;
+            }
+
+            int rec_order = 0;
+            double[] rec_a, rec_b;
+
+            public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
+            {
+                int samplect = 4096; // Number of samples for the IIR filter design
+                frequencies = new double[(int)(samplect * max_freq / sample_frequency)];
+
+                // Get reflection spectrum and calculate desired absorption coefficients
+                Complex[] desired_Spectrum = new Complex[(int)(samplect * max_freq / sample_frequency)];
+                Array.Copy(this.Reflection_Spectrum((int)sample_frequency, samplect, new Hare.Geometry.Vector(0, 0, 1), new Hare.Geometry.Vector(0, 0, 1), 0), desired_Spectrum, desired_Spectrum.Length);
+
+                for (int i = 0; i < desired_Spectrum.Length; i++)
+                {
+                    frequencies[i] = (double)((i + 1) * (sample_frequency / 2)) / 4096;
+                }
+
+                double[] desired_alpha = AbsorptionModels.Operations.Absorption_Coef(desired_Spectrum);
+
+                // If filter_order is zero or negative, automatically determine the optimal order
+                if (filter_order <= 0)
+                {
+                    if (rec_order == 0)
+                    {
+                        // Use a range of filter orders to find the best fit
+
+                        int min_order = 2;
+                        int max_order = 12;
+                        double error_threshold = 0.01; // 1% average error threshold
+                        double best_error = double.MaxValue;
+                        (double[] b, double[] a) best_filter = (new double[min_order + 1], new double[min_order + 1]);
+
+                        for (int order = min_order; order <= max_order; order += 2) // Try even orders
+                        {
+                            try
+                            {
+                                // Design filter with current order
+                                (double[] b, double[] a) current_filter = Pach_SP.IIR_Design.FitIIRToFrequencyResponse(frequencies, desired_Spectrum, order, order);
+
+                                // Normalize the filter
+                                Complex[] filter_response = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
+                                    new List<double>(current_filter.b), new List<double>(current_filter.a),
+                                    frequencies, sample_frequency);
+
+                                double mag = filter_response.MaximumMagnitudePhase().Magnitude;
+                                if (mag > 1)
+                                {
+                                    for (int j = 0; j < current_filter.b.Length; j++)
+                                        current_filter.b[j] /= mag;
+                                }
+                                else
+                                {
+                                    double mod = mag / desired_Spectrum.MaximumMagnitudePhase().Magnitude;
+                                    for (int j = 0; j < current_filter.b.Length; j++)
+                                        current_filter.b[j] /= mod;
+                                }
+
+                                // Recalculate response after normalization
+                                filter_response = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
+                                    new List<double>(current_filter.b), new List<double>(current_filter.a),
+                                    frequencies, sample_frequency);
+
+                                // Calculate error metric focusing on important frequency range
+                                double error_sum = 0;
+                                int count = 0;
+
+                                for (int i = 0; i < frequencies.Length; i++)
+                                {
+                                    if (frequencies[i] >= 125 && frequencies[i] <= 4000)
+                                    {
+                                        double mag_error = Math.Abs(filter_response[i].Magnitude - desired_Spectrum[i].Magnitude);
+                                        error_sum += mag_error / Math.Max(0.01, desired_Spectrum[i].Magnitude); // Relative error
+                                        count++;
+                                    }
+                                }
+
+                                double avg_error = count > 0 ? error_sum / count : double.MaxValue;
+
+                                // Update best filter if this one is better
+                                if (avg_error < best_error)
+                                {
+                                    best_error = avg_error;
+                                    best_filter = current_filter;
+                                }
+
+                                // If error is below threshold, we've found a good enough match
+                                if (avg_error < error_threshold)
+                                {
+                                    // We found a filter with acceptable error, no need to try higher orders
+                                    break;
+                                }
+                            }
+                            catch
+                            {
+                                // If filter design fails, continue to next order
+                                continue;
+                            }
+                        }
+
+                        // Use the best filter found
+                        return (best_filter.a, best_filter.b);
+                    }
+                    else
+                    {
+                        // Use previously calculated coefficients
+                        return (rec_a, rec_b);
+                    }
+                }
+                else
+                {
+                    // Original code for specified filter order
+                    int numeratorOrder = filter_order;
+                    int denominatorOrder = filter_order;
+
+                    // Use Modified Yule-Walker method to fit the IIR filter
+                    (double[] b, double[] a) = Pach_SP.IIR_Design.FitIIRToFrequencyResponse(frequencies, desired_Spectrum, numeratorOrder, denominatorOrder);
+
+                    // Calculate frequency response of the fitted filter
+                    Complex[] IIR_spec = Audio.Pach_SP.IIR_Design.AB_FreqResponse(new List<double>(b), new List<double>(a), frequencies, 44100);
+
+                    // Normalize the filter if necessary
+                    double m = IIR_spec.MaximumMagnitudePhase().Magnitude;
+                    if (m > 1)
+                    {
+                        for (int j = 0; j < b.Length; j++) b[j] /= m;
+                    }
+                    else
+                    {
+                        double mod = m / desired_Spectrum.MaximumMagnitudePhase().Magnitude;
+                        for (int j = 0; j < b.Length; j++) b[j] /= mod;
+                    }
+
+                    return (a, b);
+                }
             }
         }
 

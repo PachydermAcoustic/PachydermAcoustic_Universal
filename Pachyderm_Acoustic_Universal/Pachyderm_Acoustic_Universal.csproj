@@ -44,12 +44,11 @@
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Eto">
-      <HintPath>..\..\..\..\..\..\..\..\Program Files\Rhino 7\System\Eto.dll</HintPath>
-      <Private>False</Private>
+      <HintPath>..\..\..\..\..\..\..\..\Program Files\Rhino 8\System\Eto.dll</HintPath>
     </Reference>
   </ItemGroup>
   <PropertyGroup>
-    <FileVersion>2.6.0.9</FileVersion>
-    <AssemblyVersion>2.6.0.9</AssemblyVersion>
+    <FileVersion>2.6.0.14</FileVersion>
+    <AssemblyVersion>2.6.0.14</AssemblyVersion>
   </PropertyGroup>
 </Project>

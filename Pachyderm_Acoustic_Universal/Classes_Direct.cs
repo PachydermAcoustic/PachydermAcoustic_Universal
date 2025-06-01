@@ -1,8 +1,8 @@
-﻿//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL) by Arthur van der Harten 
+﻿//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL)   
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Arthur van der Harten 
+//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -1489,7 +1489,7 @@ namespace Pachyderm_Acoustic
             {
                 for (int j = 0; j < t.Count; j++)
                 {
-                    int time = SPL_Only ? 0 : (int)(t[j] * 44100);
+                    int time = SPL_Only ? 0 : (int)(t[j] * SampleRate);
                     for (int oct = 0; oct < no_of_bands; oct++)
                     {
                         if (Io[rec_id][oct][time] == double.NaN)
@@ -1657,8 +1657,8 @@ namespace Pachyderm_Acoustic
             Hare.Geometry.AABB b = LSrc.bounds;
             trib = (trib / C_Sound) * SampleFreq;
 
-            for (int i = 0; i < Receiver.Count; i++)
-            //System.Threading.Tasks.Parallel.For(0, Receiver.Count, i =>
+            //for (int i = 0; i < Receiver.Count; i++)
+            System.Threading.Tasks.Parallel.For(0, Receiver.Count, i =>
             {
                 Random RAND = new Random(rnd[i]);
                 double mintime = double.PositiveInfinity, maxtime = double.NegativeInfinity;
@@ -1815,8 +1815,8 @@ namespace Pachyderm_Acoustic
                                 //break;
                                 ///TODO: Set W_Temp to zero, and devise means of storing screen atten for later addition to power.
                             }
-                            if (time.Count > 0)
-                                Record_Line_Segment(ref time, ref I, ref I_d, i);
+                            //if (time.Count > 0)
+                            //    Record_Line_Segment(ref time, ref I, ref I_d, i);
                             break;
                         }
                     }
@@ -1862,7 +1862,7 @@ namespace Pachyderm_Acoustic
                 {
                     Validity[i] = (Io[i][0][0] != 0);
                 }
-            }//);
+            });
 
             return true;
         }

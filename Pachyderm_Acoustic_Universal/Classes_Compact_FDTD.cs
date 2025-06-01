@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Pachyderm_Acoustic.Environment;
 using Hare.Geometry;
 using System.Threading;
+using Eto.Forms;
 
 namespace Pachyderm_Acoustic
 {
@@ -24,6 +25,7 @@ namespace Pachyderm_Acoustic
                 Point[] Orig = new Point[13];
                 double fmax;
                 protected AABB Bounds;
+                protected AABB Bounds_Inner;
                 PML Layers;
                 public Signal_Driver_Compact SD;
                 public Microphone_Compact Mic;
@@ -31,6 +33,7 @@ namespace Pachyderm_Acoustic
                 public int n;
                 double time_ms;
                 int threadct = System.Environment.ProcessorCount;
+                double floorplaneoverride = 0;
 
                 //PML Settings
                 int PML_LayerNo = 50;
@@ -74,8 +77,9 @@ namespace Pachyderm_Acoustic
                     return new Point(Bounds.Min_PT.x + (((double)x - 0.5) * dx), Bounds.Min_PT.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), Bounds.Min_PT.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
                 }
 
-                public Acoustic_Compact_FDTD(Scene Rm_in, ref Signal_Driver_Compact S_in, ref Microphone_Compact M_in, double fmax_in, double tmax_ms_in, GridType GT, Point SampleOrigin, double mindimx, double mindimy, double mindimz, bool PML = true)
+                public Acoustic_Compact_FDTD(Scene Rm_in, ref Signal_Driver_Compact S_in, ref Microphone_Compact M_in, double fmax_in, double tmax_ms_in, GridType GT, Point SampleOrigin, double mindimx, double mindimy, double mindimz, bool PML = true, double floorplane = 0)
                 {
+                    floorplaneoverride = floorplane;
                     Rm = Rm_in;
                     SD = S_in;
                     Mic = M_in;
@@ -91,21 +95,21 @@ namespace Pachyderm_Acoustic
                     else if (GT == GridType.ScatteringLab)
                     {
                         Build_ScatteringLaboratory_FVM13(ref xDim, ref yDim, ref zDim, PML, SampleOrigin, mindimx, mindimy, mindimz);
-                        SD.Connect_Grid_Laboratory(PFrame, Bounds, dx, dy, dz, tmax, dt, no_of_Layers);
-                        Mic.Connect_Grid_Hemisphere_Laboratory(PFrame, Bounds, new Point(), 1, dx, tmax, dt, no_of_Layers);
+                        SD.Connect_Grid_Laboratory(PFrame, Bounds, Bounds_Inner, dx, dy, dz, tmax, dt, no_of_Layers);
+                        Mic.Connect_Grid_Hemisphere_Laboratory(PFrame, Bounds, SampleOrigin, 1, dx, tmax, dt, no_of_Layers);
                     }
                     else if (GT == GridType.TransparencyLab)
                     {
                         //TODO: Build a custom lab with freefield condition at bottom boundary...
                         Build_TransparencyLaboratory_FVM13(ref xDim, ref yDim, ref zDim, PML, SampleOrigin, mindimx, mindimy, mindimz);
-                        SD.Connect_Grid_Laboratory(PFrame, Bounds, dx, dy, dz, tmax, dt, no_of_Layers);
+                        SD.Connect_Grid_Laboratory(PFrame, Bounds, Bounds_Inner, dx, dy, dz, tmax, dt, no_of_Layers);
                         Mic.Connect_Grid_UniqueOnly_Laboratory(PFrame, Bounds, dx, tmax, dt, no_of_Layers);
                     }
                     else if (GT == GridType.Terrain)
                     {
                         Hare.Geometry.Point Origin = (Rm_in.Max() + Rm.Min()) / 2;
                         Build_ScatteringLaboratory_FVM13(ref xDim, ref yDim, ref zDim, PML, Origin, mindimx, mindimy, mindimz);
-                        SD.Connect_Grid_Laboratory(PFrame, Bounds, dx, dy, dz, tmax, dt, no_of_Layers);
+                        SD.Connect_Grid_Laboratory(PFrame, Bounds, Bounds, dx, dy, dz, tmax, dt, no_of_Layers);
                         Mic.Connect_Grid_UniqueOnly_Laboratory(PFrame, Bounds, dx, tmax, dt, no_of_Layers);
                     }
                 }
@@ -119,6 +123,7 @@ namespace Pachyderm_Acoustic
                     dx = 2 * dydz / Math.Sqrt(2);
 
                     Bounds = new AABB(Rm.Min() - new Vector(.05 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.05 * dx, .05 * dydz, .05 * dydz));
+                    Bounds_Inner = new AABB(Bounds.Min_PT.x, Bounds.Min_PT.y, Bounds.Min_PT.z, Bounds.Max_PT.x, Bounds.Max_PT.y, Bounds.Max_PT.z);
 
                     no_of_Layers = 0;
                     double max_Layer = 0;
@@ -208,7 +213,7 @@ namespace Pachyderm_Acoustic
                             PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt / 2) + yDimt % 2 * mod)];
                             for (int z = 0; z < PFrame[x][y].Length; z++)
                             {
-                                List<double> abs;
+                                List<Environment.Material> abs;
                                 List<Bound_Node.Boundary> BDir;
                                 Point Loc = Acoustic_Compact_FDTD.RDD_Location(MinPt, x, y, z, dx, dy, dz); //new Point(MinPt.x + 2 * (((double)x - 0.5) * dx), MinPt.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), MinPt.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
                                 if (!Intersect_13Pt(Loc, SD.frequency, out BDir, out abs, ref Rnd))
@@ -217,8 +222,8 @@ namespace Pachyderm_Acoustic
                                 }
                                 else
                                 {
-                                    PFrame[x][y][z] = new Bound_Node_RDD(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, BDir); // abs,
-                                    Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
+                                    PFrame[x][y][z] = new Bound_Node_RDD_MaterialFilter(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, abs, BDir); // abs,
+                                    Bound.Add(PFrame[x][y][z] as Bound_Node_RDD_MaterialFilter);
                                 }
                             }
                         }
@@ -260,6 +265,8 @@ namespace Pachyderm_Acoustic
                     dx = 2 * dydz / Math.Sqrt(2);
 
                     Bounds = new AABB(Rm.Min() - new Vector(.025 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.025 * dx, .05 * dydz, .05 * dydz));
+                    Bounds.Min_PT.z = floorplaneoverride;
+                    Bounds_Inner = new AABB(Bounds.Min_PT.x, Bounds.Min_PT.y, Bounds.Min_PT.z, Bounds.Max_PT.x, Bounds.Max_PT.y, Bounds.Max_PT.z);
 
                     no_of_Layers = 0;
                     double max_Layer = 0;
@@ -271,25 +278,34 @@ namespace Pachyderm_Acoustic
                     }
 
                     double x_length = Bounds.X_Length(), y_length = Bounds.Y_Length(), z_length = Bounds.Z_Length();
-                    Point MinPt = new Hare.Geometry.Point(SampleOrigin.x, SampleOrigin.y, 0);
-                    if (x_length < xmin)
-                    {
-                        x_length = xmin;
-                    }
-                    if (y_length < ymin)
-                    {
-                        y_length = ymin;
-                    }
-                    if (z_length < zmin)
-                    {
-                        z_length = zmin;
-                    }
+                    Point MinPt = new Hare.Geometry.Point(SampleOrigin.x, SampleOrigin.y, 0 + floorplaneoverride);
 
                     //MinPt.x -= (x_length / 4);// + no_of_Layers / 2 * dx);
                     //MinPt.y -= (y_length / 2);// + no_of_Layers / 2 * dydz);
 
                     List<Bound_Node_RDD> Bound = new List<Bound_Node_RDD>();
 
+                    if (x_length < xmin)
+                    {
+                        x_length = xmin;
+                        MinPt.x -= (xmin - x_length) / 2;
+                    }
+                    if (y_length < ymin)
+                    {
+                        y_length = ymin;
+                        MinPt.y -= (ymin - y_length) / 2;
+                    }
+                    if (z_length < zmin - floorplaneoverride)
+                    {
+                        z_length = zmin - floorplaneoverride;
+                        MinPt.z -= (zmin - z_length) / 2;
+                    }
+
+                    x_length += (no_of_Layers * 4 + 1) * dx;
+                    y_length += (no_of_Layers * 4 + 1) * dydz;
+                    z_length += (no_of_Layers * 2 + 1) * dydz;
+
+                    //estimated distance between nodes
                     xDim = (int)Math.Ceiling(x_length / dx);                                //set number of nodes in x direction
                     dx = x_length / xDim;                                                   //refined distance between nodes
                     yDim = (int)Math.Ceiling(y_length / dydz);                                //set number of nodes in y direction
@@ -297,14 +313,18 @@ namespace Pachyderm_Acoustic
                     zDim = (int)Math.Ceiling(z_length / dydz);                                //set number of nodes in z direction
                     dz = z_length / zDim;
 
-                    //MinPt -= new Point(dx * no_of_Layers + 1, dy * no_of_Layers + 1, 0);
-                    x_length += (no_of_Layers * 2) * dx;
-                    y_length += (no_of_Layers * 2 * rt2) * dy;
-                    z_length += (no_of_Layers * rt2) * dz;
+                    dt = dy * rt2 / (Rm.Sound_speed(0));                           //set time step small enough to satisfy courrant condition
+                    dxrt2 = dx * rt2;
+                    dxrt3 = dx * rt3;
 
-                    xDim = (int)Math.Ceiling(x_length / dx);                                //set number of nodes in x direction
-                    yDim = (int)Math.Ceiling(y_length / dy);                                //set number of nodes in y direction
-                    zDim = (int)Math.Ceiling(z_length / dz);                                //set number of nodes in z direction
+                    ////MinPt -= new Point(dx * no_of_Layers + 1, dy * no_of_Layers + 1, 0);
+                    //x_length += (no_of_Layers * 2) * dx;
+                    //y_length += (no_of_Layers * 2 * rt2) * dy;
+                    //z_length += (no_of_Layers * rt2) * dz;
+
+                    //xDim = (int)Math.Ceiling(x_length / dx);                                //set number of nodes in x direction
+                    //yDim = (int)Math.Ceiling(y_length / dy);                                //set number of nodes in y direction
+                    //zDim = (int)Math.Ceiling(z_length / dz);                                //set number of nodes in z direction
 
                     //estimated distance between nodes
                     dt = dy * rt2 / (Rm.Sound_speed(0));                           //set time step small enough to satisfy courrant condition
@@ -340,9 +360,11 @@ namespace Pachyderm_Acoustic
                     int threadct = System.Environment.ProcessorCount;
                     List<System.Threading.Thread> T = new List<System.Threading.Thread>();
 
+                    floorplaneoverride = Math.Round(floorplaneoverride / dydz) * dydz;
+
                     MinPt.x -= x_length / 2;
                     MinPt.y -= y_length / 2;
-                    MinPt.z = 0;
+                    MinPt.z = 0 + floorplaneoverride;
                     Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
 
                     //System.Threading.Tasks.Parallel.For(0, xDim, (x) =>
@@ -361,18 +383,36 @@ namespace Pachyderm_Acoustic
                                     PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt) + yDimt % 2 * mod)];
                                     for (int z = 0; z < PFrame[x][y].Length; z++)
                                     {
-                                        List<double> abs;
-                                        List<Bound_Node.Boundary> BDir;
                                         Point Loc = Acoustic_Compact_FDTD.RDD_Location(MinPt, x, y, z, dx, dy, dz); //new Point(MinPt.x + 2 * (((double)x - 0.5) * dx), MinPt.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), MinPt.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
-                                        if (!Intersect_13Pt(Loc, SD.frequency, out BDir, out abs, ref Rnd))
+                                        if (Rm is Empty_Scene)
                                         {
-                                            PFrame[x][y][z] = new RDD_Node(Loc);//, rho0, dt, dx, Rm.Sound_speed, new int[] { x, y, z });
+                                            List<Bound_Node.Boundary> BDir = new List<Bound_Node.Boundary>();
+                                            BDir.Add(Bound_Node.Boundary.AZNeg);
+                                            if (z == 0)
+                                            {
+                                                PFrame[x][y][z] = new Bound_Node_RDD(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, BDir); //abs,
+                                                Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
+                                            }
+                                            else
+                                            {
+                                                PFrame[x][y][z] = new RDD_Node(Loc);//, rho0, dt, dx, Rm.Sound_speed, new int[] { x, y, z });
+                                            }
                                         }
                                         else
                                         {
-                                            PFrame[x][y][z] =
-                                                new Bound_Node_RDD(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, BDir); //abs,
-                                            Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
+                                            List<Environment.Material> abs;
+                                            List<Bound_Node.Boundary> BDir;
+
+                                            if (!Intersect_13Pt(Loc, SD.frequency, out BDir, out abs, ref Rnd))
+                                            {
+                                                PFrame[x][y][z] = new RDD_Node(Loc);//, rho0, dt, dx, Rm.Sound_speed, new int[] { x, y, z });
+                                            }
+                                            else
+                                            {
+                                                PFrame[x][y][z] =
+                                                    new Bound_Node_RDD(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, BDir); //abs,
+                                                Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
+                                            }
                                         }
                                     }
                                 }
@@ -433,6 +473,7 @@ namespace Pachyderm_Acoustic
                     dx = 2 * dydz / Math.Sqrt(2);
 
                     Bounds = new AABB(Rm.Min() - new Vector(.05 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.05 * dx, .05 * dydz, .05 * dydz));
+                    Bounds_Inner = new AABB(Bounds.Min_PT.x, Bounds.Min_PT.y, Bounds.Min_PT.z, Bounds.Max_PT.x, Bounds.Max_PT.y, Bounds.Max_PT.z);
 
                     no_of_Layers = 0;
                     double max_Layer = 0;
@@ -521,7 +562,7 @@ namespace Pachyderm_Acoustic
                             PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt / 2) + yDimt % 2 * mod)];
                             for (int z = 0; z < PFrame[x][y].Length; z++)
                             {
-                                List<double> abs;
+                                List<Environment.Material> abs;
                                 List<Bound_Node.Boundary> BDir;
                                 Point Loc = Acoustic_Compact_FDTD.RDD_Location(MinPt, x, y, z, dx, dy, dz); //new Point(MinPt.x + 2 * (((double)x - 0.5) * dx), MinPt.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), MinPt.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
                                 if (!Intersect_13Pt(Loc, SD.frequency, out BDir, out abs, ref Rnd))
@@ -567,7 +608,7 @@ namespace Pachyderm_Acoustic
 
                 public void RuntoCompletion()
                 {
-                    for(time_ms = 0; time_ms < tmax / 1000; time_ms += dt)
+                    for (time_ms = 0; time_ms < tmax / 1000; time_ms += dt)
                     {
                         Increment();
                     }
@@ -884,220 +925,220 @@ namespace Pachyderm_Acoustic
                 double dxrt2;
                 double dxrt3;
 
-                public bool Intersect_26Pt(Point Center, out List<Bound_Node_IWB.Boundary> Bout, out List<double[]> alpha, ref Random Rnd)
+                //public bool Intersect_26Pt(Point Center, out List<Bound_Node_IWB.Boundary> Bout, out List<double[]> alpha, ref Random Rnd)
+                //{
+                //    Bout = new List<Bound_Node.Boundary>();
+                //    alpha = new List<double[]>();
+
+                //    Center += new Point((Rnd.NextDouble() - .5) * 1E-6, (Rnd.NextDouble() - .5) * 1E-6, (Rnd.NextDouble() - .5) * 1E-6);
+
+                //    //double u, v;
+
+                //    X_Event XPt = new X_Event();
+                //    //new Vector(-1,0,0),
+                //    if (Rm.shoot(new Ray(Center, Dir[0], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[0] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.AXNeg);
+                //        //TODO: Intelligently Assign Absorption
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[0] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[0] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.AXPos);
+                //        //TODO: Intelligently Assign Absorption
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    //new Vector(0,-1,0),
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[1], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[1] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.AYNeg);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[1] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[1] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.AYPos);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    //new Vector(0,0,-1),
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[2], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[2] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.AZNeg);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[2] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[2] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.AZPos);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    //new Vector(-1/rt2,-1/rt2,0),
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[3], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[3] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.SDXNegYNeg);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[3] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[3] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.SDXPosYPos);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    //new Vector(1/rt2, -1/rt2,0),
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[4], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[4] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.SDXPosYNeg);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[4] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[4] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.SDXNegYPos);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    //new Vector(-1/rt2, 0, 1/rt2),
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[5], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[5] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.SDXNegZPos);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[5] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[5] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.SDXPosZNeg);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    //new Vector(0, -1/rt2, 1/rt2),
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[6], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[6] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.SDYNegZPos);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[6] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[6] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.SDYPosZNeg);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    //new Vector(1/rt2, 0, 1/rt2),
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[7], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[7] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.SDXPosZPos);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[7] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[7] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.SDXNegZNeg);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    //new Vector(0, 1/rt2, 1/rt2),
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[8], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[8] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.SDYPosZPos);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[8] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[8] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.SDYNegZNeg);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    //new Vector(-1/rt3,-1/rt3,1/rt3),
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[9], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[9] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.DXNegYNegZPos);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[9] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        Bout.Add(Bound_Node.Boundary.DXPosYPosZNeg);
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[9] * dx)));
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    //new Vector(1/rt3,-1/rt3,1/rt3),
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[10], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[10] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.DXPosYNegZPos);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[10] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[10] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.DXNegYPosZNeg);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    //new Vector(1/rt3,1/rt3,1/rt3),
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center + new Point(0, 1E-6, -1E-6), Dir[11], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[11] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.DXPosYPosZPos);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[11] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[11] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.DXNegYNegZNeg);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    //new Vector(-1/rt3,1/rt3,1/rt3)
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[12], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[12] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.DXNegYPosZPos);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+                //    XPt = new X_Event();
+                //    if (Rm.shoot(new Ray(Center, Dir[12] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
+                //    {
+                //        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[12] * dx)));
+                //        Bout.Add(Bound_Node.Boundary.DXPosYNegZNeg);
+                //        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
+                //    }
+
+                //    return Bout.Count > 0;
+                //}
+
+                public bool Intersect_13Pt(Point Center, double frequency, out List<Bound_Node.Boundary> Bout, out List<Environment.Material> mat, ref Random Rnd)
                 {
                     Bout = new List<Bound_Node.Boundary>();
-                    alpha = new List<double[]>();
-
-                    Center += new Point((Rnd.NextDouble() - .5) * 1E-6, (Rnd.NextDouble() - .5) * 1E-6, (Rnd.NextDouble() - .5) * 1E-6);
-
-                    //double u, v;
-
-                    X_Event XPt = new X_Event();
-                    //new Vector(-1,0,0),
-                    if (Rm.shoot(new Ray(Center, Dir[0], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[0] * dx)));
-                        Bout.Add(Bound_Node.Boundary.AXNeg);
-                        //TODO: Intelligently Assign Absorption
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[0] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[0] * dx)));
-                        Bout.Add(Bound_Node.Boundary.AXPos);
-                        //TODO: Intelligently Assign Absorption
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    //new Vector(0,-1,0),
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[1], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[1] * dx)));
-                        Bout.Add(Bound_Node.Boundary.AYNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[1] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[1] * dx)));
-                        Bout.Add(Bound_Node.Boundary.AYPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    //new Vector(0,0,-1),
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[2], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[2] * dx)));
-                        Bout.Add(Bound_Node.Boundary.AZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[2] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[2] * dx)));
-                        Bout.Add(Bound_Node.Boundary.AZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    //new Vector(-1/rt2,-1/rt2,0),
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[3], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[3] * dx)));
-                        Bout.Add(Bound_Node.Boundary.SDXNegYNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[3] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[3] * dx)));
-                        Bout.Add(Bound_Node.Boundary.SDXPosYPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    //new Vector(1/rt2, -1/rt2,0),
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[4], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[4] * dx)));
-                        Bout.Add(Bound_Node.Boundary.SDXPosYNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[4] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[4] * dx)));
-                        Bout.Add(Bound_Node.Boundary.SDXNegYPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    //new Vector(-1/rt2, 0, 1/rt2),
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[5], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[5] * dx)));
-                        Bout.Add(Bound_Node.Boundary.SDXNegZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[5] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[5] * dx)));
-                        Bout.Add(Bound_Node.Boundary.SDXPosZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    //new Vector(0, -1/rt2, 1/rt2),
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[6], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[6] * dx)));
-                        Bout.Add(Bound_Node.Boundary.SDYNegZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[6] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[6] * dx)));
-                        Bout.Add(Bound_Node.Boundary.SDYPosZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    //new Vector(1/rt2, 0, 1/rt2),
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[7], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[7] * dx)));
-                        Bout.Add(Bound_Node.Boundary.SDXPosZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[7] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[7] * dx)));
-                        Bout.Add(Bound_Node.Boundary.SDXNegZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    //new Vector(0, 1/rt2, 1/rt2),
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[8], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[8] * dx)));
-                        Bout.Add(Bound_Node.Boundary.SDYPosZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[8] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[8] * dx)));
-                        Bout.Add(Bound_Node.Boundary.SDYNegZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    //new Vector(-1/rt3,-1/rt3,1/rt3),
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[9], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[9] * dx)));
-                        Bout.Add(Bound_Node.Boundary.DXNegYNegZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[9] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        Bout.Add(Bound_Node.Boundary.DXPosYPosZNeg);
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[9] * dx)));
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    //new Vector(1/rt3,-1/rt3,1/rt3),
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[10], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[10] * dx)));
-                        Bout.Add(Bound_Node.Boundary.DXPosYNegZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[10] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[10] * dx)));
-                        Bout.Add(Bound_Node.Boundary.DXNegYPosZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    //new Vector(1/rt3,1/rt3,1/rt3),
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center + new Point(0, 1E-6, -1E-6), Dir[11], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[11] * dx)));
-                        Bout.Add(Bound_Node.Boundary.DXPosYPosZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[11] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[11] * dx)));
-                        Bout.Add(Bound_Node.Boundary.DXNegYNegZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    //new Vector(-1/rt3,1/rt3,1/rt3)
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[12], 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[12] * dx)));
-                        Bout.Add(Bound_Node.Boundary.DXNegYPosZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-                    XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[12] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dxrt2)
-                    {
-                        //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[12] * dx)));
-                        Bout.Add(Bound_Node.Boundary.DXPosYNegZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Coefficient_A_Broad());
-                    }
-
-                    return Bout.Count > 0;
-                }
-
-                public bool Intersect_13Pt(Point Center, double frequency, out List<Bound_Node.Boundary> Bout, out List<double> alpha, ref Random Rnd)
-                {
-                    Bout = new List<Bound_Node.Boundary>();
-                    alpha = new List<double>();
+                    mat = new List<Environment.Material>();
 
                     Center += new Point((Rnd.NextDouble() - .5) * 1E-6, (Rnd.NextDouble() - .5) * 1E-6, (Rnd.NextDouble() - .5) * 1E-6);
 
@@ -1105,21 +1146,20 @@ namespace Pachyderm_Acoustic
 
                     double dx2 = 2 * dy + double.Epsilon;
 
-
                     XPt = new X_Event();
                     //new Vector(0, -1, 0)
                     if (Rm.shoot(new Ray(Center, -1 * Dir[1], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[1] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.AYPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Reflection_Narrow(frequency).Magnitude);
+                        mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     XPt = new X_Event();
                     if (Rm.shoot(new Ray(Center, Dir[1], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[1] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.AYNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Reflection_Narrow(frequency).Magnitude);
+                        mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
 
                     XPt = new X_Event();
@@ -1128,14 +1168,14 @@ namespace Pachyderm_Acoustic
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[2] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.AZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Reflection_Narrow(frequency).Magnitude);
+                        mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     XPt = new X_Event();
                     if (Rm.shoot(new Ray(Center, Dir[2], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[2] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.AZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Reflection_Narrow(frequency).Magnitude);
+                        mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
 
                     XPt = new X_Event();
@@ -1144,14 +1184,14 @@ namespace Pachyderm_Acoustic
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[9] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXNegYNegZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Reflection_Narrow(frequency).Magnitude);
+                        mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     XPt = new X_Event();
                     if (Rm.shoot(new Ray(Center, Dir[9] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[9] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXPosYPosZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Reflection_Narrow(frequency).Magnitude);
+                        mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
 
                     XPt = new X_Event();
@@ -1160,14 +1200,14 @@ namespace Pachyderm_Acoustic
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[10] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXPosYNegZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Reflection_Narrow(frequency).Magnitude);
+                        mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     XPt = new X_Event();
                     if (Rm.shoot(new Ray(Center, Dir[10] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[10] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXNegYPosZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Reflection_Narrow(frequency).Magnitude);
+                        mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
 
                     XPt = new X_Event();
@@ -1176,14 +1216,14 @@ namespace Pachyderm_Acoustic
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[11] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXPosYPosZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Reflection_Narrow(frequency).Magnitude);
+                        mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     XPt = new X_Event();
                     if (Rm.shoot(new Ray(Center, Dir[11] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[11] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXNegYNegZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Reflection_Narrow(frequency).Magnitude);
+                        mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
 
                     XPt = new X_Event();
@@ -1192,14 +1232,14 @@ namespace Pachyderm_Acoustic
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[12] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXNegYPosZPos);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Reflection_Narrow(frequency).Magnitude);
+                        mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     XPt = new X_Event();
                     if (Rm.shoot(new Ray(Center, Dir[12] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[12] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXPosYNegZNeg);
-                        alpha.Add(Rm.AbsorptionValue[XPt.Poly_id].Reflection_Narrow(frequency).Magnitude);
+                        mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     return Bout.Count > 0;
                 }
@@ -1213,11 +1253,6 @@ namespace Pachyderm_Acoustic
                 {
                     throw new NotImplementedException();
                 }
-
-                //public override void Abort_Calculation()
-                //{
-                //    throw new NotImplementedException();
-                //}
 
                 public override void Combine_ThreadLocal_Results()
                 {
@@ -1606,7 +1641,7 @@ namespace Pachyderm_Acoustic
             public class Signal_Driver_Compact
             {
                 List<Acoustic_Compact_FDTD.Node> SrcNode;
-                public int[] X, Y, Z;
+                public List<int> X, Y, Z;
                 double[][] signal;
                 double f;
                 List<Hare.Geometry.Point> Loc;
@@ -1615,6 +1650,8 @@ namespace Pachyderm_Acoustic
                 double w;
                 double tmax;
                 double dt;
+                public List<int> delays;
+                public int delayshortcut = 0;
 
                 public enum Signal_Type
                 {
@@ -1631,6 +1668,7 @@ namespace Pachyderm_Acoustic
                 {
                     Loc = new List<Point>();
                     SWL = new List<double[]>();
+                    delays = new List<int>();
                     S = S_in;
                     f = freq;
                     w = w_in;
@@ -1655,60 +1693,215 @@ namespace Pachyderm_Acoustic
                     dt = _dt;
 
                     SrcNode = new List<Acoustic_Compact_FDTD.Node>();
-                    X = new int[Loc.Count];
-                    Y = new int[Loc.Count];
-                    Z = new int[Loc.Count];
+                    X = new List<int>();
+                    Y = new List<int>();
+                    Z = new List<int>();
 
                     List<Point> TempLOC = Loc;
                     List<double[]> TempSWL = SWL;
                     Loc = new List<Point>();
                     SWL = new List<double[]>();
 
-                    //dx = dy / Math.Sqrt(2);
-
                     for (int i = 0; i < TempLOC.Count; i++)
                     {
-                        X[i] = (int)Math.Floor((TempLOC[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        if (X[i] >= Frame.Length || X[i] < 0) continue;
-                        Y[i] = (int)Math.Floor((TempLOC[i].y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        if (Y[i] >= Frame[X[i]].Length || Y[i] < 0) continue;
-                        Z[i] = (int)Math.Floor((TempLOC[i].z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        if (Z[i] >= Frame[X[i]][Y[i]].Length || Z[i] < 0) continue;
-                        SrcNode.Add(Frame[X[i]][Y[i]][Z[i]]);
+                        X.Add((int)Math.Floor((TempLOC[i].x - Bounds.Min_PT.x) / (dx)));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        if (X[X.Count-1] >= Frame.Length || X[X.Count-1] < 0) continue;
+                        Y.Add((int)Math.Floor((TempLOC[i].y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2)));// + no_of_Layers / 2;
+                        if (Y[Y.Count-1] >= Frame[X[i]].Length || Y[Y.Count-1] < 0) continue;
+                        Z.Add((int)Math.Floor((TempLOC[i].z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2)));// + no_of_Layers / 2;
+                        if (Z[Z.Count-1] >= Frame[X[i]][Y[i]].Length || Z[Z.Count-1] < 0) continue;
+                        SrcNode.Add(Frame[X[X.Count-1]][Y[Y.Count-1]][Z[Z.Count-1]]);
                         Loc.Add(TempLOC[i]);
                         SWL.Add(TempSWL[i]);
+                        delays.Add(0);
                     }
 
                     Generate_Signal();
                 }
 
-                public void Connect_Grid_Laboratory(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double dy, double dz, double _tmax, double _dt, int no_of_Layers)
+                public void Connect_Grid_Laboratory(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, AABB Inner_Bounds, double dx, double dy, double dz, double _tmax, double _dt, int no_of_Layers)
                 {
                     tmax = _tmax / 1000;
                     dt = _dt;
 
                     SrcNode = new List<Acoustic_Compact_FDTD.Node>();
-                    X = new int[Loc.Count];
-                    Y = new int[Loc.Count];
-                    Z = new int[Loc.Count];
+                    X = new List<int>();
+                    Y = new List<int>();
+                    Z = new List<int>();
 
-                    List<Point> TempLOC = Loc;
                     List<double[]> TempSWL = SWL;
-                    Loc = new List<Point>();
                     SWL = new List<double[]>();
 
-                    for (int i = 0; i < TempLOC.Count; i++)
+                    int[] minIndices = new int[3];
+                    int[] maxIndices = new int[3];
+                    minIndices[0] = (int)Math.Floor((Inner_Bounds.Min_PT.x - Bounds.Min_PT.x) / dx);
+                    minIndices[1] = (int)Math.Floor((Inner_Bounds.Min_PT.y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));
+                    minIndices[2] = (int)Math.Floor((Inner_Bounds.Min_PT.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));
+                    maxIndices[0] = (int)Math.Floor((Inner_Bounds.Max_PT.x - Bounds.Min_PT.x) / dx);
+                    maxIndices[1] = (int)Math.Floor((Inner_Bounds.Max_PT.y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));
+                    maxIndices[2] = (int)Math.Floor((Inner_Bounds.Max_PT.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));
+
+                    for (int i = 0; i < Loc.Count; i++)
                     {
-                        X[i] = (int)Math.Floor((TempLOC[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        if (X[i] >= Frame.Length || X[i] < 0) continue;
-                        Y[i] = (int)Math.Floor((TempLOC[i].y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        if (Y[i] >= Frame[X[i]].Length || Y[i] < 0) continue;
-                        Z[i] = (int)Math.Floor((TempLOC[i].z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        if (Z[i] >= Frame[X[i]][Y[i]].Length || Z[i] < 0) continue;
-                        SrcNode.Add(Frame[X[i]][Y[i]][Z[i]]);
-                        Loc.Add(TempLOC[i]);
-                        SWL.Add(TempSWL[i]);
+                        if (Inner_Bounds.IsPointInBox(Loc[i].x, Loc[i].y, Loc[i].z))
+                        {
+                            X.Add((int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx)));
+                            if (X[X.Count - 1] >= Frame.Length || X[X.Count - 1] < 0) continue;
+                            Y.Add((int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2)));
+                            if (Y[Y.Count - 1] >= Frame[X[i]].Length || Y[Y.Count - 1] < 0) continue;
+                            Z.Add((int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2)));
+                            if (Z[Z.Count - 1] >= Frame[X[i]][Y[i]].Length || Z[Z.Count - 1] < 0) continue;
+                            SrcNode.Add(Frame[X[X.Count - 1]][Y[Y.Count - 1]][Z[Z.Count - 1]]);
+                            delays.Add(0);
+                            SWL.Add(TempSWL[i]);
+                        }
+                        else
+                        {
+                            // Source is outside - find all visible faces and iterate only over valid indices on those faces
+
+                            // Check X-Min face (left face)
+                            if (Loc[i].x < Inner_Bounds.Min_PT.x)
+                            {
+                                int x = minIndices[0]; // Fixed x at minimum face
+
+                                // Loop only through valid y and z on this face
+                                for (int y = Math.Max(0, minIndices[1]); y <= Math.Min(maxIndices[1], Frame[x].Length - 1); y++)
+                                {
+                                    for (int z = Math.Max(0, minIndices[2]); z <= Math.Min(maxIndices[2], Frame[x][y].Length - 1); z++)
+                                    {
+                                        X.Add(x);
+                                        Y.Add(y);
+                                        Z.Add(z);
+                                        SrcNode.Add(Frame[x][y][z]);
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
+                                        double poweradj = Math.Log10(4 * Math.PI * d * d);
+                                        SWL.Add(new double[8]{TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
+                                        delays.Add((int)Math.Round((d / 343)/dt)); // Store delay for this source
+                                    }
+                                }
+                            }
+
+                            // Check X-Max face (right face)
+                            if (Loc[i].x > Inner_Bounds.Max_PT.x)
+                            {
+                                int x = maxIndices[0]; // Fixed x at maximum face
+
+                                // Loop only through valid y and z on this face
+                                for (int y = Math.Max(0, minIndices[1]); y <= Math.Min(maxIndices[1], Frame[x].Length - 1); y++)
+                                {
+                                    for (int z = Math.Max(0, minIndices[2]); z <= Math.Min(maxIndices[2], Frame[x][y].Length - 1); z++)
+                                    {
+                                        X.Add(x);
+                                        Y.Add(y);
+                                        Z.Add(z);
+                                        SrcNode.Add(Frame[x][y][z]);
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
+                                        double poweradj = Math.Log10(4 * Math.PI * d * d);
+                                        SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
+                                        delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
+                                    }
+                                }
+                            }
+
+                            // Check Y-Min face (front face)
+                            if (Loc[i].y < Inner_Bounds.Min_PT.y)
+                            {
+                                int y = minIndices[1]; // Fixed y at minimum face
+
+                                // Loop through x-range, but skip corners already handled by x-faces
+                                for (int x = Math.Max(0, minIndices[0] + 1); x <= Math.Min(maxIndices[0] - 1, Frame.Length - 1); x++)
+                                {
+                                    if (y >= Frame[x].Length) continue; // Skip invalid indices
+
+                                    for (int z = Math.Max(0, minIndices[2]); z <= Math.Min(maxIndices[2], Frame[x][y].Length - 1); z++)
+                                    {
+                                        X.Add(x);
+                                        Y.Add(y);
+                                        Z.Add(z);
+                                        SrcNode.Add(Frame[x][y][z]);
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
+                                        double poweradj = Math.Log10(4 * Math.PI * d * d);
+                                        SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
+                                        delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
+                                    }
+                                }
+                            }
+
+                            // Check Y-Max face (back face)
+                            if (Loc[i].y > Inner_Bounds.Max_PT.y)
+                            {
+                                int y = maxIndices[1]; // Fixed y at maximum face
+
+                                // Loop through x-range, but skip corners already handled by x-faces
+                                for (int x = Math.Max(0, minIndices[0] + 1); x <= Math.Min(maxIndices[0] - 1, Frame.Length - 1); x++)
+                                {
+                                    if (y >= Frame[x].Length) continue; // Skip invalid indices
+
+                                    for (int z = Math.Max(0, minIndices[2]); z <= Math.Min(maxIndices[2], Frame[x][y].Length - 1); z++)
+                                    {
+                                        X.Add(x);
+                                        Y.Add(y);
+                                        Z.Add(z);
+                                        SrcNode.Add(Frame[x][y][z]);
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
+                                        double poweradj = Math.Log10(4 * Math.PI * d * d);
+                                        SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
+                                        delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
+                                    }
+                                }
+                            }
+
+                            // Check Z-Min face (bottom face)
+                            if (Loc[i].z < Inner_Bounds.Min_PT.z)
+                            {
+                                int z = minIndices[2]; // Fixed z at minimum face
+
+                                // Loop through x and y ranges, but skip edges already handled by x and y faces
+                                for (int x = Math.Max(0, minIndices[0] + 1); x <= Math.Min(maxIndices[0] - 1, Frame.Length - 1); x++)
+                                {
+                                    for (int y = Math.Max(0, minIndices[1] + 1); y <= Math.Min(maxIndices[1] - 1, Frame[x].Length - 1); y++)
+                                    {
+                                        if (z >= Frame[x][y].Length) continue; // Skip invalid indices
+
+                                        X.Add(x);
+                                        Y.Add(y);
+                                        Z.Add(z);
+                                        SrcNode.Add(Frame[x][y][z]);
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
+                                        double poweradj = Math.Log10(4 * Math.PI * d * d);
+                                        SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
+                                        delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
+                                    }
+                                }
+                            }
+
+                            // Check Z-Max face (top face)
+                            if (Loc[i].z > Inner_Bounds.Max_PT.z)
+                            {
+                                int z = maxIndices[2]; // Fixed z at maximum face
+
+                                // Loop through x and y ranges, but skip edges already handled by x and y faces
+                                for (int x = Math.Max(0, minIndices[0] + 1); x <= Math.Min(maxIndices[0] - 1, Frame.Length - 1); x++)
+                                {
+                                    for (int y = Math.Max(0, minIndices[1] + 1); y <= Math.Min(maxIndices[1] - 1, Frame[x].Length - 1); y++)
+                                    {
+                                        if (z >= Frame[x][y].Length) continue; // Skip invalid indices
+
+                                        X.Add(x);
+                                        Y.Add(y);
+                                        Z.Add(z);
+                                        SrcNode.Add(Frame[x][y][z]);
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
+                                        double poweradj = Math.Log10(4 * Math.PI * d * d);
+                                        SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
+                                        delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
+                                    }
+                                }
+                            }
+                        }
                     }
+
+                    delayshortcut = delays.Min();
 
                     Generate_Signal();
                 }
@@ -1727,6 +1920,12 @@ namespace Pachyderm_Acoustic
                     double[] noise = new double[(int)Math.Ceiling(tmax / dt)];
                     for (int n = 0; n < tmax / dt; n++) noise[n] = R.NextDouble();
                     
+                    for(int i = 0; i < SWL.Count; i++)
+                    {
+                        double p = 0;
+                        for (int j = 0; j < SWL[i].Length; j++) SWL[i][j] = Pachyderm_Acoustic.Utilities.AcousticalMath.Pressure_SPL(SWL[i][j]);
+                    }
+
                     double f2pi = f * 2 * Math.PI;
 
                     for (int i = 0; i < Loc.Count; i++)
@@ -1801,11 +2000,23 @@ namespace Pachyderm_Acoustic
 
                 public void Drive(int t)
                 {
+                    t += delayshortcut;
                     for (int i = 0; i < SrcNode.Count; i++)
                     {
-                        if (t < signal[i].Length)
+                        if (t < signal[0].Length + delays[i])
                         {
-                            SrcNode[i].Pn = signal[i][t];
+                            if (t < delays[i])
+                            {
+                                SrcNode[i].Pn = 0;
+                            }
+                            else if (t < signal[0].Length + delays[i])
+                            {
+                                SrcNode[i].Pn = signal[0][t - delays[i]] * SWL[i][4];
+                            }
+                            else
+                            {
+                                SrcNode[i].Pn = 0;
+                            }
                         }
                         else SrcNode[i].Pn = 0;
                     }
@@ -2004,7 +2215,7 @@ namespace Pachyderm_Acoustic
                         Point p = grid_template[i];            
                         int x = (int)Math.Floor((p.x - Bounds.Min_PT.x) / (dx));
                         int y = (int)Math.Floor((p.y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));
-                        int z = (int)Math.Floor((p.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));
+                        int z = (int)Math.Max(Math.Floor((p.z + center.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2)),0);
 
                         Xl.Add(x);
                         Yl.Add(y);

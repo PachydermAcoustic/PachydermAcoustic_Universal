@@ -40,6 +40,14 @@ namespace Pachyderm_Acoustic
             T.Finish_Topology();
             return T;
         }
+
+        public Point[] Vertices 
+        {
+            get
+            {
+                return hemisphere.Polygon_Vertices(0);
+            }
+        }
     }
 
     public class Sphere_Plot

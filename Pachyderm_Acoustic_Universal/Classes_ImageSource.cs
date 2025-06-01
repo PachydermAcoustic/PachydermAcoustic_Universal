@@ -1,8 +1,8 @@
-//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL) by Arthur van der Harten 
+//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL)   
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Arthur van der Harten 
+//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -23,9 +23,7 @@ using Pachyderm_Acoustic.Pach_Graphics;
 using Pachyderm_Acoustic.Utilities;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Threading;
 
 namespace Pachyderm_Acoustic
 {
@@ -1792,7 +1790,6 @@ namespace Pachyderm_Acoustic
                         P.Create_Filter(length, 0);
                         CDE.Signal();
                         if (VB != null) VB.Report((int)(100 * (1f - ((float)CDE.CurrentCount / (float)CDE.InitialCount))));
-                        //VB.Refresh();
                     }
                 }
             });
@@ -1801,14 +1798,12 @@ namespace Pachyderm_Acoustic
             do
             {
                 if (VB != null) VB.Report((int)(100 * (1f - ((float)CDE.CurrentCount / (float)CDE.InitialCount))));
-                //VB.Refresh();
                 if (CDE.IsSet)
                 {
                     break;
                 }
                 System.Threading.Thread.Sleep(500);
             } while (true);
-            //VB.Close();
         }
 
         public Hare.Geometry.Vector[] Dir_Energy(int rec_id, int index, int Octave, double alt, double azi, bool degrees, bool Figure8 = false)

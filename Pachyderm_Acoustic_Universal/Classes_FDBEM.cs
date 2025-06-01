@@ -2,12 +2,10 @@
 using System.Threading;
 using System.Collections.Generic;
 using Pachyderm_Acoustic.Environment;
-using MathNet.Numerics.LinearAlgebra;
 using System.Numerics;
-using Hare.Geometry;
-using System.Linq;
-using System.Xml.Linq;
 using System.Threading.Tasks;
+using Eto.Forms;
+using System.Configuration;
 
 namespace Pachyderm_Acoustic.Simulation
 {
@@ -21,19 +19,17 @@ namespace Pachyderm_Acoustic.Simulation
         private Receiver_Bank Receivers;
         private Thread SimulationThread;
         private string ProgressMessage;
-        private bool IsRunning;
         private AutoResetEvent SimulationResetEvent;
-        public double[][] Results;//Frequency, Receiver
+        public Complex[][] Results;//Frequency, Receiver
         private double[] frequency;
-        public BoundaryElementSimulation_FreqDom(Polygon_Scene room, Source source, Receiver_Bank receivers, double[] freq)
+        public BoundaryElementSimulation_FreqDom(Scene room, Source source, Receiver_Bank receivers, double[] freq)
         {
-            Room = room;
+            Room = (Polygon_Scene)room;
             Source = source;
             Receivers = receivers;
             ProgressMessage = "Simulation not started.";
-            Results = new double[freq.Length][];
-            for(int i = 0; i < freq.Length; i++) Results[i] = new double[Receivers.Count];
-            IsRunning = false;
+            Results = new Complex[freq.Length][];
+            for(int i = 0; i < freq.Length; i++) Results[i] = new Complex[Receivers.Count];
             SimulationResetEvent = new AutoResetEvent(false);
             frequency = freq;
         }
@@ -52,13 +48,12 @@ namespace Pachyderm_Acoustic.Simulation
         /// </summary>
         public override void Begin()
         {
-            if (IsRunning)
+            if (SimulationThread != null && SimulationThread.ThreadState != System.Threading.ThreadState.Stopped)
             {
                 ProgressMessage = "Simulation is already running.";
                 return;
             }
 
-            IsRunning = true;
             SimulationThread = new Thread(new ThreadStart(Simulate));
             SimulationThread.Start();
             ProgressMessage = "Simulation started.";
@@ -122,7 +117,6 @@ namespace Pachyderm_Acoustic.Simulation
                 ProgressMessage = "Initializing BEM simulation...";
 
                 // Step 1: Define boundary elements and collocation points
-                //List<BoundaryElement> elements = GenerateBoundaryElements(Room);
                 // Create boundary elements based on the room geometry.
 
                 for (int f = 0; f < frequency.Length; f++)
@@ -134,15 +128,17 @@ namespace Pachyderm_Acoustic.Simulation
                     double maxElementSize = wavelength / 6.0;
 
                     double k = 2 * Math.PI * frequency[f] / Room.Sound_speed(0);
+                    Complex i_k = Complex.ImaginaryOne / k;
 
                     for (int i = 0; i < Room.AbsorptionValue.Count; i++)
                     {
                         // Obtain polygon vertices
                         Hare.Geometry.Point[] vertices = Room.polygon(i);
+                        Hare.Geometry.Vector normal = Room.Normal(i);
                         //Obtain material from room...
                         Environment.Material m = Room.Surface_Material(i);
-                        Complex R = m.Reflection_Narrow(frequency[f], new Hare.Geometry.Vector(0,0,1), new Hare.Geometry.Vector(0,0,1));
-                        Complex Y = (1 - R) / (413.3 * (1 + R));
+                        Complex R = m.Reflection_Narrow(frequency[f], new Hare.Geometry.Vector(0, 0, 1), new Hare.Geometry.Vector(0, 0, 1));
+                        Complex Y = (1 - R) / (Room.Rho_C(0) * (1 + R));
 
                         // Check the size of the polygon
                         double polygonSize = ComputePolygonSize(vertices);
@@ -155,14 +151,14 @@ namespace Pachyderm_Acoustic.Simulation
                             // Create boundary elements from subdivided polygons
                             foreach (var subVertices in subdividedPolygons)
                             {
-                                BoundaryElement element = new BoundaryElement(subVertices, Y, elements.Count);
+                                BoundaryElement element = new BoundaryElement(subVertices, Y, normal, elements.Count);
                                 elements.Add(element);
                             }
                         }
                         else
                         {
                             // Create boundary element without subdivision
-                            BoundaryElement element = new BoundaryElement(vertices, Y, elements.Count);
+                            BoundaryElement element = new BoundaryElement(vertices, Y, normal, elements.Count);
                             elements.Add(element);
                         }
                     }
@@ -171,26 +167,41 @@ namespace Pachyderm_Acoustic.Simulation
                     // Step 2: Assemble the system of equations
                     ProgressMessage = "Assembling system of equations...";
                     int N = elements.Count;
-                    double[,] matrix = new double[N, N];
-                    double[] rhs = new double[N];
+                    Complex[,] matrix = new Complex[N, N];
+                    Complex[] rhs = new Complex[N];
 
                     // Fill the matrix with the integral equations coefficients
                     for (int i = 0; i < N; i++)
                     {
                         Hare.Geometry.Point receiverPoint = elements[i].CollocationPoint;
-                        double distance = (receiverPoint - Source.Origin).Length();
-                        
-                        if (distance == 0) rhs[i] = 0;
-                        else rhs[i] = -((1 / (4 * Math.PI * distance)) * Complex.Exp(-1.0 * System.Numerics.Complex.ImaginaryOne * k * distance)).Real * elements[i].area;
+                        Hare.Geometry.Vector Direct = (receiverPoint - Source.Origin);
+                        double distance = Direct.Length();
+                        Direct /= distance;
+
+                        //Burton-Miller Correction
+                        Complex BM_Derivative = ComputeNormalDerivative(receiverPoint, Source.Origin, elements[i].Normal, k);
+
+
+                        // Check if the source element is on the same side as the receiver
+                        double dot = Hare.Geometry.Hare_math.Dot(elements[i].Normal, Direct);
+                        //Temporary check for the case of a sphere. More sophisticated check will be needed for more complex geometries
+
+                        if (dot > 0 || distance == 0) rhs[i] = 0;
+                        else rhs[i] = (-((1 / (4 * Math.PI * distance)) * Complex.Exp(-1.0 * System.Numerics.Complex.ImaginaryOne * k * distance)) * elements[i].area) + i_k * BM_Derivative;
+
 
                         for (int j = 0; j < N; j++)
                         {
                             BoundaryElement sourceElement = elements[j];
-                            
+
+                            // Check if the source element is on the same side as the receiver
+                            double dotl = Hare.Geometry.Hare_math.Dot(sourceElement.CollocationPoint - receiverPoint, elements[j].Normal);
+                            //Temporary check for the case of a sphere. More sophisticated check will be needed for more complex geometries
+
                             if (i == j)
                             {
                                 // Diagonal term (singular value)
-                                matrix[i, j] = 0.5 * elements[i].area;
+                                matrix[i, j] = (0.5 * elements[i].area + i_k * BM_Derivative) * elements[i].area;
                             }
                             else
                             {
@@ -199,23 +210,17 @@ namespace Pachyderm_Acoustic.Simulation
                                 Hare.Geometry.Point sourcePoint = sourceElement.CollocationPoint;
                                 double re = (receiverPoint - sourcePoint).Length();
 
-                                double G = 0;
-                                if (re != 0) G = ((1 / (4 * Math.PI * re)) * Complex.Exp(-1.0 * Complex.ImaginaryOne * k * re)).Real;
-                                matrix[i, j] = G * sourceElement.area;
+                                Complex G = 0;
+                                if (re != 0) G = ((1 / (4 * Math.PI * re)) * Complex.Exp(-1.0 * Complex.ImaginaryOne * k * re));
+                                matrix[i, j] = (G + i_k  * BM_Derivative) * sourceElement.area;
                             }
+
+                            if (dotl < 0) matrix[i, j] = double.Epsilon;//*= -1;
                         }
                     }
 
                     // Step 3: Solve the system of equations
-                    ProgressMessage = "Solving system of equations...";
-                    // Use a linear solver (e.g., LU decomposition, Gaussian elimination)
-                    // For simplicity, we'll use a basic solver (not optimized for large matrices)
-                    // Convert to MathNet matrices and vectors
-                    Matrix<double> mathNetMatrix = Matrix<double>.Build.DenseOfArray(matrix);
-                    MathNet.Numerics.LinearAlgebra.Vector<double> mathNetVector = MathNet.Numerics.LinearAlgebra.Vector<double>.Build.Dense(rhs);
-
-                    // Solve the linear system
-                    double[] boundaryPressures = mathNetMatrix.Solve(mathNetVector).ToArray();
+                    Complex[] boundaryPressures = SolveMatrixIteratively(matrix, rhs);
 
                     // Step 4: Compute pressures at receiver locations
                     ProgressMessage = "Computing pressures at receiver locations...";
@@ -234,9 +239,63 @@ namespace Pachyderm_Acoustic.Simulation
             }
             finally
             {
-                IsRunning = false;
                 SimulationResetEvent.Set();
             }
+        }
+
+        private Complex[] SolveMatrixIteratively(Complex[,] matrix, Complex[] rhs)
+        {
+            int N = rhs.Length;
+            Complex[] x = new Complex[N];
+            Complex[] r = new Complex[N];
+            Complex[] p = new Complex[N];
+            Complex[] Ap = new Complex[N];
+
+            // Initial guess x = 0
+            Array.Copy(rhs, r, N);
+            Array.Copy(r, p, N);
+
+            //compute dot product of the vector r:
+            Complex rsold = Complex.Zero;
+            for (int i = 0; i < r.Length; i++) rsold += r[i] * r[i];
+
+            for (int iter = 0; iter < N; iter++)
+            {
+                // Ap = A * p
+                Parallel.For(0, N, i =>
+                {
+                    Ap[i] = Complex.Zero;
+                    for (int j = 0; j < N; j++)
+                    {
+                        Ap[i] += matrix[i, j] * p[j];
+                    }
+                });
+
+                Complex dp = Complex.Zero;
+                for (int i = 0; i < p.Length; i++) dp += p[i] * Ap[i];
+                Complex alpha = rsold / dp;
+
+                Parallel.For(0, N, i =>
+                {
+                    x[i] += alpha * p[i];
+                    r[i] -= alpha * Ap[i];
+                });
+
+                Complex rsnew = Complex.Zero;
+                for (int i = 0; i < r.Length; i++) rsnew += r[i] * r[i];
+
+                if (Math.Sqrt(rsnew.Real) < 1e-10)
+                    break;
+
+                Parallel.For(0, N, i =>
+                {
+                    p[i] = r[i] + (rsnew / rsold) * p[i];
+                });
+
+                rsold = rsnew;
+            }
+
+            return x;
         }
 
         /// <summary>
@@ -276,56 +335,100 @@ namespace Pachyderm_Acoustic.Simulation
         /// Splits a polygon into smaller polygons by dividing along the longest edge.
         /// </summary>
         /// <param name="vertices">Vertices of the polygon to split.</param>
-        /// <returns>List containing two polygons resulting from the split.</returns>
+        /// <returns>List containing smaller polygons resulting from the split.</returns>
         private List<Hare.Geometry.Point[]> SplitPolygon(Hare.Geometry.Point[] vertices)
         {
             int N = vertices.Length;
-            int maxEdgeIndex = 0;
-            double maxEdgeLength = 0.0;
-
-            // Find the longest edge
-            for (int i = 0; i < N; i++)
-            {
-                Hare.Geometry.Point p1 = vertices[i];
-                Hare.Geometry.Point p2 = vertices[(i + 1) % N];
-                double edgeLength = (p1 - p2).Length();
-                if (edgeLength > maxEdgeLength)
-                {
-                    maxEdgeLength = edgeLength;
-                    maxEdgeIndex = i;
-                }
-            }
-
-            // Compute midpoint of the longest edge
-            Hare.Geometry.Point midPoint = new Hare.Geometry.Point(
-                (vertices[maxEdgeIndex].x + vertices[(maxEdgeIndex + 1) % N].x) / 2.0,
-                (vertices[maxEdgeIndex].y + vertices[(maxEdgeIndex + 1) % N].y) / 2.0,
-                (vertices[maxEdgeIndex].z + vertices[(maxEdgeIndex + 1) % N].z) / 2.0
-            );
-
-            // Create two new polygons by adding the midpoint
             List<Hare.Geometry.Point[]> newPolygons = new List<Hare.Geometry.Point[]>();
 
-            // First new polygon
-            List<Hare.Geometry.Point> poly1 = new List<Hare.Geometry.Point>();
-            for (int i = 0; i <= maxEdgeIndex; i++)
+            if (N == 3)
             {
-                poly1.Add(vertices[i]);
-            }
-            poly1.Add(midPoint);
+                // Calculate midpoints of each edge
+                Hare.Geometry.Point midPoint1 = new Hare.Geometry.Point(
+                    (vertices[0].x + vertices[1].x) / 2.0,
+                    (vertices[0].y + vertices[1].y) / 2.0,
+                    (vertices[0].z + vertices[1].z) / 2.0
+                );
 
-            // Second new polygon
-            List<Hare.Geometry.Point> poly2 = new List<Hare.Geometry.Point>();
-            poly2.Add(midPoint);
-            for (int i = maxEdgeIndex + 1; i < N; i++)
+                Hare.Geometry.Point midPoint2 = new Hare.Geometry.Point(
+                    (vertices[1].x + vertices[2].x) / 2.0,
+                    (vertices[1].y + vertices[2].y) / 2.0,
+                    (vertices[1].z + vertices[2].z) / 2.0
+                );
+
+                Hare.Geometry.Point midPoint3 = new Hare.Geometry.Point(
+                    (vertices[2].x + vertices[0].x) / 2.0,
+                    (vertices[2].y + vertices[0].y) / 2.0,
+                    (vertices[2].z + vertices[0].z) / 2.0
+                );
+
+                // Create four smaller triangles
+                newPolygons.Add(new Hare.Geometry.Point[] { vertices[0], midPoint1, midPoint3 });
+                newPolygons.Add(new Hare.Geometry.Point[] { midPoint1, vertices[1], midPoint2 });
+                newPolygons.Add(new Hare.Geometry.Point[] { midPoint3, midPoint2, vertices[2] });
+                newPolygons.Add(new Hare.Geometry.Point[] { midPoint1, midPoint2, midPoint3 });
+            }
+            else if (N == 4)
             {
-                poly2.Add(vertices[i]);
-            }
+                // Handle quadrilateral
+                Hare.Geometry.Point midPoint1 = new Hare.Geometry.Point(
+                    (vertices[0].x + vertices[1].x) / 2.0,
+                    (vertices[0].y + vertices[1].y) / 2.0,
+                    (vertices[0].z + vertices[1].z) / 2.0
+                );
 
-            newPolygons.Add(poly1.ToArray());
-            newPolygons.Add(poly2.ToArray());
+                Hare.Geometry.Point midPoint2 = new Hare.Geometry.Point(
+                    (vertices[1].x + vertices[2].x) / 2.0,
+                    (vertices[1].y + vertices[2].y) / 2.0,
+                    (vertices[1].z + vertices[2].z) / 2.0
+                );
+
+                Hare.Geometry.Point midPoint3 = new Hare.Geometry.Point(
+                    (vertices[2].x + vertices[3].x) / 2.0,
+                    (vertices[2].y + vertices[3].y) / 2.0,
+                    (vertices[2].z + vertices[3].z) / 2.0
+                );
+
+                Hare.Geometry.Point midPoint4 = new Hare.Geometry.Point(
+                    (vertices[3].x + vertices[0].x) / 2.0,
+                    (vertices[3].y + vertices[0].y) / 2.0,
+                    (vertices[3].z + vertices[0].z) / 2.0
+                );
+
+                // Calculate the centroid of the quadrilateral
+                Hare.Geometry.Point centroid = new Hare.Geometry.Point(
+                    (vertices[0].x + vertices[1].x + vertices[2].x + vertices[3].x) / 4.0,
+                    (vertices[0].y + vertices[1].y + vertices[2].y + vertices[3].y) / 4.0,
+                    (vertices[0].z + vertices[1].z + vertices[2].z + vertices[3].z) / 4.0
+                );
+
+                // Create four smaller quadrilaterals or triangles
+                newPolygons.Add(new Hare.Geometry.Point[] { vertices[0], midPoint1, centroid, midPoint4 });
+                newPolygons.Add(new Hare.Geometry.Point[] { midPoint1, vertices[1], midPoint2, centroid });
+                newPolygons.Add(new Hare.Geometry.Point[] { centroid, midPoint2, vertices[2], midPoint3 });
+                newPolygons.Add(new Hare.Geometry.Point[] { midPoint4, centroid, midPoint3, vertices[3] });
+            }
 
             return newPolygons;
+        }
+
+        private Complex ComputeNormalDerivative(Hare.Geometry.Point observationPoint, Hare.Geometry.Point sourcePoint, Hare.Geometry.Vector boundaryNormal, double k)
+        {
+            // Vector from source to observation
+            double Rx = observationPoint.x - sourcePoint.x;
+            double Ry = observationPoint.y - sourcePoint.y;
+            double Rz = observationPoint.z - sourcePoint.z;
+
+            double re = Math.Sqrt(Rx * Rx + Ry * Ry + Rz * Rz);
+            if (re < 1e-12) return Complex.Zero;
+
+            // Dot product with boundary normal
+            double dotRn = (Rx * boundaryNormal.dx + Ry * boundaryNormal.dy + Rz * boundaryNormal.dz) / re;
+
+            // e^(i k r)/(4π r^3) * (i k r - 1) * [R ⋅ n]
+            Complex expTerm = Complex.Exp(-Complex.ImaginaryOne * k * re);
+            Complex factor = (expTerm / (4.0 * Math.PI * re * re * re)) * (Complex.ImaginaryOne * k * re - 1.0);
+            return factor * dotRn;
         }
 
         /// <summary>
@@ -334,7 +437,7 @@ namespace Pachyderm_Acoustic.Simulation
         /// <param name="elements"></param>
         /// <param name="boundaryPressures"></param>
         /// <param name="receivers"></param>
-        private void ComputeReceiverPressures(List<BoundaryElement> elements, double[] boundaryPressures, Receiver_Bank receivers, int f)
+        private void ComputeReceiverPressures(List<BoundaryElement> elements, Complex[] boundaryPressures, Receiver_Bank receivers, int f)
         {
             double k = 2 * Math.PI * frequency[f] / Room.Sound_speed(0);
 
@@ -342,15 +445,17 @@ namespace Pachyderm_Acoustic.Simulation
             for (int r = 0; r < receivers.Count; r++)
             {
                 Hare.Geometry.Point receiverPosition = receivers.Origin(r);
-                double pressure = 0.0;
+                Complex pressure = 0.0;
 
                 for (int i = 0; i < elements.Count; i++)
                 {
+                    double dot = Hare.Geometry.Hare_math.Dot(receiverPosition - elements[i].CollocationPoint, elements[i].Normal);
+                    if (dot < 0) continue;
                     BoundaryElement element = elements[i];
                     // Integrate over the source element to compute the Green's function effect
                     Hare.Geometry.Point sourcePoint = element.CollocationPoint;
                     double re = (receivers.Origin(r) - sourcePoint).Length();
-                    double G = re == 0 ? 0 : (1 / ((4 * Math.PI * re)) * Complex.Exp(-1.0 * Complex.ImaginaryOne * k * re)).Real;
+                    Complex G = re == 0 ? 0 : (1 / ((4 * Math.PI * re)) * Complex.Exp(-1.0 * Complex.ImaginaryOne * k * re));
                     pressure += boundaryPressures[i] * G;
                 }
 
@@ -368,10 +473,12 @@ namespace Pachyderm_Acoustic.Simulation
             public Hare.Geometry.Point CollocationPoint { get; private set; }
             public int ElementID { get; private set; }
             public double area = 0;
-            public BoundaryElement(Hare.Geometry.Point[] vertices, Complex Admittance, int id)
+            public Hare.Geometry.Vector Normal;
+            public BoundaryElement(Hare.Geometry.Point[] vertices, Complex Admittance, Hare.Geometry.Vector Normal, int id)
             {
                 Vertices = vertices;
                 ElementID = id;
+                this.Normal = Normal;
                 CollocationPoint = ComputeCentroid(vertices);
                 for (int i = 1, j = 2, k = 0; j < Vertices.Length; i++, j++)
                 {

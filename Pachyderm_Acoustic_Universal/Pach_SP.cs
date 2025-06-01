@@ -1,8 +1,8 @@
-﻿//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL) by Arthur van der Harten 
+﻿//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL)   
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Arthur van der Harten 
+//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -28,6 +28,8 @@ using Pachyderm_Acoustic.Pach_Graphics;
 using System.Drawing.Printing;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
+using Eto.Forms;
+using System.Threading;
 
 namespace Pachyderm_Acoustic
 {
@@ -1217,7 +1219,8 @@ namespace Pachyderm_Acoustic
 
                 Task[] tsk = new Task[proc];
 
-                Action<int> processchunk = (p) =>
+                //Action<int> processchunk = (p) =>
+                Parallel.For(0,proc, p =>
                 {
                     output[p] = new double[length];
                     samplep[p] = new double[length * 2];
@@ -1239,15 +1242,16 @@ namespace Pachyderm_Acoustic
                             }
                         }
                     }
-                };
+                });
 
-                    for (int p = 0; p < proc; p++)
-                    {
-                        int id = (int)p;
-                        tsk[p] = Task.Run(() => processchunk(id));
-                    }
+                    //for (int p = 0; p < proc; p++)
+                    //{
+                    //    int id = (int)p;
+                    //    //tsk[p] = Task.Run(() => processchunk(id));
+                    //    tsk[p] = Task.Factory.StartNew(() => processchunk(id), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                    //}
 
-                Task.WaitAll(tsk);
+                //Task.WaitAll(tsk);
 
                 //System.Threading.CountdownEvent CDE = new System.Threading.CountdownEvent(Octave_PRMS[0].Length);
 
@@ -1318,7 +1322,8 @@ namespace Pachyderm_Acoustic
                 double[] conv = IFFT_Real_General(freq3, threadid);
 
                 float[] output = new float[conv.Length];
-                double mod = 1d / Math.Sqrt(conv.Length);
+                //double mod = 1d / Math.Sqrt(conv.Length);
+                double mod = 1d / conv.Length;
                 for (int i = 0; i < conv.Length; i++) output[i] = (float)(conv[i] * mod);// * mod);
 
                 double maxfilt = Filter.Max();
@@ -1512,7 +1517,9 @@ namespace Pachyderm_Acoustic
                     }
                     catch (Exception x)
                     {
-                        throw x;
+                        MessageBox.Show(x.Message);
+                        Sample_Frequency = 44100;
+                        return new int[1][];
                     }
 
                     if (Normalize)
@@ -1654,7 +1661,8 @@ namespace Pachyderm_Acoustic
                     //wav.Write((Int32)Unit_signal.Length * Unit_signal[0].Length);//No_of_channles * No_of_Samples//4
                     wav.Write("data".ToCharArray());//4
                     wav.Write((UInt32) datalength);//Length of data portion of file.//4
-                    
+                    bool clipped = false;
+
                     switch (bitrate)
                     {
                         case 32:
@@ -1662,6 +1670,7 @@ namespace Pachyderm_Acoustic
                             {
                                 for (int c = 0; c < Unit_signal.Length; c++)
                                 {
+                                    clipped = clipped || Math.Abs(Unit_signal[c][i]) >= 1;
                                     wav.Write(Unit_signal[c][i]);
                                 }
                             }
@@ -1671,11 +1680,13 @@ namespace Pachyderm_Acoustic
                             {
                                 for (int c = 0; c < Unit_signal.Length; c++)
                                 {
-                                    var value = BitConverter.GetBytes((Int32)(Unit_signal[c][i] * Math.Pow(2,22)));
+                                    var value = BitConverter.GetBytes((Int32)(Unit_signal[c][i] * (Math.Pow(2,22)-1)));
                                     byte[] sig_bts = new byte[4];
                                     sig_bts[0] = value[0];
                                     sig_bts[1] = value[1];
                                     sig_bts[2] = value[2];
+                                    Int32 v = Math.Abs(BitConverter.ToInt32(new byte[4] { value[0], value[1], value[2], 0 }, 0)) / 2;
+                                    clipped = clipped || v > 8388607 * 1.5;
                                     for (int s = 0; s < 3; s++) wav.Write(sig_bts[s]);
                                 }
                             }
@@ -1685,7 +1696,9 @@ namespace Pachyderm_Acoustic
                             {
                                 for (int c = 0; c < Unit_signal.Length; c++)
                                 {
-                                    wav.Write((Int16)(Unit_signal[c][i] * Math.Pow(2,14)));
+                                    Int16 v = (Int16)(Unit_signal[c][i] * Math.Pow(2, 14));
+                                    clipped = clipped || Math.Abs(v) > Int16.MaxValue * 0.9;
+                                    wav.Write(v);
                                 }
                             }
                             break;
@@ -1694,7 +1707,8 @@ namespace Pachyderm_Acoustic
                             throw new Exception("invalid bitrate");
                     }
                     wav.Close();
-                    return true;
+
+                    return !clipped;
                 }
             }
         }

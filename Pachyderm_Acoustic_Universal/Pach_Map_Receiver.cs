@@ -1,8 +1,8 @@
-﻿//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL) by Arthur van der Harten 
+﻿//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL)   
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Arthur van der Harten 
+//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -337,8 +337,8 @@ namespace Pachyderm_Acoustic
                 {
                     hist = new double[(int)Math.Ceiling(Rec_List[0].SampleCT * 44.1)];
                     double E_Sum = 0;
-                    int T_Max = (int)Math.Floor((T_Bounds[0]) * 44.1);
-                    int T_Min = (int)Math.Floor((T_Bounds[1]) * 44.1);
+                    int T_Max = (int)Math.Floor((T_Bounds.Max()) * 44.1);
+                    int T_Min = (int)Math.Floor((T_Bounds.Min()) * 44.1);
 
                     int zero = 0;
                     if (ZeroAtDirect)
@@ -451,8 +451,8 @@ namespace Pachyderm_Acoustic
         {
             //T in ms.
             //Calculate SPL values...
-            int T_Max = (int)Math.Min(Rec_List[SrcID[0]].SampleCT, Math.Floor((T_Bounds[0])));
-            int T_Min = (int)Math.Floor((T_Bounds[1]));
+            int T_Max = (int)Math.Min(Rec_List[SrcID[0]].SampleCT, Math.Floor((T_Bounds.Max())));
+            int T_Min = (int)Math.Floor((T_Bounds.Min()));
             double[] SPL_Values = new double[Rec_List[0].Rec_List.Length];
 
             double[] AFactors = new double[8] { Math.Pow(10, (-26.2 / 10)), Math.Pow(10, (-16.1 / 10)), Math.Pow(10, (-8.6 / 10)), Math.Pow(10, (-3.2 / 10)), 1, Math.Pow(10, (1.2 / 10)), Math.Pow(10, (1 / 10)), Math.Pow(10, (-1.1 / 10)) };
@@ -528,8 +528,8 @@ namespace Pachyderm_Acoustic
         {
             //T in ms.
             //Calculate SPL values...
-            int T_Max = (int)Math.Floor((T_Bounds[0]));// / (double)ms_per_bin);
-            int T_Min = (int)Math.Floor((T_Bounds[1]));// / (double)ms_per_bin);
+            int T_Max = (int)Math.Floor((T_Bounds.Max()));// / (double)ms_per_bin);
+            int T_Min = (int)Math.Floor((T_Bounds.Min()));// / (double)ms_per_bin);
             Vector[] dir = new Vector[Rec_List[0].Rec_List.Length];
 
             for (int i = 0; i < Rec_List[0].Rec_List.Length; i++)
