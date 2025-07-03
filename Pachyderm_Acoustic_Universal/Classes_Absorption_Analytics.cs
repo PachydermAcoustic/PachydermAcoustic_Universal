@@ -52,7 +52,7 @@ namespace Pachyderm_Acoustic
             public ABS_Layer()
             { }
 
-            public static ABS_Layer CreateBiot(bool rigid, double depth_in, double density_in, double YoungsModulus_in, double PoissonsRatio_in, double SpeedOfSound_In, double tortuosity_in, double flow_resistivity_in, double porosity_in, double Viscous_Characteristic_Length, double Thermal_Permeability, double Embodied_Carbon, string name = "Unknown_Porous")
+            public static ABS_Layer CreateBiot(bool rigid, double depth_in, double density_in, double YoungsModulus_in, double PoissonsRatio_in, double tortuosity_in, double flow_resistivity_in, double porosity_in, double Viscous_Characteristic_Length, double Thermal_Permeability, double Embodied_Carbon, string name = "Unknown_Porous")
             {
                 ABS_Layer Layer = new ABS_Layer();
                 if (rigid) Layer.T = LayerType.BiotPorousAbsorber_Rigid;
@@ -63,7 +63,6 @@ namespace Pachyderm_Acoustic
                 Layer.density = density_in;
                 Layer.YoungsModulus = YoungsModulus_in;
                 Layer.PoissonsRatio = PoissonsRatio_in;
-                Layer.SpeedOfSound = SpeedOfSound_In;
                 Layer.tortuosity = tortuosity_in;
                 Layer.Flow_Resist = flow_resistivity_in;
                 Layer.porosity = porosity_in;
@@ -243,9 +242,9 @@ namespace Pachyderm_Acoustic
                     case LayerType.SolidPlate:
                         return string.Format("11:{0}:{1}:{2}:{3}:{4}:{5}", depth, density, YoungsModulus, PoissonsRatio, Embodied_Carbon, Material_Name);
                     case LayerType.BiotPorousAbsorber_Limp:
-                        return string.Format("12:false:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10}:{11}", depth, density, YoungsModulus, PoissonsRatio, SpeedOfSound, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, Material_Name);
+                        return string.Format("12:false:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10}", depth, density, YoungsModulus, PoissonsRatio, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, Material_Name);
                     case LayerType.BiotPorousAbsorber_Rigid:
-                        return string.Format("12:true:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10}:{11}", depth, density, YoungsModulus, PoissonsRatio, SpeedOfSound, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, Material_Name);
+                        return string.Format("12:true:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10}", depth, density, YoungsModulus, PoissonsRatio, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, Material_Name);
                     default:
                         throw new Exception("Unknown Layer Type");
                 }
@@ -294,7 +293,7 @@ namespace Pachyderm_Acoustic
                         return ABS_Layer.CreateSolid(double.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), double.Parse(elements[5]), elements[6]);
                     case "12":
                         if (elements.Length == 12) Array.Resize(ref elements, elements.Length + 1);
-                        return ABS_Layer.CreateBiot(bool.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), double.Parse(elements[5]), double.Parse(elements[6]), double.Parse(elements[7]), double.Parse(elements[8]), double.Parse(elements[9]), double.Parse(elements[10]), double.Parse(elements[11]), double.Parse(elements[12]), elements[13]);
+                        return ABS_Layer.CreateBiot(bool.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), double.Parse(elements[5]), double.Parse(elements[6]), double.Parse(elements[7]), double.Parse(elements[8]), double.Parse(elements[9]), double.Parse(elements[10]), double.Parse(elements[11]), elements[12]);
                     default:
                         throw new Exception("Unknown Layer Type");
                 }
@@ -3443,15 +3442,16 @@ namespace Pachyderm_Acoustic
                                 //K0 = Km;
                                 break;
                             case ABS_Layer.LayerType.SolidPlate:
-                                double LameL = Solids.Lame_Lambda(Layer_i.YoungsModulus, Layer_i.PoissonsRatio);
-                                double LameMu = Solids.Lame_Mu(Layer_i.YoungsModulus, Layer_i.PoissonsRatio);
+                                double LameMu = Biot_Porous_Absorbers.Shear_Modulus(Layer_i.YoungsModulus, Layer_i.PoissonsRatio);
+                                double LameL = Layer_i.YoungsModulus * Layer_i.PoissonsRatio / ((1 + Layer_i.PoissonsRatio) * (1 - 2 * Layer_i.PoissonsRatio));
+                                //double LameL = Solids.Lame_Lambda(Layer_i.YoungsModulus, Layer_i.PoissonsRatio);
+                                //double LameMu =  Solids.Lame_Mu(Layer_i.YoungsModulus, Layer_i.PoissonsRatio);
                                 Complex[] Ks = Solids.WaveNumber(fr, Layer_i.density, LameL, LameMu);
                                 for (int f = 0; f < 4096; f++)
                                 {
                                     Complex Ksintheta = kxi[a][f] / Ks[f];
                                     kzi[a][f] = Complex.Sqrt(Ks[f] * Ks[f] * (1 - Ksintheta * Ksintheta));
-                                    //tn[a][f] =  Explicit_TMM.Solid_Matrix(K_Air[f], kxi[a][f], Layer_i.depth, fr[f], Layer_i.density, LameMu, LameL);
-                                    tn[a][f] = Explicit_TMM.Solid_Matrix(kxi[a][f], Layer_i.depth, fr[f], Layer_i.density, Layer_i.YoungsModulus, Layer_i.PoissonsRatio); //Ks[f] * kxi[a][f] / K_Air[f]
+                                    tn[a][f] = Explicit_TMM.Solid_Matrix(kxi[a][f], Layer_i.depth, fr[f], Layer_i.density, Layer_i.YoungsModulus, Layer_i.PoissonsRatio);
                                 }
                                 //K0 = Ks;
                                 break;
@@ -3488,7 +3488,6 @@ namespace Pachyderm_Acoustic
 
                 SparseMatrix[] I = new SparseMatrix[LayerList[clusterid].Count];
                 SparseMatrix[] J = new SparseMatrix[LayerList[clusterid].Count];
-                //T.Reverse();
 
                 for (int i = 0; i < T.Count; i++)
                 {
@@ -3526,12 +3525,14 @@ namespace Pachyderm_Acoustic
                         else if (T[i - 1][0][0].RowCount == 6)
                         {
                             //Biot Porous absorbers
-                            I[i] = Explicit_TMM.Interfacepf_Porous(LayerList[clusterid][LayerList.Count - i].porosity) as SparseMatrix;
-                            J[i] = Explicit_TMM.Interfacepf_Fluid(LayerList[clusterid][LayerList.Count - i].porosity);
+                            //I[i] = Explicit_TMM.Interfacepf_Porous(LayerList[clusterid][LayerList.Count - i].porosity);
+                            //J[i] = Explicit_TMM.Interfacepf_Fluid(LayerList[clusterid][LayerList.Count - i].porosity);
+                            I[i] = Explicit_TMM.Interfacepf_Porous(LayerList[clusterid][i].porosity);
+                            J[i] = Explicit_TMM.Interfacepf_Fluid(LayerList[clusterid][i].porosity);
                         }
                         else
                         {
-                            //Solid Layer55
+                            //Solid Layer
                             I[i] = Explicit_TMM.InterfaceSF_Solid();
                             J[i] = Explicit_TMM.InterfaceSF_Fluid();
                         }
@@ -5652,6 +5653,107 @@ namespace Pachyderm_Acoustic
 
         public static class Solids
         {
+
+            public enum MaterialType
+            {
+                Metal,
+                Wood,
+                GypsumsAndMinerals,
+                Polymer,
+                Paper,
+                Glass,
+                Unknown
+            }
+
+                public static MaterialType ClassifyMaterial(double Youngs_Modulus, double Poisson_Ratio, double density)
+                {
+                    // Convert any GPa values to Pa for consistent comparison
+                    double E = Youngs_Modulus / 1e9;
+
+                    // Metals (steel, aluminum, etc.)
+                    if (E > 50 && density > 2000 && Poisson_Ratio >= 0.25 && Poisson_Ratio <= 0.35)
+                        return MaterialType.Metal;
+
+                    // Glass and ceramics
+                    if (E > 50 && density >= 2000 && density <= 3000 && Poisson_Ratio >= 0.2 && Poisson_Ratio <= 0.3)
+                        return MaterialType.Glass;
+
+                    // Wood-based products
+                    if (E >= 5 && E <= 15 && density >= 500 && density <= 800 && Poisson_Ratio >= 0.2 && Poisson_Ratio <= 0.35)
+                        return MaterialType.Wood;
+
+                    // Gypsum and mineral boards
+                    if (E >= .5 && E <= 10 && density >= 700 && density <= 1500 && Poisson_Ratio >= 0.2 && Poisson_Ratio <= 0.3)
+                        return MaterialType.GypsumsAndMinerals;
+
+                    // Polymers (vinyl, plastics, MLV)
+                    if (E <= 5 && density >= 900 && density <= 2000 && Poisson_Ratio >= 0.3 && Poisson_Ratio <= 0.48)
+                        return MaterialType.Polymer;
+
+                    // Paper and fibrous materials
+                    if (E < 1 && density < 600)
+                        return MaterialType.Paper;
+
+                    // Couldn't classify - use fallback approach
+                    return MaterialType.Unknown;
+                }
+
+            /// <summary>
+            /// Gets complex Lamé parameters with appropriate material-specific damping
+            /// </summary>
+            public static (Complex Lambda, Complex Mu) ComplexLameParameters(double Youngs_Modulus, double Poisson_Ratio, double density, double freq, MaterialType? materialType = null)
+            {
+                // Determine material type if not provided
+                materialType ??= ClassifyMaterial(Youngs_Modulus, Poisson_Ratio, density);
+
+                // Calculate base Lamé parameters
+                double lambda = Solids.Lame_Lambda(Youngs_Modulus, Poisson_Ratio);
+                double mu = Solids.Lame_Mu(Youngs_Modulus, Poisson_Ratio);
+
+                // Material-specific damping parameters
+                double baseDamping, freqExponent;
+
+                switch (materialType)
+                {
+                    case MaterialType.Metal:
+                        baseDamping = 0.002;
+                        freqExponent = 0.07;
+                        break;
+                    case MaterialType.Glass:
+                        baseDamping = 0.001;
+                        freqExponent = 0.05;
+                        break;
+                    case MaterialType.Wood:
+                        baseDamping = 0.02 + 0.01 * Math.Min(1, Youngs_Modulus / 10.0); // Higher E = stiffer wood = less damping
+                        freqExponent = 0.20;
+                        break;
+                    case MaterialType.GypsumsAndMinerals:
+                        baseDamping = 0.015;
+                        freqExponent = 0.15;
+                        break;
+                    case MaterialType.Polymer:
+                        // Lower E = more flexible polymer = higher damping
+                        baseDamping = 0.05 + 0.1 * Math.Max(0, 1 - Youngs_Modulus / 5.0);
+                        freqExponent = 0.3;
+                        break;
+                    case MaterialType.Paper:
+                        baseDamping = 0.15;
+                        freqExponent = 0.25;
+                        break;
+                    default: // Unknown material - fall back to density/stiffness-based approach
+                        baseDamping = Youngs_Modulus > 10.0 && density > 2000 ? 0.01 : (Youngs_Modulus > 1.0 ? 0.05 : 0.1);
+                        freqExponent = 0.15;
+                        break;
+                }
+
+                // Calculate frequency-dependent loss factor
+                double lossFactor = baseDamping * Math.Max(0.01, Math.Min(Math.Pow(freq / 1000.0, freqExponent), 0.5));
+
+                // Apply damping to both Lamé parameters
+                return (new Complex(lambda, lambda * lossFactor),
+                        new Complex(mu, mu * lossFactor));
+            }
+
             public static double Lame_Lambda(double ModulusElasticity, double PoissonRatio)
             {
                 return ModulusElasticity * PoissonRatio / ((1 + PoissonRatio) * (1 - 2 * PoissonRatio));

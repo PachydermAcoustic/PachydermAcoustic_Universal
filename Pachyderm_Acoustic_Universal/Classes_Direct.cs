@@ -24,6 +24,7 @@ using System.Linq;
 using System.Threading;
 using Pachyderm_Acoustic.Utilities;
 using System.Text.RegularExpressions;
+using MathNet.Numerics;
 
 namespace Pachyderm_Acoustic
 {
@@ -725,9 +726,9 @@ namespace Pachyderm_Acoustic
         /// </summary>
         /// <param name="rec_id">Index of the receiver.</param>
         /// <param name="rnd">Random number, used to instantiate a ray.</param>
-        private void Check_Validity(int rec_id, int rnd, out double[] TransMod)
+        private void Check_Validity(int rec_id, int rnd, Point SrcOrigin, out double[] TransMod)
         {
-            Vector d = Receiver[rec_id] - Src.Origin;
+            Vector d = Receiver[rec_id] - SrcOrigin;
             double dist = d.Length();
             d.Normalize();
             Ray R = new Ray(Src.Origin, d, 0, rnd);
@@ -765,7 +766,7 @@ namespace Pachyderm_Acoustic
         public void Calculate()
         {
             if (Src.Type() == "Line Source")
-            { 
+            {
                 Line_Calculation();
             }
             else if (Src.Type() == "Surface Sound")
@@ -774,6 +775,9 @@ namespace Pachyderm_Acoustic
             }
             else
             {
+                //Point source or cluster source
+                List<Environment.Source> srcs = Src.Type() == "Cluster" ? (Src as SourceCluster).Sources : new List<Environment.Source> { Src };
+
                 Random rnd = new Random();
                 Validity = new bool[Receiver.Count];
                 Io = new double[Receiver.Count][][];
@@ -781,65 +785,85 @@ namespace Pachyderm_Acoustic
 
                 System.Threading.Tasks.Parallel.For(0, Receiver.Count, (i) =>
                 {
-                     Io[i] = new double[8][];
-                     Dir_Rec_Pos[i] = new float[8][][];
-                     Dir_Rec_Neg[i] = new float[8][][];
-                     for (int oct = 0; oct < 8; oct++)
-                     {
-                         Io[i][oct] = new double[1];
-                         Dir_Rec_Pos[i][oct] = new float[1][];
-                         Dir_Rec_Neg[i][oct] = new float[1][];
-                         Dir_Rec_Pos[i][oct][0] = new float[3];
-                         Dir_Rec_Neg[i][oct][0] = new float[3];
-                     }
-
-                     double[] transmod;
-                     Check_Validity(i, rnd.Next(), out transmod);
-
-                     Rho_C[i] = Room.Rho_C(Receiver[i]);
-
-                    Vector dir = Receiver[i] - Src.Origin;
-                    double Length = dir.Length();
-
-                     double[] Power = Src.DirPower(0, rnd.Next(), dir);
-
-                    if (!Validity[i] && Screen_atten)
+                    double min = double.PositiveInfinity, max = 0;
+                    for(int s = 0; s < srcs.Count; s++)
                     {
-                        Hare.Geometry.Point[] path = new Point[0];
-                        double dist = 0;
-                        double[] Atten = Process_Screen_Attenuation(Src.Origin, i, ref path, ref dist);
+                        Vector dir = Receiver[i] - srcs[s].Origin;
+                        double distance = dir.Length();
+                        if (distance < min) min = distance;
+                        if (distance > max) max = distance;
+                    }
+                    Time_Pt[i] = min / C_Sound + Delay_ms;
+                    Io[i] = new double[8][];
+                    Dir_Rec_Pos[i] = new float[8][][];
+                    Dir_Rec_Neg[i] = new float[8][][];
+                    for (int oct = 0; oct < 8; oct++)
+                    {
+                        int samples = Math.Max((int)Math.Ceiling((max - min) * SampleFreq / C_Sound), 1);
+                        Io[i][oct] = new double[samples];
+                        Dir_Rec_Pos[i][oct] = new float[samples][];
+                        Dir_Rec_Neg[i][oct] = new float[samples][];
+                        for (int j = 0; j < samples; j++)
+                        {
+                            Dir_Rec_Pos[i][oct][j] = new float[3];
+                            Dir_Rec_Neg[i][oct][j] = new float[3];
+                        }
+                    }
+
+                    for (int s = 0; s < srcs.Count; s++)
+                    {
+                        double[] transmod;
+                        Check_Validity(i, rnd.Next(), srcs[s].Origin, out transmod);
+
+                        Rho_C[i] = Room.Rho_C(Receiver[i]);
+
+                        Vector dir = Receiver[i] - srcs[s].Origin;
+                        double Length = dir.Length();
+
+                        double[] Power = srcs[s].DirPower(0, rnd.Next(), dir);
+
+                        int t = 0;
+
+                        if (!Validity[i] && Screen_atten)
+                        {
+                            Hare.Geometry.Point[] path = new Point[0];
+                            double dist = 0;
+                            double[] Atten = Process_Screen_Attenuation(srcs[s].Origin, i, ref path, ref dist);
+
+                            t = (int)Math.Floor((dist / C_Sound - Time_Pt[i]) * SampleFreq);
+
+                            for (int oct = 0; oct < 8; oct++)
+                            {
+                                Io[i][oct][t] = Power[oct] * Atten[oct] * transmod[oct];
+                                Io[i][oct][t] *= Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist);
+                            }
+                            dir = path[2] - path[1];
+                            dir.Normalize();
+                        }
+                        else
+                        {
+                            t = (int)Math.Floor((Length / C_Sound - Time_Pt[i]) * SampleFreq);
+
+                            Io[i][0][t] += Power[0] * Math.Pow(10, -.1 * Room.Attenuation(0)[0] * Length) * transmod[0] / (4 * Math.PI * Length * Length);
+                            Io[i][1][t] += Power[1] * Math.Pow(10, -.1 * Room.Attenuation(0)[1] * Length) * transmod[1] / (4 * Math.PI * Length * Length);
+                            Io[i][2][t] += Power[2] * Math.Pow(10, -.1 * Room.Attenuation(0)[2] * Length) * transmod[2] / (4 * Math.PI * Length * Length);
+                            Io[i][3][t] += Power[3] * Math.Pow(10, -.1 * Room.Attenuation(0)[3] * Length) * transmod[3] / (4 * Math.PI * Length * Length);
+                            Io[i][4][t] += Power[4] * Math.Pow(10, -.1 * Room.Attenuation(0)[4] * Length) * transmod[4] / (4 * Math.PI * Length * Length);
+                            Io[i][5][t] += Power[5] * Math.Pow(10, -.1 * Room.Attenuation(0)[5] * Length) * transmod[5] / (4 * Math.PI * Length * Length);
+                            Io[i][6][t] += Power[6] * Math.Pow(10, -.1 * Room.Attenuation(0)[6] * Length) * transmod[6] / (4 * Math.PI * Length * Length);
+                            Io[i][7][t] += Power[7] * Math.Pow(10, -.1 * Room.Attenuation(0)[7] * Length) * transmod[7] / (4 * Math.PI * Length * Length);
+                        }
 
                         for (int oct = 0; oct < 8; oct++)
                         {
-                            Io[i][oct][0] = Power[oct] * Atten[oct] * transmod[oct];
-                            Io[i][oct][0] *= Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist);
+                            Vector V = dir * Io[i][oct][t];
+                            if (-V.dx > 0) Dir_Rec_Pos[i][oct][t][0] -= (float)V.dx; else Dir_Rec_Neg[i][oct][0][0] -= (float)V.dx;
+                            if (-V.dy > 0) Dir_Rec_Pos[i][oct][t][1] -= (float)V.dy; else Dir_Rec_Neg[i][oct][0][1] -= (float)V.dy;
+                            if (-V.dz > 0) Dir_Rec_Pos[i][oct][t][2] -= (float)V.dz; else Dir_Rec_Neg[i][oct][0][2] -= (float)V.dz;
                         }
-                        dir = path[2] - path[1];
-                        dir.Normalize();
-                    }
-                    else
-                    {
-                        Io[i][0][0] = Power[0] * Math.Pow(10, -.1 * Room.Attenuation(0)[0] * Length) * transmod[0] / (4 * Math.PI * Length * Length);
-                        Io[i][1][0] = Power[1] * Math.Pow(10, -.1 * Room.Attenuation(0)[1] * Length) * transmod[1] / (4 * Math.PI * Length * Length);
-                        Io[i][2][0] = Power[2] * Math.Pow(10, -.1 * Room.Attenuation(0)[2] * Length) * transmod[2] / (4 * Math.PI * Length * Length);
-                        Io[i][3][0] = Power[3] * Math.Pow(10, -.1 * Room.Attenuation(0)[3] * Length) * transmod[3] / (4 * Math.PI * Length * Length);
-                        Io[i][4][0] = Power[4] * Math.Pow(10, -.1 * Room.Attenuation(0)[4] * Length) * transmod[4] / (4 * Math.PI * Length * Length);
-                        Io[i][5][0] = Power[5] * Math.Pow(10, -.1 * Room.Attenuation(0)[5] * Length) * transmod[5] / (4 * Math.PI * Length * Length);
-                        Io[i][6][0] = Power[6] * Math.Pow(10, -.1 * Room.Attenuation(0)[6] * Length) * transmod[6] / (4 * Math.PI * Length * Length);
-                        Io[i][7][0] = Power[7] * Math.Pow(10, -.1 * Room.Attenuation(0)[7] * Length) * transmod[7] / (4 * Math.PI * Length * Length);
-                    }
-                     
-                    float time = (float)(Length / C_Sound);
 
-                    for (int oct = 0; oct < 8; oct++)
-                    {
-                        Vector V = dir * Io[i][oct][0];
-                        if (-V.dx > 0) Dir_Rec_Pos[i][oct][0][0] -= (float)V.dx; else Dir_Rec_Neg[i][oct][0][0] -= (float)V.dx;
-                        if (-V.dy > 0) Dir_Rec_Pos[i][oct][0][1] -= (float)V.dy; else Dir_Rec_Neg[i][oct][0][1] -= (float)V.dy;
-                        if (-V.dz > 0) Dir_Rec_Pos[i][oct][0][2] -= (float)V.dz; else Dir_Rec_Neg[i][oct][0][2] -= (float)V.dz;
+                        //Time_Pt[i] = Length / C_Sound + Delay_ms;
                     }
-
-                    Time_Pt[i] = Length / C_Sound + Delay_ms;
                 });
             }
         }
@@ -1036,7 +1060,7 @@ namespace Pachyderm_Acoustic
         /// <returns></returns>
         public double[] EnergySum(int Rec_ID)
         {
-            double[] E = new double[Io[Rec_ID].Length];
+            double[] E = new double[Io[Rec_ID][0].Length];
             for(int i = 0; i < Io[Rec_ID][0].Length; i++)
             {
                 E[i] = Io[Rec_ID][0][i] + Io[Rec_ID][1][i] + Io[Rec_ID][2][i] + Io[Rec_ID][3][i] + Io[Rec_ID][4][i] + Io[Rec_ID][5][i] + Io[Rec_ID][6][i] + Io[Rec_ID][7][i];

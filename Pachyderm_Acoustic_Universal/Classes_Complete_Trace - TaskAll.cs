@@ -296,7 +296,7 @@ namespace Pachyderm_Acoustic
                 if (conclude)
                     break;
 
-                for (int P_I = 0; P_I < 80; P_I++)
+                for (int P_I = 0; P_I < Source.Revolution_Period(); P_I++)
                 {    
                     Calc_Params T = new Calc_Params(Room, P_I, P_I + 1, P_I, rnd.Next());
                     ValueTask t = new ValueTask(Task.Run(async () =>
@@ -342,7 +342,7 @@ namespace Pachyderm_Acoustic
             BroadRay R;
 
             R = Source.Directions(ThreadID, ref Rnd, _octaves);
-            //for (int oct = 0; oct < 8; oct++) R.Energy[oct] /= Raycount;
+
             lock (initlock) { for (int j = 0; j < 8; j++) _eInit += R.Energy[j]; }
             Threshold_Power_1 = R.Energy[h_oct] * 1E-2; //1E-3
             foreach (int o in _octaves)
@@ -773,7 +773,7 @@ namespace Pachyderm_Acoustic
                 //    Ray_CT += _currentRay;
                 //    subrays += _rayTotal[i];
                 //}
-                return string.Format("Revolution {0} - Ray {1} : sub {2} - Convergence not yet reached...", (int)Math.Ceiling((double)_currentRay[0] / 80), _currentRay[0], _rayTotal[0]);
+                return string.Format("Revolution {0} - Ray {1} : sub {2} - Convergence not yet reached...", (int)Math.Ceiling((double)_currentRay[0] / Source.Revolution_Period()), _currentRay[0], _rayTotal[0]);
             }
         }
 

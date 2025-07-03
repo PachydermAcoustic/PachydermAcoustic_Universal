@@ -18,8 +18,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.Design.Serialization;
 using System.Linq;
-using System.Threading;
 using Hare.Geometry;
 using Pachyderm_Acoustic.Utilities;
 
@@ -194,6 +194,11 @@ namespace Pachyderm_Acoustic
                 return SPL.Clone() as double[];
             }
 
+            public virtual int Revolution_Period()
+            {
+                return 80; //Default value for the revolution period - rays per revolution.
+            }
+
             /// <summary>
             /// The list of directions. For stochastic calculations only.
             /// </summary>
@@ -221,6 +226,9 @@ namespace Pachyderm_Acoustic
             {
                 return S_ID;
             }
+
+            public virtual void Lighten()
+            { }
         }
 
         /// <summary>
@@ -265,7 +273,7 @@ namespace Pachyderm_Acoustic
         {
             protected Topology T;
             int Fnum = 0;
-            protected int rayct = 0;
+            protected int rayct = -1;
             
             public GeodesicSource(double[] power_in_db, Point Source, int ID, bool Third_Octave)
                 :base(power_in_db, Source, ID, Third_Octave)
@@ -368,13 +376,14 @@ namespace Pachyderm_Acoustic
 
             public override BroadRay Directions(int thread, ref Random random)
             {
-                Hare.Geometry.Point Pt = T.Polys[rayct%T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
-                Hare.Geometry.Vector P = new Vector(Pt.x, Pt.y, Pt.z);
-                P.Normalize();
-                rayct++;
-
-                //return new BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID()); //Provides divided Power[stochastic]
-                return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID()); //Provides divided Power[stochastic]
+                lock (ctlock)
+                {
+                    rayct++;
+                    Hare.Geometry.Point Pt = T.Polys[rayct % T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
+                    Hare.Geometry.Vector P = new Vector(Pt.x, Pt.y, Pt.z);
+                    P.Normalize();
+                    return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, DirPower(thread, random.Next(), P), 0, Source_ID()); //Provides divided Power[stochastic]
+                }
             }
 
             object ctlock = new object();
@@ -383,8 +392,8 @@ namespace Pachyderm_Acoustic
                 Hare.Geometry.Point Pt;
                 lock (ctlock)
                 {
-                    Pt = T.Polys[rayct % T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
                     rayct++;
+                    Pt = T.Polys[rayct % T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
                 }
                 Hare.Geometry.Vector P = new Vector(Pt.x, Pt.y, Pt.z);
                 P.Normalize();
@@ -397,11 +406,13 @@ namespace Pachyderm_Acoustic
         [Serializable]
         public class DirectionalSource : GeodesicSource
         {
+            Balloon _S;
             Hare.Geometry.Voxel_Grid Balloon;
 
             public DirectionalSource(Balloon S, double[] power_in_db, Point Source, int[] Bands, int ID, bool Third_Oct)
                 :base(power_in_db, Source, ID, Third_Oct)
             {
+                _S = S;
                 for (int oct = 0; oct < 8; oct++)
                 {
                     if (oct < Bands[0] || oct > Bands[1])
@@ -412,7 +423,7 @@ namespace Pachyderm_Acoustic
                 }
 
                 type = "Directional";
-                Balloon = new Voxel_Grid(S.Balloons(new double[8] {120,120,120,120,120,120,120,120}), 1);
+                //Balloon = new Voxel_Grid(S.Balloons(new double[8] {120,120,120,120,120,120,120,120}), 1);
                 ///Testing///
                 //Utilities.PachTools.Plot_Hare_Topology(Balloon.Model[0]);
                 //Utilities.PachTools.Plot_Hare_Topology(Balloon.Model[1]);
@@ -434,6 +445,8 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public override BroadRay Directions(int thread, ref Random random)
             {
+                if (Balloon == null) Balloon = new Voxel_Grid(_S.Balloons(new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }), 1);
+
                 X_Event X = new X_Event();
 
                 double[] RayPower = new double[8];
@@ -470,6 +483,8 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public override double[] DirPower(int thread, int random, Vector DIR)
             {
+                if (Balloon == null) Balloon = new Voxel_Grid(_S.Balloons(new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }), 1);
+
                 X_Event X = new X_Event();
                 double[] RayPower = new double[8];
                 for (int oct = 0; oct < 8; oct++)
@@ -494,6 +509,12 @@ namespace Pachyderm_Acoustic
                 return H;
             }
 
+            public override void Lighten()
+            {
+                base.Lighten();
+                _S = null;
+                GC.Collect();
+            }
         }
 
         /// <summary>
@@ -627,15 +648,78 @@ namespace Pachyderm_Acoustic
             public override BroadRay Directions(int thread, ref Random random)
             {
                 Vector d = Dir_Random(ref random);
-                //return new BroadRay(Origin.x, Origin.y, Origin.z, d.dx, d.dy, d.dz, random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID());
                 return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, d.dx, d.dy, d.dz, random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID());
             }
 
             public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
                 Vector d = Dir_Random(ref random);
-                //return new BroadRay(Origin.x, Origin.y, Origin.z, d.dx, d.dy, d.dy, random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID(), Octaves);
                 return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, d.dx, d.dy, d.dy, random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID(), Octaves);
+            }
+        }
+
+        public class SourceCluster: Source
+        {
+            public List<Source> Sources = new List<Source>();
+            public bool Third_Octave = false;
+            int revolution;
+            protected int rayct;
+
+            public SourceCluster(List<Source> sources, int id, bool third_octave = false)
+                :base(new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 }, new Point(0,0,0), id, third_octave)
+            {
+                Third_Octave = third_octave;
+                Sources = sources;
+                for(int i = 0; i < Sources.Count; i++)
+                {
+                    for (int o = 0; o < 8; o++) this.SPL[o] = Math.Max(Sources[i].SWL()[o], SPL[o]);
+                    for (int o = 0; o < 8; o++) this.SourcePower[o] = Math.Max(Sources[i].SoundPower[o], SourcePower[o]);
+                    revolution += Sources[i].Revolution_Period();
+                }
+                this.type = "Cluster";
+            }
+
+            public override double[] DirPower(int threadid, int random, Vector Direction)
+            {
+                throw new InvalidOperationException();
+            }  
+
+            public override double[] DirPressure(int threadid, int random, Vector Direction)
+            {
+                throw new InvalidOperationException();
+            }
+
+            public override void Lighten()
+            {
+                foreach (Source S in Sources)
+                {
+                    S.Lighten();
+                }
+            }
+
+            public override BroadRay Directions(int thread, ref Random random)
+            {
+                rayct++;
+                return Sources[rayct%Sources.Count].Directions(thread, ref random);
+            }
+
+            public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
+            {
+                rayct++;
+                return Sources[rayct % Sources.Count].Directions(thread, ref random, Octaves);
+            }
+
+            public override void AppendPts(ref List<Point> SPT)
+            {
+                foreach (Source S in Sources)
+                {
+                    S.AppendPts(ref SPT);
+                }   
+            }
+
+            public override double[] Dir_Filter(int threadid, int random, Vector Direction, int sample_frequency, int length_starttofinish)
+            {
+                return base.Dir_Filter(threadid, random, Direction, sample_frequency, length_starttofinish);
             }
         }
     }

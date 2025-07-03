@@ -16,8 +16,10 @@
 //'License along with Pachyderm-Acoustic; if not, write to the Free Software 
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
 
+using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Complex;
 using System;
+using System.ComponentModel;
 using System.Numerics;
 
 namespace Pachyderm_Acoustic
@@ -271,31 +273,17 @@ namespace Pachyderm_Acoustic
 
             public static SparseMatrix Solid_Matrix(Complex kt, double h, double freq, double density, double Youngs_Modulus, double Poisson_Ratio)
             {
-                // Reference: Allard & Atalla "Propagation of Sound in Porous Media", 2nd ed.
-
+                // Reference: Allard & Atalla "Propagation of Sound in Porous Media", 2nd ed. with corrections and augmentations
                 h *= -1; // Maintain original sign convention
-
-                //Youngs_Modulus *= 1E9;
-                //Damping Factor
-                double dampingFactor = Youngs_Modulus >
-                // Hard materials (like concrete, steel) - low damping
-                10.0 && density > 2000? 0.01: 
-                // Medium hardness (like wood, plasterboard)
-                Youngs_Modulus > 1.0?
-                0.05:
-                // Soft materials (like insulation, carpet)
-                0.1;
-
-                dampingFactor *= Math.Max(0.01, Math.Min(Math.Pow(freq / 1000.0, 0.1),0.2));
 
                 // Calculate Lamé parameters from Young's modulus and Poisson's ratio
                 double w = Utilities.Numerics.PiX2 * freq;
-                Complex Shear_Modulus = Biot_Porous_Absorbers.Shear_Modulus(Youngs_Modulus, Poisson_Ratio) * new Complex(1, dampingFactor);
-                Complex Lambda = Youngs_Modulus * Poisson_Ratio / ((1 + Poisson_Ratio) * (1 - 2 * Poisson_Ratio)) * new Complex(1, dampingFactor);
+
+                (Complex Mu, Complex Lambda) = Solids.ComplexLameParameters(Youngs_Modulus, Poisson_Ratio, density, freq);
 
                 // Calculate wave numbers for longitudinal and transverse waves
-                Complex d21 = w * w * density / (Lambda + 2 * Shear_Modulus);
-                Complex d23 = w * w * density / Shear_Modulus;
+                Complex d21 = w * w * density / (Lambda + 2 * Mu);
+                Complex d23 = w * w * density / Mu;
 
                 Complex k13, k33;
 
@@ -332,11 +320,14 @@ namespace Pachyderm_Acoustic
 
                 // Create matrix D(h) at depth h according to Allard & Atalla
                 SparseMatrix Dh = new SparseMatrix(4, 4);
-                double k0 = w / 343.0;
-                Complex D1 = Lambda * (k0 * k0 + k13 * k13) + 2 * Shear_Modulus * k13 * k13;
-                Complex D2 = 2 * Shear_Modulus * k0;
+                //double k0 = w / 343.0;
+                //Allart and Atalla equation... likely incorrect.
+                //Complex D1 = Lambda * (k0 * k0 + k13 * k13) + 2 * Mu * k13 * k13;
+                //Complex D2 = 2 * Mu * k0;
+                Complex D1 = Lambda * (kt * kt + k13 * k13) + 2 * Mu * k13 * k13;
+                Complex D2 = 2 * Mu * kt;
 
-                // Fill according to equations in Allard & Atalla
+                //// Fill according to equations in Allard & Atalla
                 Dh[0, 0] = w * kt * cos_k13_h;                                 // u_x for longitudinal wave, first potential
                 Dh[0, 1] = -w * Complex.ImaginaryOne * kt * sin_k13_h;          // u_x for longitudinal wave, second potential
                 Dh[0, 2] = w * Complex.ImaginaryOne * k33 * sin_k33_h;        // u_x for transverse wave, first potential
@@ -357,155 +348,55 @@ namespace Pachyderm_Acoustic
                 Dh[3, 2] = D1 * cos_k33_h; // σ_zz for transverse wave, first potential
                 Dh[3, 3] = -Complex.ImaginaryOne * D1 * sin_k33_h; // σ_zz for transverse wave, second potential
 
-                SparseMatrix D0_Inverse = new SparseMatrix(4, 4);
-                D0_Inverse[0, 0] = 2 * kt / (w * d23);
-                D0_Inverse[0, 2] = -1 / (Shear_Modulus * d23);
-                D0_Inverse[1, 1] = (k33 * k33 - kt * kt) / (w * k13 * d23);
-                D0_Inverse[1, 3] = -kt / (Shear_Modulus * k13 * d23);
-                D0_Inverse[2, 1] = kt / (w * d23);
-                D0_Inverse[2, 3] = 1 / (Shear_Modulus * d23);
-                D0_Inverse[3, 0] = (k33 * k33 - kt * kt) / (w * k33 * d23);
-                D0_Inverse[3, 2] = -kt / (Shear_Modulus * k33 * d23);
+                //This is what is in the Allard Atalla book for an explicit version of the inverted D(0) matrix, but it leads to negative absorption values.
+                //SparseMatrix D0_Inverse = new SparseMatrix(4, 4);
+                //D0_Inverse[0, 0] = 2 * kt / (w * d23);
+                //D0_Inverse[0, 2] = -1 / (Mu * d23);
+                //D0_Inverse[1, 1] = (k33 * k33 - kt * kt) / (w * k13 * d23);
+                //D0_Inverse[1, 3] = -kt / (Mu * k13 * d23);
+                //D0_Inverse[2, 1] = kt / (w * d23);
+                //D0_Inverse[2, 3] = 1 / (Mu * d23);
+                //D0_Inverse[3, 0] = (k33 * k33 - kt * kt) / (w * k33 * d23);
+                //D0_Inverse[3, 2] = -kt / (Mu * k33 * d23);
 
-                return D0_Inverse * Dh;
-            }
+                //return D0_Inverse * Dh;
 
-            //public static SparseMatrix Solid_Matrix(Complex kt, double h, double freq, double density, double Youngs_Modulus, double Poisson_Ratio)
-            //{
-            //    h *= -1;
+                //Instead, building the D(0) matrix and inverting seems to work better.
+                SparseMatrix D0 = new SparseMatrix(4, 4);
+                // Build D0 matrix at z=0
+                D0[0, 0] = w * kt;                      // w * kt * cos(0)
+                D0[0, 1] = 0;                          // -w * i * kt * sin(0) = 0
+                D0[0, 2] = 0;                          // w * i * k33 * sin(0) = 0
+                D0[0, 3] = -w * k33;                   // -w * k33 * cos(0)
 
-            //    double Shear_Modulus = Biot_Porous_Absorbers.Shear_Modulus(Youngs_Modulus, Poisson_Ratio);
+                D0[1, 0] = 0;                          // -w * i * k13 * sin(0) = 0
+                D0[1, 1] = w * k13;                    // w * k13 * cos(0)
+                D0[1, 2] = w * kt;                     // w * kt * cos(0)
+                D0[1, 3] = 0;                          // -w * i * kt * sin(0) = 0
 
-            //    double w = Utilities.Numerics.PiX2 * freq;
+                D0[2, 0] = -D1;                        // -D1 * cos(0)
+                D0[2, 1] = 0;                          // i * D1 * sin(0) = 0
+                D0[2, 2] = 0;                          // i * D2 * k33 * sin(0) = 0
+                D0[2, 3] = -D2 * k33;                  // -D2 * k33 * cos(0)
 
-            //    Complex kcis2 = w * w * density / Shear_Modulus;
-            //    Complex kcomp2 = kcis2 * ((1 - 2 * Poisson_Ratio) / (2 - 2 * Poisson_Ratio));
+                D0[3, 0] = 0;                          // i * D2 * k13 * sin(0) = 0
+                D0[3, 1] = -D2 * k13;                  // -D2 * k13 * cos(0)
+                D0[3, 2] = D1;                         // D1 * cos(0)
+                D0[3, 3] = 0;                          // -i * D1 * sin(0) = 0
 
-            //    Complex kphi3 = Complex.Sqrt(kcomp2 - kt * kt);
-            //    Complex kpsi3 = Complex.Sqrt(kcis2 - kt * kt);
-
-            //    Complex cosk13h = Complex.Cos(kphi3 * h);
-            //    Complex sink13h = Complex.Sin(kphi3 * h);
-            //    Complex cosk33h = Complex.Cos(kpsi3 * h);
-            //    Complex sink33h = Complex.Sin(kpsi3 * h);
-            //    Complex KK = kphi3 * kphi3 + (Poisson_Ratio / (1-2*Poisson_Ratio))*(kt*kt + kphi3*kphi3);
-
-            //    SparseMatrix MH = new SparseMatrix(4, 4);
-            //    MH[0, 0] = -Complex.ImaginaryOne * kt * cosk13h;
-            //    MH[0, 1] = - kt * sink13h;
-            //    MH[0, 2] = -kpsi3 * sink33h;
-            //    MH[0, 3] = -Complex.ImaginaryOne * kpsi3 * cosk33h;
-            //    MH[1, 0] = -kphi3 * sink13h;
-            //    MH[1, 1] = -Complex.ImaginaryOne * kphi3 * cosk13h;
-            //    MH[1, 2] = Complex.ImaginaryOne * kt * cosk33h;
-            //    MH[1, 3] = kt * sink33h;
-            //    MH[2, 0] = -2 * Shear_Modulus * cosk13h * KK / (Complex.ImaginaryOne * w);
-            //    MH[2, 1] = 2 * Shear_Modulus * sink13h * KK / (Complex.ImaginaryOne * w);
-            //    MH[2, 2] = -(2 * Shear_Modulus * kt * kpsi3 * sink33h / w);
-            //    MH[2, 3] = -Complex.ImaginaryOne * 2 * Shear_Modulus * kt * kpsi3 * cosk33h / w;
-            //    MH[3, 0] = 2 * Shear_Modulus * kt * kphi3 * sink13h / w;
-            //    MH[3, 1] = Complex.ImaginaryOne * 2 * Shear_Modulus * kt * kphi3 * cosk13h / w;
-            //    MH[3, 2] = -Complex.ImaginaryOne * Shear_Modulus * cosk33h * (kt * kt - kpsi3 * kpsi3) / w;
-            //    MH[3, 3] = -Shear_Modulus * sink33h * (kt * kt - kpsi3 * kpsi3) / w;
-
-            //    SparseMatrix M0 = new SparseMatrix(4, 4);
-            //    M0[0, 0] = -Complex.ImaginaryOne * kt;
-            //    M0[0, 3] = -Complex.ImaginaryOne * kpsi3;
-            //    M0[1, 1] = -Complex.ImaginaryOne * kphi3;
-            //    M0[1, 2] = Complex.ImaginaryOne * kt;
-            //    M0[2, 0] = -2 * Shear_Modulus * KK / (Complex.ImaginaryOne * w);
-            //    M0[2, 3] = -(Complex.ImaginaryOne * 2 * Shear_Modulus * kt * kpsi3 / w);
-            //    M0[3, 1] = Complex.ImaginaryOne * 2 * Shear_Modulus * kt * kphi3 / w;
-            //    M0[3, 2] = -Complex.ImaginaryOne * Shear_Modulus * (kt * kt - kpsi3 * kpsi3) / w;
-                
-            //    return M0 * (MH.Inverse() as SparseMatrix);
-            //}
-
-            public static SparseMatrix Solid_Matrix(Complex k0, Complex kt, double h, double freq, double density, double LameMu, double LameL)
-            {
-                h *= -1;
-                double w = Utilities.Numerics.PiX2 * freq;
-
-                //Complex rho11eff = density;
-                double Ks = LameL + 2 * LameMu / 3;//AbsorptionModels.Biot_Porous_Absorbers.BulkMod_Solid(YoungsModulus, PoissonRatio);
-                //Complex P = (Ks);
-
-                //Complex drho = R * rho11eff;
-                //Complex delta21 = delta * (drho - rtDELTA);
-                //Complex delta23 = (w * w / FrameShear) * ((rho11eff * rho22eff - rho12eff * rho12eff) / rho22eff);
-
-                
-                double delta21 = w * w * density;
-                //Complex k1 = Ks;
-                double delta23 = delta21 / LameMu;
-                delta21 /= (LameL + 2 * LameMu);
-                //double k1 = System.Math.Sqrt(delta21);
-                //Complex k1 = ksolid * kt / k0;
-                Complex k1 = kt;
-                //Complex k3 = Complex.Sqrt( - k1 * k1);
-                Complex k13 = Complex.Sqrt(delta21 - kt * kt);//kt
-                Complex k33 = Complex.Sqrt(delta23 - kt * kt);//kt
-                Complex D1 = LameL * (k0 * k0 + k13 * k13) + 2 * LameMu * k13 * k13;
-                //Complex D1 = LameMu * (k13 * k13 - k0 * k0); //ksolid could also be k_air, or k of the previous layer (not clear).
-                Complex D2 = 2 * LameMu * k0;
-
-                Complex cosk13h = Complex.Cos(k13 * h);
-                Complex sink13h = Complex.Sin(k13 * h);
-                Complex cosk33h = Complex.Cos(k33 * h);
-                Complex sink33h = Complex.Sin(k33 * h);
-                Complex wk1 = w * k1;
-                Complex wk13 = w * k13;
-                Complex wk33 = w * k33;
-                Complex D1k13 = D1 * k13;
-                Complex D1k33 = D1 * k33;
-                Complex D2k13 = D2 * k13;
-                Complex D2k33 = D2 * k33;
-
-                SparseMatrix MH = new SparseMatrix(4, 4);
-                MH[0, 0] = wk1 * cosk13h;
-                MH[0, 1] = -Complex.ImaginaryOne * wk1 * sink13h;
-                MH[0, 2] = Complex.ImaginaryOne * wk33 * sink33h;
-                MH[0, 3] = -wk33 * cosk33h;
-                MH[1, 0] = -Complex.ImaginaryOne * wk13 * sink13h;
-                MH[1, 1] = wk13 * cosk13h;
-                MH[1, 2] = wk1 * cosk33h;
-                MH[1, 3] = -Complex.ImaginaryOne * wk1 * sink33h;
-                MH[2, 0] = -D1 * cosk13h;
-                MH[2, 1] = Complex.ImaginaryOne * D1 * sink13h;
-                MH[2, 2] = Complex.ImaginaryOne * D2k33 * sink33h;
-                MH[2, 3] = -D2k33 * cosk33h;
-                MH[3, 0] = Complex.ImaginaryOne * D2k13 * sink13h;
-                MH[3, 1] = -D2k13 * cosk13h;
-                MH[3, 2] = D1 * cosk33h;
-                MH[3, 3] = -Complex.ImaginaryOne * D1 * sink33h;
-
-                SparseMatrix M0 = new SparseMatrix(4, 4);
-                //M0[0, 0] = 2 * k1 / (w * delta23);
-                //M0[0, 2] = -1 / (LameMu * delta23);
-                //M0[1, 1] = (k33 * k33 - k1 * k1) / (w * k13 * delta23);
-                //M0[1, 3] = -k1 / (LameMu * k13 * delta23);
-                //M0[2, 1] = k1 / (w * delta23);
-                //M0[2, 3] = 1 / (LameMu * delta23);
-                //M0[3, 0] = (k33 * k33 - k1 * k1) / (w * k33 * delta23);
-                //M0[3, 2] = -k1 / (LameMu * k33 * delta23);
-                M0[0, 0] = wk1;
-                //M0[0, 1] = -Complex.ImaginaryOne * wk1 * sink13h;
-                //M0[0, 2] = Complex.ImaginaryOne * wk33 * sink33h;
-                M0[0, 3] = -wk33;
-                //M0[1, 0] = -Complex.ImaginaryOne * wk13 * sink13h;
-                M0[1, 1] = wk13;
-                M0[1, 2] = wk1;
-                //M0[1, 3] = -Complex.ImaginaryOne * wk1 * sink33h;
-                M0[2, 0] = -D1;
-                //M0[2, 1] = Complex.ImaginaryOne * D1 * sink13h;
-                //M0[2, 2] = Complex.ImaginaryOne * D2k33 * sink33h;
-                M0[2, 3] = -D2k33;
-                //M0[3, 0] = Complex.ImaginaryOne * D2k13 * sink13h;
-                M0[3, 1] = -D2k13;
-                M0[3, 2] = D1;
-                //M0[3, 3] = -Complex.ImaginaryOne * D1 * sink33h;
-
-                return MH * M0.Inverse() as SparseMatrix;
+                // Use the analytical inverse from Allard & Atalla if available
+                // Otherwise use numerical inverse with regularization
+                try
+                {
+                    return Dh * (D0.Inverse() as SparseMatrix);
+                }
+                catch
+                {
+                    // Add small regularization for numerical stability
+                    var identity = SparseMatrix.CreateIdentity(4);
+                    var regularizedD0 = D0 + Complex.ImaginaryOne * 1e-12 * identity;
+                    return Dh * (regularizedD0.Inverse() as SparseMatrix);
+                }
             }
 
             public static SparseMatrix InterfacePP(double porosity_of_1, double porosity_of_2)

@@ -118,10 +118,10 @@ namespace Pachyderm_Acoustic
                                         Names.Add(Name);
                                         break;
                                     case "Normal Weight CMU":
-                                        layers.Add(ABS_Layer.CreateSolid(double.Parse(D_Mat[6]), double.Parse(D_Mat[3]), double.Parse(D_Mat[11]), double.Parse(D_Mat[12]), double.Parse(D_Mat[7]), "Normal Weight CMU"));
+                                        layers.Add(ABS_Layer.CreateSolid(double.Parse(D_Mat[6]), double.Parse(D_Mat[3]), double.Parse(D_Mat[11])*1E9, double.Parse(D_Mat[12]), double.Parse(D_Mat[7]), "Normal Weight CMU"));
                                         break;
                                     case "Gypsum Wall Board":
-                                        layers.Add(ABS_Layer.CreateSolid(double.Parse(D_Mat[6]), double.Parse(D_Mat[3]), double.Parse(D_Mat[11]), double.Parse(D_Mat[12]), double.Parse(D_Mat[7]), "Gypsum Wall Board"));
+                                        layers.Add(ABS_Layer.CreateSolid(double.Parse(D_Mat[6]), double.Parse(D_Mat[3]), double.Parse(D_Mat[11])*1E9, double.Parse(D_Mat[12]), double.Parse(D_Mat[7]), "Gypsum Wall Board"));
                                         break;
                                     case "Batt Insulation":
                                         layers.Add(ABS_Layer.Create_Miki(double.Parse(D_Mat[6]), 25000, .99, 0, 0, 0, 0, 0, 0, 0, 22, "Generic Batt"));

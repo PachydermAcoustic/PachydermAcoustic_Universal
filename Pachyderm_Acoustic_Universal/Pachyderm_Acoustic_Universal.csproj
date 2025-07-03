@@ -35,7 +35,9 @@
     <Compile Remove="Pach_Absorption_Designer.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Remove="Acoustic_Materials_and_ECCs.csv" />
     <None Remove="Resources\CLF_Read.dll" />
+    <None Remove="Wall_Assemblies_EC.csv" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net7.0'">
     <PackageReference Include="System.Windows.Extensions">
@@ -48,7 +50,7 @@
     </Reference>
   </ItemGroup>
   <PropertyGroup>
-    <FileVersion>2.6.0.14</FileVersion>
-    <AssemblyVersion>2.6.0.14</AssemblyVersion>
+    <FileVersion>2.6.0.20</FileVersion>
+    <AssemblyVersion>2.6.0.20</AssemblyVersion>
   </PropertyGroup>
 </Project>
