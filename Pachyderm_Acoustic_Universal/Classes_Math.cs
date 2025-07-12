@@ -26,6 +26,7 @@ using System.IO.MemoryMappedFiles;
 using System.Diagnostics.Eventing.Reader;
 using Microsoft.VisualBasic;
 using System.Collections.Specialized;
+using System.Dynamic;
 
 namespace Pachyderm_Acoustic
 {
@@ -110,7 +111,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public static double Pressure_SPL(double Level)
             {
-                return Math.Pow(10, (Level-93) / 20);// * 20E-6;
+                return Math.Pow(10, (Level - 93) / 20);// * 20E-6;
             }
 
             /// <summary>
@@ -119,16 +120,16 @@ namespace Pachyderm_Acoustic
             /// <param name="Intensity"></param>
             /// <returns></returns>
             public static double SPL_Intensity(double Intensity)
-                {
-                    double SPL = 10 * Math.Log10(Intensity / 1E-12);
-                    if (SPL < 0) return 0;
-                    return SPL;
-                }
+            {
+                double SPL = 10 * Math.Log10(Intensity / 1E-12);
+                if (SPL < 0) return 0;
+                return SPL;
+            }
 
             public static double SPL_Pressure(double Pressure)
-                {
-                    return 20 * Math.Log10(Math.Abs(Pressure) / 2E-5);
-                }
+            {
+                return 20 * Math.Log10(Math.Abs(Pressure) / 2E-5);
+            }
 
             public static double Intensity_Pressure(double Pressure, double Rho_C = 405)
             {
@@ -146,65 +147,83 @@ namespace Pachyderm_Acoustic
             /// <param name="Intensity"></param>
             /// <returns></returns>
             public static double[] SPL_Intensity_Signal(double[] Intensity)
+            {
+                for (int i = 0; i < Intensity.Length; i++)
                 {
-                    for (int i = 0; i < Intensity.Length; i++)
-                    {
-                        Intensity[i] = SPL_Intensity(Intensity[i]);
-                    }
-                    return Intensity;
+                    Intensity[i] = SPL_Intensity(Intensity[i]);
                 }
+                return Intensity;
+            }
 
             public static double[] SPL_Pressure_Signal(double[] P)
-                {
-                    double[] SPL = new double[P.Length];
+            {
+                double[] SPL = new double[P.Length];
 
-                    for (int i = 0; i < P.Length; i++)
-                    {
-                        SPL[i] = P[i] == 0 ? 0 : SPL_Pressure(P[i]);
-                    }
-                    return SPL;
+                for (int i = 0; i < P.Length; i++)
+                {
+                    SPL[i] = P[i] == 0 ? 0 : SPL_Pressure(P[i]);
                 }
-                
+                return SPL;
+            }
+
             /// <summary>
-                /// Calculates SPL-time curve from simulation output.
-                /// </summary>
-                /// <param name="Direct"></param>
-                /// <param name="ISData"></param>
-                /// <param name="RTData"></param>
-                /// <param name="CO_Time"></param>
-                /// <param name="samplerate"></param>
-                /// <param name="Octave">the chosen octave band.</param>
-                /// <param name="Rec_ID">the id of the selected receiver.</param>
-                /// <returns></returns>
+            /// Calculates SPL-time curve from simulation output.
+            /// </summary>
+            /// <param name="Direct"></param>
+            /// <param name="ISData"></param>
+            /// <param name="RTData"></param>
+            /// <param name="CO_Time"></param>
+            /// <param name="samplerate"></param>
+            /// <param name="Octave">the chosen octave band.</param>
+            /// <param name="Rec_ID">the id of the selected receiver.</param>
+            /// <returns></returns>
             public static double[] SPLTCurve_Intensity(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time, int samplerate, int Octave, int Rec_ID, int SrcID, bool Start_at_Zero)
-                {
-                    double[] Energy = Utilities.IR_Construction.ETCurve(Direct, ISData, RTData, CO_Time, samplerate, Octave, Rec_ID, SrcID, Start_at_Zero);
-                    double[] SPL = new double[Energy.Length];
+            {
+                double[] Energy = Utilities.IR_Construction.ETCurve(Direct, ISData, RTData, CO_Time, samplerate, Octave, Rec_ID, SrcID, Start_at_Zero);
+                double[] SPL = new double[Energy.Length];
 
-                    for (int i = 0; i < Energy.Length; i++)
-                    {
-                        SPL[i] = SPL_Intensity(Energy[i]);
-                    }
-                    return SPL;
+                for (int i = 0; i < Energy.Length; i++)
+                {
+                    SPL[i] = SPL_Intensity(Energy[i]);
                 }
+                return SPL;
+            }
 
             public static double[] SPLTCurve_Intensity(Direct_Sound Direct, ImageSourceData ISData, Environment.Receiver_Bank RTData, double CO_Time, int samplerate, int Octave, int Rec_ID, bool StartAtZero)
-                {
-                    Direct_Sound[] ArrDirect = new Direct_Sound[1];
-                    ArrDirect[0] = Direct;
-                    ImageSourceData[] ArrIS = new ImageSourceData[1];
-                    ArrIS[0] = ISData;
-                    Environment.Receiver_Bank[] ArrRT = new Environment.Receiver_Bank[1];
-                    ArrRT[0] = RTData;
-                    return SPLTCurve_Intensity(ArrDirect, ArrIS, ArrRT, CO_Time, samplerate, Octave, Rec_ID, 0, StartAtZero);
-                }
+            {
+                Direct_Sound[] ArrDirect = new Direct_Sound[1];
+                ArrDirect[0] = Direct;
+                ImageSourceData[] ArrIS = new ImageSourceData[1];
+                ArrIS[0] = ISData;
+                Environment.Receiver_Bank[] ArrRT = new Environment.Receiver_Bank[1];
+                ArrRT[0] = RTData;
+                return SPLTCurve_Intensity(ArrDirect, ArrIS, ArrRT, CO_Time, samplerate, Octave, Rec_ID, 0, StartAtZero);
+            }
 
             //Sound Pressure Level at 1 m. of several kinds of people.
-            public static double[][] Females = new double[][] { new double[] { 20, 36, 48, 49, 42, 39, 35, 35 }, new double[] { 20, 37, 51, 53, 49, 44, 42, 37 }, new double[] { 20, 35, 56, 59, 57, 53, 48, 43 }, new double[] { 20, 34, 58, 64, 66, 63, 56, 51 }, new double[] { 20, 30, 56, 69, 76, 75, 69, 58 } };
-            public static double[][] Males = new double[][] { new double[] { 20, 45, 49, 50, 42, 41, 38, 35 }, new double[] { 20, 51, 56, 57, 50, 47, 43, 36 }, new double[] { 20, 53, 59, 64, 58, 54, 49, 43 }, new double[] { 20, 56, 64, 72, 70, 66, 60, 50 }, new double[] { 20, 45, 70, 80, 84, 80, 72, 63 } };
-            public static double[][] Children = new double[][] { new double[] { 20, 27, 48, 52, 44, 41, 38, 38 }, new double[] { 20, 30, 53, 56, 50, 45, 43, 42 }, new double[] { 20, 31, 56, 60, 60, 55, 51, 46 }, new double[] { 20, 30, 56, 63, 66, 65, 57, 51 }, new double[] { 20, 45, 55, 69, 75, 72, 70, 58 } };
+            public static double[][] Females = new double[][] {
+                new double[] { 20, 36, 48, 49, 42, 39, 35, 35 },
+                new double[] { 20, 37, 51, 53, 49, 44, 42, 37 },
+                new double[] { 20, 35, 56, 59, 57, 53, 48, 43 },
+                new double[] { 20, 34, 58, 64, 66, 63, 56, 51 },
+                new double[] { 20, 30, 56, 69, 76, 75, 69, 58 }
+            };
+            public static double[][] Males = new double[][] {
+                new double[] { 20, 45, 49, 50, 42, 41, 38, 35 },
+                new double[] { 20, 51, 56, 57, 50, 47, 43, 36 },
+                new double[] { 20, 53, 59, 64, 58, 54, 49, 43 },
+                new double[] { 20, 56, 64, 72, 70, 66, 60, 50 },
+                new double[] { 20, 45, 70, 80, 84, 80, 72, 63 }
+            };
+            public static double[][] Children = new double[][] {
+                new double[] { 20, 27, 48, 52, 44, 41, 38, 38 },
+                new double[] { 20, 30, 53, 56, 50, 45, 43, 42 },
+                new double[] { 20, 31, 56, 60, 60, 55, 51, 46 },
+                new double[] { 20, 30, 56, 63, 66, 65, 57, 51 },
+                new double[] { 20, 45, 55, 69, 75, 72, 70, 58 }
+            };
 
-            public static double Sound_Pressure_Level_A (double[] unweighted_SPL)
+            public static double Sound_Pressure_Level_A(double[] unweighted_SPL)
             {
                 double[] AFactors = new double[8] { Math.Pow(10, (-26.2 / 10)), Math.Pow(10, (-16.1 / 10)), Math.Pow(10, (-8.6 / 10)), Math.Pow(10, (-3.2 / 10)), 1, Math.Pow(10, (1.2 / 10)), Math.Pow(10, (1 / 10)), Math.Pow(10, (-1.1 / 10)) };
                 double SW = 0;
@@ -250,7 +269,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
             }
-            
+
             ///<summary>
             /// Sabine Reverberation Time : T60 = 0.161V/ln(1-a)S
             ///</summary>
@@ -264,7 +283,7 @@ namespace Pachyderm_Acoustic
                     TA = 0;
                     for (int q = 0; q <= Room.Count() - 1; q++)
                     {
-                        TA += (Room.SurfaceArea(q) * (-System.Math.Log(1 - Room.AbsorptionValue[q].Coefficient_A_Broad(t),System.Math.E)));
+                        TA += (Room.SurfaceArea(q) * (-System.Math.Log(1 - Room.AbsorptionValue[q].Coefficient_A_Broad(t), System.Math.E)));
                     }
                     T60[t] = 0.161 * volume / (TA + 4 * Room.Attenuation(0)[t] * volume);
                 }
@@ -529,11 +548,11 @@ namespace Pachyderm_Acoustic
                 return 10 * Math.Log10(Sum_Early / Sum_Late);
             }
 
-            public static double[] abs_rt = new double[7]{46, 27, 12, 6.5, 7.5, 8, 12};
+            public static double[] abs_rt = new double[7] { 46, 27, 12, 6.5, 7.5, 8, 12 };
 
             public static double[] Modulation_Transfer_Index(double[][] ETC, double rhoC, double[] Noise, int samplefreq)
             {
-                for (int i = 0; i < 7; i++) if (ETC[i].Length < samplefreq*1.6) Array.Resize<double>(ref ETC[i], (int)(samplefreq * 1.6));
+                for (int i = 0; i < 7; i++) if (ETC[i].Length < samplefreq * 1.6) Array.Resize<double>(ref ETC[i], (int)(samplefreq * 1.6));
 
                 double[] MTI = new double[7];
                 double[] fm = new double[14] { .63, .8, 1.0, 1.25, 1.6, 2.0, 2.5, 3.15, 4.0, 5.0, 6.3, 8.0, 10.0, 12.5 };
@@ -556,7 +575,7 @@ namespace Pachyderm_Acoustic
 
                     for (int s = 0; s < etc.Length; s++)
                     {
-                        double t = s/(double)samplefreq;
+                        double t = s / (double)samplefreq;
                         double e = etc[s];
                         sumI += e;
                         for (int mct = 0; mct < 14; mct++)
@@ -575,24 +594,24 @@ namespace Pachyderm_Acoustic
                         ICos[mct] *= rhoC;
                     }
 
-                    double Irtk = Math.Pow(10, abs_rt[oct-1]/10) * 1e-12 * rhoC;
+                    double Irtk = Math.Pow(10, abs_rt[oct - 1] / 10) * 1e-12 * rhoC;
                     double amf;
                     double LowerbandL = AcousticalMath.SPL_Intensity(I_LowerBand);
                     if (LowerbandL < 63)
                     {
-                        amf = Math.Pow(10,(0.5 * LowerbandL - 65)/10);
+                        amf = Math.Pow(10, (0.5 * LowerbandL - 65) / 10);
                     }
-                    else if(LowerbandL < 67)
+                    else if (LowerbandL < 67)
                     {
-                        amf = Math.Pow(10,(1.8 * LowerbandL - 146.9)/10);
+                        amf = Math.Pow(10, (1.8 * LowerbandL - 146.9) / 10);
                     }
-                    else if(LowerbandL <100)
+                    else if (LowerbandL < 100)
                     {
-                        amf = Math.Pow(10,(0.5 * LowerbandL - 59.8)/10);
+                        amf = Math.Pow(10, (0.5 * LowerbandL - 59.8) / 10);
                     }
                     else
                     {
-                        amf = Math.Pow(10,-10/10);
+                        amf = Math.Pow(10, -10 / 10);
                     }
 
                     double I_noise = Math.Pow(10, Noise[oct] / 10) * 1E-12 * rhoC;
@@ -603,7 +622,7 @@ namespace Pachyderm_Acoustic
                     for (int mct = 0; mct < 14; mct++)
                     {
                         mk[mct] = Math.Sqrt(ISin[mct] * ISin[mct] + ICos[mct] * ICos[mct]) / sumI;
-                        mk[mct] *= sumI / (sumI + Iamk +Irtk) * Msnr;
+                        mk[mct] *= sumI / (sumI + Iamk + Irtk) * Msnr;
                         double TI = ((10 * Math.Log10(mk[mct] / (1 - mk[mct])) + 15.0) / 30.0);
                         MTI[oct - 1] += TI < 0 ? 0 : TI > 1 ? 1 : TI;
                     }
@@ -623,10 +642,10 @@ namespace Pachyderm_Acoustic
                 double[] alphaMale = new double[7] { 0.085, 0.127, 0.23, 0.233, 0.309, 0.224, 0.173 };
                 double[] alphaFemale = new double[7] { 0, 0.117, 0.223, 0.216, 0.328, 0.25, 0.194 };
                 double[] BetaMale = new double[6] { 0.085, 0.078, 0.065, 0.011, 0.047, 0.095 };
-                double[] BetaFemale = new double[6] { 0, 0.099, 0.066, 0.062, 0.025, 0.076};
+                double[] BetaFemale = new double[6] { 0, 0.099, 0.066, 0.062, 0.025, 0.076 };
 
                 double[] STI = new double[3];
-                for (int oct = 0; oct < 7; oct++) 
+                for (int oct = 0; oct < 7; oct++)
                 {
                     STI[0] += MTI[oct] * alpha2003[oct];
                     STI[1] += MTI[oct] * alphaMale[oct];
@@ -670,12 +689,12 @@ namespace Pachyderm_Acoustic
             {
                 double sum_Lateral = 0, sum_Total = 0;
                 int i = (int)Math.Floor(startTime * sample_f);
-                while(i < sample_f * (LowerBound_s + startTime))
+                while (i < sample_f * (LowerBound_s + startTime))
                 {
                     sum_Total += Total_ETC[i];
                     i++;
                 }
-                while(i <= Math.Floor(sample_f * (UpperBound_s + startTime)))
+                while (i <= Math.Floor(sample_f * (UpperBound_s + startTime)))
                 {
                     sum_Lateral += Math.Abs(Lateral_ETC[i]);
                     sum_Total += Total_ETC[i];
@@ -729,14 +748,14 @@ namespace Pachyderm_Acoustic
                 if (Speech)
                 {
                     //Speech
-                    EK = new double[]{.9, 1};
+                    EK = new double[] { .9, 1 };
                     dte = 0.009;
-                    n = 2f/3f;
+                    n = 2f / 3f;
                 }
                 else
-                {           
+                {
                     //Music
-                    EK = new double[2]{1.5, 1.8};
+                    EK = new double[2] { 1.5, 1.8 };
                     dte = 0.014;
                     n = 1;
                 }
@@ -753,18 +772,18 @@ namespace Pachyderm_Acoustic
 
                 for (int t = (int)(Direct_Time * sample_freq); t < PTC.Length; t++)
                 {
-                    time[t] = time[t-1] + 1 / (double)sample_freq;
+                    time[t] = time[t - 1] + 1 / (double)sample_freq;
                     double Pn = Math.Pow(Math.Abs(PTC[t]), n);
-                    denom[t] = denom[t-1] + Pn;
-                    num[t] = num[t-1] + Pn * time[t];                    
+                    denom[t] = denom[t - 1] + Pn;
+                    num[t] = num[t - 1] + Pn * time[t];
                     ts[t] = num[t] / denom[t];
                 }
-                
+
                 double dEK = (EK[1] - EK[0]) / 40;
 
                 for (int t = (int)(dte * sample_freq); t < PTC.Length; t++)
                 {
-                    EKGrad[t] = (ts[t] - ts[t - (int)(dte*sample_freq)] )/ dte;
+                    EKGrad[t] = (ts[t] - ts[t - (int)(dte * sample_freq)]) / dte;
                     //Linear interpolation of Echo percentage... (for prudence, not to exceed 50).
                     PercentEcho[t] = (EKGrad[t] - EK[0]) * dEK + 10;
                 }
@@ -913,15 +932,15 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public static double Center_Time(double[] etc, int sample_f, double Direct_time)
             {
-                double sumPT=0, sumT=0;
+                double sumPT = 0, sumT = 0;
                 double BW = 1 / (double)sample_f;
 
                 int start = (int)Math.Floor(Direct_time * sample_f);
 
-                for(int i = start; i < etc.Length; i++)
+                for (int i = start; i < etc.Length; i++)
                 {
-                    sumPT += etc[i] * (i*BW - Direct_time);
-                    sumT += etc[i]; 
+                    sumPT += etc[i] * (i * BW - Direct_time);
+                    sumT += etc[i];
                 }
                 return sumPT / sumT;
             }
@@ -972,10 +991,81 @@ namespace Pachyderm_Acoustic
 
                 return 1000 * (t2 - t1) / Sample_Frequency;
             }
-        }
 
-        public static class Geometry
-        {
+            public static double[][] nc = new double[][] {
+                new double[]{ 47, 36, 29, 22, 17, 14, 12, 11 },
+                new double[]{ 51, 40, 33, 26, 22, 19, 17, 16 },
+                new double[]{ 54, 44, 37, 31, 27, 24, 22, 21 },
+                new double[]{ 57, 48, 41, 35, 31, 29, 28, 27 },
+                new double[]{ 60, 52, 45, 40, 36, 34, 33, 32 },
+                new double[]{ 64, 56, 50, 45, 41, 39, 38, 37 },
+                new double[]{ 67, 60, 54, 49, 46, 44, 43, 42 },
+                new double[]{ 71, 64, 58, 54, 51, 49, 48, 47 },
+                new double[]{ 74, 67, 62, 58, 56, 54, 53, 52 },
+                new double[]{ 77, 71, 67, 63, 61, 59, 58, 57 },
+                new double[]{ 80, 75, 71, 68, 66, 64, 63, 62 },
+                new double[]{ 83, 79, 75, 72, 71, 70, 69, 68 } };
+
+            public static double[] Noise_Criteria(double NC)
+            {
+                double index = (NC - 15) / 5;
+                int fl = (int)Math.Floor(index);
+                int cl = (int)Math.Ceiling(index);
+
+                double[] result = new double[8];
+                for (int oct = 0; oct < 8; oct++)
+                {
+                    result[oct] = nc[fl][oct] + (nc[cl][oct] - nc[fl][oct]) * (index - fl);
+                }
+
+                return result;
+            }
+
+            public static double[][] nr = new double[][] {
+                new double[] {36, 22, 12, 5, 0, -4, -6, -8},
+                new double[] {43, 31, 21, 15, 10, 7, 4, 2 },
+                new double[] { 51, 39, 31, 24, 20, 17, 14, 13 },
+                new double[] { 59, 48, 40, 34, 30, 27, 25, 23 },
+                new double[] { 67, 57, 49, 44, 40, 37, 35, 33 },
+                new double[] { 75, 66, 59, 54, 50, 47, 45, 44 },
+                new double[] { 83, 74, 68, 63, 60, 57, 55, 54 },
+                new double[] { 91, 83, 77, 73, 70, 68, 66, 64 },
+                new double[] { 99, 92, 86, 83, 80, 78, 76, 74 },
+                new double[] { 107, 100, 96, 93, 90, 88, 86, 85 },
+                new double[] { 115, 109, 105, 102, 100, 98, 96, 95 },
+                new double[] { 122, 118, 114, 112, 110, 108, 107, 105 },
+                new double[] { 130, 126, 124, 122, 120, 118, 117, 116 },
+                new double[] { 138, 135, 133, 131, 130, 128, 127, 126 } };
+
+            public static double[] Noise_Rating(double NR)
+            {
+                double index = NR / 10;
+                int fl = (int)Math.Floor(index);
+                int cl = (int)Math.Ceiling(index);
+
+                double[] result = new double[8];
+                for (int oct = 0; oct < 8; oct++)
+                {
+                    result[oct] = nr[fl][oct] + (nr[cl][oct] - nr[fl][oct]) * (index - fl);
+                }
+
+                return result;
+            }
+
+            public static double[] Room_Criteria(double RC)
+            {
+                double[] result = new double[8];
+
+                for (int oct = 0; oct < 8; oct++)
+                {
+                    result[oct] = RC + 25 - ((oct+1) * 5);
+                }
+
+                return result;
+            }
+        }
+            public static class Geometry
+            {
             /// <summary>
             /// creates a voxel-optimized geodesic sphere.
             /// </summary>

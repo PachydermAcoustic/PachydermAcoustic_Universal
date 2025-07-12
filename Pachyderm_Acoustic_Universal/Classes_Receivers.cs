@@ -669,10 +669,11 @@ namespace Pachyderm_Acoustic
 
             public virtual void Set_Power(double[] factor)
             {
+                for(int i = 0; i < 8; i++) SWL[i] = AcousticalMath.SPL_Intensity(AcousticalMath.Intensity_SPL(SWL[i]) * factor[i]);
                 for (int i = 0; i < Rec_List.Length; i++) Rec_List[i].Set_Power(factor);
             }
 
-            public void Scale(int Ray_CT)
+            public void Scale(double Ray_CT)
             {
                 for (int i = 0; i < Rec_List.Length; i++) Rec_List[i].Scale(Ray_CT);
             }
@@ -685,6 +686,7 @@ namespace Pachyderm_Acoustic
             public double[] PowerModFactor(double[] new_SWL)
             {
                 double[] factor = new double[8];
+                if (this.SWL == null) SWL = new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 };
                 for (int i = 0; i < 8; i++) factor[i] = Utilities.AcousticalMath.Intensity_SPL(new_SWL[i]) / Utilities.AcousticalMath.Intensity_SPL(this.SWL[i]);
                 return factor;
             }
@@ -1082,7 +1084,7 @@ namespace Pachyderm_Acoustic
                 Recs.Set_Power(factor);
             }
 
-            public void Scale(int ray_ct)
+            public void Scale(double ray_ct)
             {
                 Recs.Scale(ray_ct);
                 if (Reflection_Analysis_Data == null) return;
@@ -1205,7 +1207,7 @@ namespace Pachyderm_Acoustic
                     return F;
                 }
 
-                public virtual void Scale(int ray_ct)
+                public virtual void Scale(double ray_ct)
                 {
                     for (int oct = 0; oct < Energy.Length; oct++) for (int i = 0; i < Energy[oct].Length; i++)
                         {
@@ -1488,7 +1490,7 @@ namespace Pachyderm_Acoustic
                     Dir_Rec_Neg[2][Octave][Sample] += (direction_neg.dz) / 3.0;
                 }
 
-                public override void Scale(int ray_ct)
+                public override void Scale(double ray_ct)
                 {
                     for (int oct = 0; oct < Energy.Length; oct++) for (int i = 0; i < Energy[oct].Length; i++)
                         {
@@ -1768,7 +1770,7 @@ namespace Pachyderm_Acoustic
                     Dir_Rec_Neg[2][Octave][Sample] += (direction_neg.dz);
                 }
 
-                public override void Scale(int ray_ct)
+                public override void Scale(double ray_ct)
                 {
                     for (int oct = 0; oct < Energy.Length; oct++) for (int i = 0; i < Energy[oct].Length; i++)
                         {

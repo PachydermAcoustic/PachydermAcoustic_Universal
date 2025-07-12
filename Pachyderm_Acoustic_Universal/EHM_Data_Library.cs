@@ -17,7 +17,10 @@
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
 
 using Pachyderm_Acoustic.AbsorptionModels;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 
 namespace Pachyderm_Acoustic
 {
@@ -41,9 +44,16 @@ namespace Pachyderm_Acoustic
         public readonly List<ABS_Layer[]> Substrates = new List<ABS_Layer[]>(); //List of substrate wall assemblies 
         public readonly List<double> substrate_ECC = new List<double>(); //ECC of substrate wall assemblies
 
+        // Online file URLs
+        private const string ACOUSTIC_MATERIALS_URL = "https://data.mendeley.com/public-files/datasets/dj3cs2psm9/files/ef58fa43-af34-4378-94f4-42e30d07f9e5/file_downloaded";
+        private const string WALL_ASSEMBLIES_URL = "https://data.mendeley.com/public-files/datasets/dj3cs2psm9/files/d95e4f01-4c5e-4117-b3ce-4e887e465aae/file_downloaded";
+
         public EHM_Data_Library()
             : base()
         {
+            // Check for updated files before loading
+            CheckForUpdatedFiles();
+
             //Read Absorption values in from library file designated on the Options Page...
             System.IO.StreamReader ML_Reader;
             try
@@ -145,6 +155,204 @@ namespace Pachyderm_Acoustic
             catch (System.Exception)
             {
             }
+        }
+
+        /// <summary>
+        /// Checks for updated versions of the CSV files online and downloads them if newer versions are available.
+        /// Uses shell execution to avoid obsolete HTTP libraries.
+        /// </summary>
+        private void CheckForUpdatedFiles()
+        {
+            try
+            {
+                string libPath = Pach_Properties.Instance.Lib_Path;
+
+                // Check and update Acoustic Materials file
+                CheckAndUpdateFile(ACOUSTIC_MATERIALS_URL,
+                    Path.Combine(libPath, "Acoustic_Materials_and_ECCs.csv"));
+
+                // Check and update Wall Assemblies file
+                CheckAndUpdateFile(WALL_ASSEMBLIES_URL,
+                    Path.Combine(libPath, "Wall_Assemblies_EC.csv"));
+            }
+            catch (System.Exception ex)
+            {
+                // Log error but don't prevent loading local files
+                System.Diagnostics.Debug.WriteLine($"Failed to check for file updates: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Checks if an online file is newer than the local version and downloads it if so.
+        /// Uses shell execution with curl or PowerShell to avoid obsolete HTTP libraries.
+        /// </summary>
+        private void CheckAndUpdateFile(string url, string localFilePath)
+        {
+            try
+            {
+                // Get the last modified time of the local file
+                DateTime localFileTime = DateTime.MinValue;
+                if (File.Exists(localFilePath))
+                {
+                    localFileTime = File.GetLastWriteTimeUtc(localFilePath);
+                }
+
+                // Get remote file last modified date using HEAD request
+                DateTime? remoteFileTime = GetRemoteFileLastModified(url);
+
+                // Download if remote file is newer, couldn't get timestamp, or local file doesn't exist
+                if (!File.Exists(localFilePath) || 
+                    (remoteFileTime.HasValue && remoteFileTime.Value > localFileTime) ||
+                    !remoteFileTime.HasValue)
+                {
+                    DownloadFile(url, localFilePath);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to check file {url}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets the last modified date of a remote file using shell execution.
+        /// </summary>
+        private DateTime? GetRemoteFileLastModified(string url)
+        {
+            try
+            {
+                // Try curl first (available on Windows 10+ and most Unix systems)
+                string curlOutput = ExecuteShellCommand("curl", $"-sI \"{url}\"");
+                if (!string.IsNullOrEmpty(curlOutput))
+                {
+                    return ParseLastModifiedFromHeaders(curlOutput);
+                }
+
+                // Fallback to PowerShell on Windows
+                if (System.Environment.OSVersion.Platform == PlatformID.Win32NT)
+                {
+                    string psScript = $"try {{ $response = Invoke-WebRequest -Uri '{url}' -Method Head -TimeoutSec 30; $response.Headers['Last-Modified'] }} catch {{ $null }}";
+                    string psOutput = ExecuteShellCommand("powershell", $"-Command \"{psScript}\"");
+                    if (!string.IsNullOrEmpty(psOutput) && DateTime.TryParse(psOutput.Trim(), out DateTime result))
+                    {
+                        return result.ToUniversalTime();
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to get remote file timestamp: {ex.Message}");
+            }
+
+            return null; // Could not determine remote file timestamp
+        }
+
+        /// <summary>
+        /// Downloads a file using shell execution.
+        /// </summary>
+        private void DownloadFile(string url, string localFilePath)
+        {
+            try
+            {
+                // Ensure directory exists
+                string directory = Path.GetDirectoryName(localFilePath);
+                if (!Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                // Try curl first (available on Windows 10+ and most Unix systems)
+                string curlResult = ExecuteShellCommand("curl", $"-s -L -o \"{localFilePath}\" \"{url}\"");
+                if (File.Exists(localFilePath) && new FileInfo(localFilePath).Length > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Successfully downloaded updated file using curl: {localFilePath}");
+                    return;
+                }
+
+                // Fallback to PowerShell on Windows
+                if (System.Environment.OSVersion.Platform == PlatformID.Win32NT)
+                {
+                    string psScript = $"try {{ Invoke-WebRequest -Uri '{url}' -OutFile '{localFilePath}' -TimeoutSec 60 }} catch {{ Write-Error $_.Exception.Message }}";
+                    string psResult = ExecuteShellCommand("powershell", $"-Command \"{psScript}\"");
+                    
+                    if (File.Exists(localFilePath) && new FileInfo(localFilePath).Length > 0)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Successfully downloaded updated file using PowerShell: {localFilePath}");
+                        return;
+                    }
+                }
+
+                // Fallback to wget on Unix systems
+                string wgetResult = ExecuteShellCommand("wget", $"-q -O \"{localFilePath}\" \"{url}\"");
+                if (File.Exists(localFilePath) && new FileInfo(localFilePath).Length > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Successfully downloaded updated file using wget: {localFilePath}");
+                    return;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"Failed to download file using any available method: {url}");
+            }
+            catch (System.Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to download file {url}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Executes a shell command and returns the output.
+        /// </summary>
+        private string ExecuteShellCommand(string command, string arguments)
+        {
+            try
+            {
+                using (Process process = new Process())
+                {
+                    process.StartInfo.FileName = command;
+                    process.StartInfo.Arguments = arguments;
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.RedirectStandardOutput = true;
+                    process.StartInfo.RedirectStandardError = true;
+                    process.StartInfo.CreateNoWindow = true;
+                    process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+
+                    process.Start();
+                    string output = process.StandardOutput.ReadToEnd();
+                    process.WaitForExit(30000); // 30 second timeout
+
+                    return output;
+                }
+            }
+            catch (System.Exception)
+            {
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Parses the Last-Modified header from HTTP response headers.
+        /// </summary>
+        private DateTime? ParseLastModifiedFromHeaders(string headers)
+        {
+            try
+            {
+                foreach (string line in headers.Split('\n'))
+                {
+                    if (line.StartsWith("Last-Modified:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string dateString = line.Substring("Last-Modified:".Length).Trim();
+                        if (DateTime.TryParse(dateString, out DateTime result))
+                        {
+                            return result.ToUniversalTime();
+                        }
+                    }
+                }
+            }
+            catch (System.Exception)
+            {
+                // Ignore parsing errors
+            }
+
+            return null;
         }
 
         /// <summary>

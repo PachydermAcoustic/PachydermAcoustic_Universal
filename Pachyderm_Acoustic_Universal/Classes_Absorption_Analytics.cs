@@ -257,43 +257,43 @@ namespace Pachyderm_Acoustic
                 switch (elements[0])
                 {
                     case "0":
-                        return new ABS_Layer(LayerType.AirSpace, double.Parse(elements[1]), 0, 0, 0, 0, 0, elements[2]);
+                        return new ABS_Layer(LayerType.AirSpace, double.Parse(elements[1]), 0, 0, 0, 0, 0, "Air");
                     case "1":
                         if (elements.Length == 2) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.PorousDB, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, double.Parse(elements[3]), elements[4]);
+                        return new ABS_Layer(LayerType.PorousDB, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, (elements.Length > 3) ? double.Parse(elements[3]) : 77, (elements.Length > 3) ? elements[4] : "Porous Material");
                     case "2":
                         if (elements.Length == 2) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.PorousCA, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, double.Parse(elements[3]), elements[4]);
+                        return new ABS_Layer(LayerType.PorousCA, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, (elements.Length > 3) ? double.Parse(elements[3]) : 77, (elements.Length > 3) ? elements[4] : "Porous Material");
                     case "3":
                         if (elements.Length == 2) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.PorousM, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, double.Parse(elements[3]), elements[4]);
+                        return new ABS_Layer(LayerType.PorousM, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, (elements.Length > 3) ? double.Parse(elements[3]): 77, (elements.Length > 3) ? elements[4] : "Porous Material");
                     case "4":
                         if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.Perforated_Modal, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
+                        return new ABS_Layer(LayerType.Perforated_Modal, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 4) ? elements[5] : "Perforated Material");
                     case "5":
                         if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.Slotted_Modal, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
+                        return new ABS_Layer(LayerType.Slotted_Modal, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 4) ? elements[5] : "Perforated Material");
                     case "6":
                         if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.CircularPerforations, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
+                        return new ABS_Layer(LayerType.CircularPerforations, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 4) ? elements[5] : "Perforated Material");
                     case "7":
                         if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.CircularPerforations, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
+                        return new ABS_Layer(LayerType.CircularPerforations, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 4) ? elements[5] : "Perforated Material");
                     case "8":
                         if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.Slots, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
+                        return new ABS_Layer(LayerType.Slots, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 4) ? elements[5] : "Perforated Material");
                     case "9":
                         if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.MicroPerforated, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
+                        return new ABS_Layer(LayerType.MicroPerforated, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 4) ? elements[5] : "Perforated Material");
                     case "10":
                         if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.Microslit, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, double.Parse(elements[4]), elements[5]);
+                        return new ABS_Layer(LayerType.Microslit, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 4) ? elements[5] : "Perforated Material");
                     case "11":
                         if (elements.Length == 5) Array.Resize(ref elements, elements.Length + 1);
-                        return ABS_Layer.CreateSolid(double.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), double.Parse(elements[5]), elements[6]);
+                        return ABS_Layer.CreateSolid(double.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), (elements.Length > 5) ? double.Parse(elements[5]) : 188, (elements.Length > 5) ? elements[6] : "Solid Material");
                     case "12":
                         if (elements.Length == 12) Array.Resize(ref elements, elements.Length + 1);
-                        return ABS_Layer.CreateBiot(bool.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), double.Parse(elements[5]), double.Parse(elements[6]), double.Parse(elements[7]), double.Parse(elements[8]), double.Parse(elements[9]), double.Parse(elements[10]), double.Parse(elements[11]), elements[12]);
+                        return ABS_Layer.CreateBiot(bool.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), double.Parse(elements[5]), double.Parse(elements[6]), double.Parse(elements[7]), double.Parse(elements[8]), double.Parse(elements[9]), double.Parse(elements[10]), (elements.Length > 11) ? double.Parse(elements[11]) : 188, (elements.Length > 11) ? elements[12] : "Porous Matrix");
                     default:
                         throw new Exception("Unknown Layer Type");
                 }

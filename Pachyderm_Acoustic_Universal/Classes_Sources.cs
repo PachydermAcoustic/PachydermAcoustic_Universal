@@ -513,7 +513,7 @@ namespace Pachyderm_Acoustic
             {
                 base.Lighten();
                 _S = null;
-                GC.Collect();
+                //GC.Collect();
             }
         }
 
@@ -661,6 +661,7 @@ namespace Pachyderm_Acoustic
         public class SourceCluster: Source
         {
             public List<Source> Sources = new List<Source>();
+            
             public bool Third_Octave = false;
             int revolution;
             protected int rayct;
@@ -672,17 +673,19 @@ namespace Pachyderm_Acoustic
                 Sources = sources;
                 for(int i = 0; i < Sources.Count; i++)
                 {
+                    Center += Sources[i].Origin;
                     for (int o = 0; o < 8; o++) this.SPL[o] = Math.Max(Sources[i].SWL()[o], SPL[o]);
                     for (int o = 0; o < 8; o++) this.SourcePower[o] = Math.Max(Sources[i].SoundPower[o], SourcePower[o]);
                     revolution += Sources[i].Revolution_Period();
                 }
+                Center /= Sources.Count;
                 this.type = "Cluster";
             }
 
             public override double[] DirPower(int threadid, int random, Vector Direction)
             {
                 throw new InvalidOperationException();
-            }  
+            }
 
             public override double[] DirPressure(int threadid, int random, Vector Direction)
             {
@@ -715,6 +718,11 @@ namespace Pachyderm_Acoustic
                 {
                     S.AppendPts(ref SPT);
                 }   
+            }
+
+            public override int Revolution_Period()
+            {
+                return revolution;
             }
 
             public override double[] Dir_Filter(int threadid, int random, Vector Direction, int sample_frequency, int length_starttofinish)

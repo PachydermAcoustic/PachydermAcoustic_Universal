@@ -783,11 +783,12 @@ namespace Pachyderm_Acoustic
         public override void Combine_ThreadLocal_Results()
         {
             RecMain.Scale(_currentRay[0]);
+            if (Source is SourceCluster) RecMain.Scale(1.0 / (double)(Source as SourceCluster).Sources.Count);
 
             this._ts = DateTime.Now - _st;
 
-            double LTotal = 0;
-            double RTotal = 0;
+            //double LTotal = 0;
+            //double RTotal = 0;
             //foreach (double L in _lost)
             //{
             //    LTotal += L;

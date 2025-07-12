@@ -25,6 +25,7 @@ using System.Threading;
 using Pachyderm_Acoustic.Utilities;
 using System.Text.RegularExpressions;
 using MathNet.Numerics;
+using System.Runtime.InteropServices;
 
 namespace Pachyderm_Acoustic
 {
@@ -783,13 +784,18 @@ namespace Pachyderm_Acoustic
                 Io = new double[Receiver.Count][][];
                 Time_Pt = new double[Receiver.Count];
 
-                System.Threading.Tasks.Parallel.For(0, Receiver.Count, (i) =>
+                object proclock = new object();
+                int ct = 0;
+                int rev = 0;
+                int procct = System.Environment.ProcessorCount;
+
+                //System.Threading.Tasks.Parallel.For(0, Receiver.Count, (i) =>
+                for (int i = 0; i < Receiver.Count; i++)
                 {
                     double min = double.PositiveInfinity, max = 0;
-                    for(int s = 0; s < srcs.Count; s++)
+                    for (int s = 0; s < srcs.Count; s++)
                     {
-                        Vector dir = Receiver[i] - srcs[s].Origin;
-                        double distance = dir.Length();
+                        double distance = (Receiver[i] - srcs[s].Origin).Length();
                         if (distance < min) min = distance;
                         if (distance > max) max = distance;
                     }
@@ -810,7 +816,9 @@ namespace Pachyderm_Acoustic
                         }
                     }
 
-                    for (int s = 0; s < srcs.Count; s++)
+                    //Vector dir;
+                    //for (int s = 0; s < srcs.Count; s++)
+                    System.Threading.Tasks.Parallel.For(0, srcs.Count, (s) =>
                     {
                         double[] transmod;
                         Check_Validity(i, rnd.Next(), srcs[s].Origin, out transmod);
@@ -861,10 +869,18 @@ namespace Pachyderm_Acoustic
                             if (-V.dy > 0) Dir_Rec_Pos[i][oct][t][1] -= (float)V.dy; else Dir_Rec_Neg[i][oct][0][1] -= (float)V.dy;
                             if (-V.dz > 0) Dir_Rec_Pos[i][oct][t][2] -= (float)V.dz; else Dir_Rec_Neg[i][oct][0][2] -= (float)V.dz;
                         }
+                    }); 
 
-                        //Time_Pt[i] = Length / C_Sound + Delay_ms;
+                    lock (proclock)
+                    {
+                        ct++;
+                        if (ct > procct * rev)
+                        {
+                            rev++;
+                            GC.Collect();
+                        }
                     }
-                });
+                }//);
             }
         }
 
