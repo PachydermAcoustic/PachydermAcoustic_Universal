@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
+//'Copyright (c) 2008-2025, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -839,12 +839,33 @@ namespace Pachyderm_Acoustic
                             double[] Atten = Process_Screen_Attenuation(srcs[s].Origin, i, ref path, ref dist);
 
                             t = (int)Math.Floor((dist / C_Sound - Time_Pt[i]) * SampleFreq);
+                            if (srcs.Count == 1 && Io[i][0].Length == 1 && t > 0)
+                            {
+                                //Revise min-time point.
+                                Time_Pt[i] = dist / C_Sound;
+                                t = 0;
+                            }
+                            else if (Io[i][0].Length <= t)
+                            {
+                                //Extend the array if necessary.
+                                int prev = Io[i][0].Length;
+                                for(int oct = 0; oct < 8; oct++)
+                                {
+                                    Array.Resize(ref Io[i][oct], t + 1);
+                                    Array.Resize(ref Dir_Rec_Pos[i][oct], t + 1);
+                                    Array.Resize(ref Dir_Rec_Neg[i][oct], t + 1);
+                                    for (int j = prev; j < t + 1; j++)
+                                    {
+                                        Dir_Rec_Pos[i][oct][j] = new float[3];
+                                        Dir_Rec_Neg[i][oct][j] = new float[3];
+                                    }
+                                }
+                            }
 
                             for (int oct = 0; oct < 8; oct++)
-                            {
-                                Io[i][oct][t] = Power[oct] * Atten[oct] * transmod[oct];
-                                Io[i][oct][t] *= Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist);
-                            }
+                                {
+                                    Io[i][oct][t] += Power[oct] * Atten[oct] * transmod[oct] * Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist);
+                                }
                             dir = path[2] - path[1];
                             dir.Normalize();
                         }
@@ -896,7 +917,7 @@ namespace Pachyderm_Acoustic
                     Vector D = new Vector(1,0,0);// new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
                     Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
                     Vn.Normalize();
-                    for (int j = 0; j < 4096; j++)
+                    for (int j = 0; j < 16384; j++)
                     {
                         Fn[i] = Vn.dx * ((Vn.dx > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
                                 Vn.dy * ((Vn.dy > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
@@ -909,7 +930,7 @@ namespace Pachyderm_Acoustic
                 Vector D = new Vector(1, 0, 0);//new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][0]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][0]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][1]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][1]), Math.Abs(Dir_Rec_Pos[Rec_ID][5][0][2]) - Math.Abs(Dir_Rec_Neg[Rec_ID][5][0][2]));
                 Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
                 Vn.Normalize();
-                for (int i = 0; i < 4096; i++) Fn[i] = Vn.dx * ((Vn.dx > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
+                for (int i = 0; i < 16384; i++) Fn[i] = Vn.dx * ((Vn.dx > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
                                                            Vn.dy * ((Vn.dy > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
                                                            Vn.dz * ((Vn.dz > 0) ? F_dir_temp[4][i] : F_dir_temp[5][i]);//F[Rec_ID][i] * Vn.x;
             }
@@ -942,7 +963,7 @@ namespace Pachyderm_Acoustic
                         Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
                         Vn.Normalize();
 
-                        for (int j = 0; j < 4096; j++)
+                        for (int j = 0; j < 16384; j++)
                         {
                             Fn[i + j][0] += Vn.dx * ((Vn.dx > 0) ? F_dir_temp[0][i] : F_dir_temp[1][i]) +
                                             Vn.dy * ((Vn.dy > 0) ? F_dir_temp[2][i] : F_dir_temp[3][i]) +
@@ -1191,13 +1212,6 @@ namespace Pachyderm_Acoustic
                 }
             }
             return V;
-
-            //for (int i = 0; i < length; i++)
-            //{
-            //    V[i] = new Vector(Dir_Rec_Neg[Rec_Index][Octave][i][0], Dir_Rec_Neg[Rec_Index][Octave][i][1], Dir_Rec_Neg[Rec_Index][Octave][i][2]);
-            //    V[i] = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V[i], azi, 0, degrees), 0, alt, degrees);
-            //}
-            return V;
         }
 
         public virtual Vector[] Directions_Pos(int Octave, int Rec_Index, Vector V)
@@ -1370,15 +1384,15 @@ namespace Pachyderm_Acoustic
             for (int i = 0; i < Receiver.Count; i++)
             {
                 double[][] ETC = new double[8][];
-                F[i] = new double[Io[i][0].Length + 4096];
+                F[i] = new double[Io[i][0].Length + 16384];
                 Fdir[i] = new double[6][];
-                for (int j = 0; j < 6; j++) Fdir[i][j] = new double[Io[i][0].Length + 4096];
+                for (int j = 0; j < 6; j++) Fdir[i][j] = new double[Io[i][0].Length + 16384];
                 for (int t = 0; t < Io[i][0].Length; t++)
                 {
                     double[] pr = new double[8];
                     for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Sqrt(Io[i][oct][0] * Rho_C[0]) * p_mod[oct];
 
-                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 4096, 0);
+                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 16384, 0);
                     for (int u = 0; u < Pmin.Length; u++)
                     {
                         F[i][t + u] += Pmin[u];// *scale;
@@ -1400,7 +1414,7 @@ namespace Pachyderm_Acoustic
 
                     for (int j = 0; j < 3; j++)
                     {
-                        for (int k = 0; k < 4096; k++)
+                        for (int k = 0; k < 16384; k++)
                         {
                             int j2 = 2 * j;
                             Fdir[i][j2][t + k] += Pmin[k] * Math.Sqrt(vpos.byint(j));//((double.IsNaN(hist_temp[j2][k])) ? 0: hist_temp[j2][k]);
@@ -1416,8 +1430,8 @@ namespace Pachyderm_Acoustic
         /// </summary>
         public double[] Create_Filter(double[] SWL, int Rec_ID, int dim, int Sampling_Frequency)
         {
-            double[] F_out = new double[Io[Rec_ID][0].Length + 4096];
-            double scale = Math.Sqrt(4096);
+            double[] F_out = new double[Io[Rec_ID][0].Length + 16384];
+            double scale = Math.Sqrt(16384);
 
             double[] p_mod = new double[8];
             for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
@@ -1431,7 +1445,7 @@ namespace Pachyderm_Acoustic
                     double[] pr = new double[8];
                     for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Sqrt(Io[Rec_ID][oct][0] * Rho_C[0]) * p_mod[oct];
 
-                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 4096, 0);
+                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 16384, 0);
                     for (int u = 0; u < Pmin.Length; u++)
                     {
                         F_out[t + u] += Pmin[u];// *scale;
@@ -1444,7 +1458,7 @@ namespace Pachyderm_Acoustic
                 {
                     double[] pr = new double[8];
                     for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Sqrt(Io[Rec_ID][oct][0] * Rho_C[0]) * p_mod[oct];
-                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 4096, 0);
+                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 16384, 0);
 
                     double[][] dir_E = new double[6][];
                     for (int d = 0; d < 6; d++) dir_E[d] = new double[8];
@@ -1460,7 +1474,7 @@ namespace Pachyderm_Acoustic
                     vpos /= length;
                     vneg /= length;
 
-                    for (int k = 0; k < 4096; k++)
+                    for (int k = 0; k < 16384; k++)
                     {
                         F_out[t + k] += Pmin[k] * ((dim < 4) ? vpos.byint(dim-1) : vpos.byint(dim - 4));
                     }
@@ -1476,19 +1490,19 @@ namespace Pachyderm_Acoustic
         public double[][] Create_Filter(double[] SWL, int Rec_ID, int Sampling_Frequency)
         {
             double[][] F_out = new double[7][];
-            double scale = Math.Sqrt(4096);
+            double scale = Math.Sqrt(16384);
 
             double[] p_mod = new double[SWL.Length];
             for (int i = 0; i < SWL.Length; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
 
-                F_out[0] = new double[Io[Rec_ID][0].Length + 4096];
-                for (int j = 1; j < 7; j++) F_out[j] = new double[Io[Rec_ID][0].Length + 4096];
+                F_out[0] = new double[Io[Rec_ID][0].Length + 16384];
+                for (int j = 1; j < 7; j++) F_out[j] = new double[Io[Rec_ID][0].Length + 16384];
                 for (int t = 0; t < Io[Rec_ID][0].Length; t++)
                 {
                     double[] pr = new double[SWL.Length];
                     for (int oct = 0; oct < SWL.Length; oct++) pr[oct] = AcousticalMath.Pressure_Intensity(Io[Rec_ID][oct][0], Rho_C[t]) * p_mod[oct];
 
-                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 4096, 0);
+                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, 44100, 16384, 0);
                     for (int u = 0; u < Pmin.Length; u++)
                     {
                         F_out[0][t + u] += Pmin[u];
@@ -1510,7 +1524,7 @@ namespace Pachyderm_Acoustic
 
                     for (int j = 0; j < 3; j++)
                     {
-                        for (int k = 0; k < 4096; k++)
+                        for (int k = 0; k < 16384; k++)
                         {
                             int j2 = 2 * j;
                             F_out[j2+1][t + k] += Pmin[k] * vpos.byint(j);
@@ -1649,7 +1663,7 @@ namespace Pachyderm_Acoustic
                     int tau_present = Io[rec_id][0].Length;
                     //resize the intensity histograms...
                     for (int oct = 0; oct < no_of_bands; oct++)
-                    {
+                    { 
                         Array.Resize(ref Dir_Rec_Pos[rec_id][oct], Io[rec_id][oct].Length);
                         Array.Resize(ref Dir_Rec_Neg[rec_id][oct], Io[rec_id][oct].Length);
                         for (int j = tau_present; j < Io[rec_id][oct].Length; j++)
@@ -1733,174 +1747,178 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                int pos;
-                Hare.Geometry.Point cp = LSrc.ClosestPoint(Receiver[i], out pos);
+                int pos, h_sel;
+                Hare.Geometry.Point cp = LSrc.ClosestPoint(Receiver[i], out h_sel, out pos);
                 Vector v = Receiver[0] - cp;
 
                 double d = v.Length();
-                Hare.Geometry.Point[] Samples = LSrc.Samples;
+                Hare.Geometry.Point[] Samples = LSrc.Samples[h_sel];
                 double tprev = 0;
 
-                double d1 = (Receiver[i] - LSrc.Samples[0]).Length(), d2 = (Receiver[i] - LSrc.Samples[1]).Length();
+                double d1 = (Receiver[i] - LSrc.Samples[h_sel][0]).Length(), d2 = (Receiver[i] - LSrc.Samples[h_sel][1]).Length();
                 int t_incline = (d2 - d1) < 0 ? 1 : -1;
 
                 List<double> time = new List<double>();
                 List<double[]> I = new List<double[]>();
                 List<Vector> I_d = new List<Vector>();
-
                 object LOCKED = new object();
 
-                for (int j = 0; j < Samples.Count(); j++)//foreach (Hare.Geometry.Point p in Samples)
-                //System.Threading.Tasks.Parallel.For(0, Samples.Length, j =>
+                for (int height_group = 0; height_group < LSrc.Samples.Length; height_group++)
                 {
-                    Vector dir = Receiver[i] - Samples[j];
-                    double dist = dir.Length();
+                    Point[] height_samples = LSrc.Samples[height_group];  // Get samples for this height
+                    double[] height_power = LSrc.Power[height_group];     // Get power for this height
 
-                    double tdbl = dist / C_Sound;
-
-                    if (dist > limit)
+                    for (int j = 0; j < height_samples.Count(); j++)//foreach (Hare.Geometry.Point p in Samples)
+                                                                    //System.Threading.Tasks.Parallel.For(0, Samples.Length, j =>
                     {
-                        lock (LOCKED)
+                        Vector dir = Receiver[i] - Samples[j];
+                        double dist = dir.Length();
+                        double tdbl = dist / C_Sound;
+
+                        if (dist > limit)
                         {
-                            I_d.Add(dir);
-                            I.Add(new double[8]);
-                            time.Add(tdbl);
-                        }
-                        continue;
-                    }
-
-                    double tau = tdbl * SampleFreq;
-                    mintime = Math.Min(tdbl, mintime);
-                    maxtime = Math.Max(tdbl, maxtime);
-
-                    dir.Normalize();
-                    double[] W_temp = LSrc.DirPower(dir, j);
-
-                    if (tprev != 0)
-                    {
-                        ///Check for inflection...
-                        if (((tdbl - tprev) > 0) != (t_incline < 0))
-                        {
-                            if (I.Count > 0) Record_Line_Segment(ref time, ref I, ref I_d, i);
-                            t_incline *= -1;
-                        }
-                    }
-
-                    tprev = tdbl;
-
-                    //Check for occlusions and transparencies
-                    Ray D = new Ray(Samples[j], dir, 0, RAND.Next());
-                    double x1 = 0, x2 = 0;
-                    List<double> t_in;
-                    List<int> code;
-                    int x3 = 0;
-                    List<Hare.Geometry.Point> x4;
-                    do
-                    {
-                        //Point is behind receiver...
-                        if (!Room.shoot(D, out x1, out x2, out x3, out x4, out t_in, out code) || t_in[0] >= dist)
-                        {
-                            //Clear connection.
-                            for (int oct = 0; oct < 8; oct++) W_temp[oct] *= Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist * trib);
                             lock (LOCKED)
                             {
                                 I_d.Add(dir);
-                                I.Add(W_temp);
+                                I.Add(new double[8]);
                                 time.Add(tdbl);
                             }
-                            break;
-                        }
-                        else if (Room.IsTransmissive[x3])
-                        {
-                            //Semi-transparent veil is in between source and receiver...
-                            D.x = x4[0].x;
-                            D.y = x4[0].y;
-                            D.z = x4[0].z;
-                            for (int oct = 0; oct < 8; oct++) W_temp[oct] *= Room.TransmissionValue[x3][oct];
                             continue;
                         }
-                        else
-                        {
-                            //obstructed connection.
-                            if (Screen_atten)
-                            {
-                                if (dist > limit)
-                                {
-                                    lock (LOCKED)
-                                    {
-                                        I_d.Add(dir);
-                                        I.Add(new double[8] { double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon });
-                                        time.Add(tdbl);
-                                    }
-                                    break;
-                                }
 
-                                Hare.Geometry.Point[] path = new Point[0];
-                                double[] Power = Process_Screen_Attenuation(Samples[j], i, ref path, ref dist);
-                                for (int oct = 0; oct < 8; oct++)
-                                {
-                                    W_temp[oct] *= Power[oct];
-                                    W_temp[oct] *= Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist * trib);
-                                    if (W_temp[oct] <= 0 || double.IsNaN(W_temp[oct]))
-                                    {
-                                        continue;
-                                    }
-                                }
+                        //double tau = tdbl * SampleFreq;
+                        mintime = Math.Min(tdbl, mintime);
+                        maxtime = Math.Max(tdbl, maxtime);
+
+                        dir.Normalize();
+                        double[] W_temp = LSrc.DirPower(dir, height_group, j);
+
+                        if (tprev != 0)
+                        {
+                            ///Check for inflection...
+                            if (((tdbl - tprev) > 0) != (t_incline < 0))
+                            {
+                                if (I.Count > 0) Record_Line_Segment(ref time, ref I, ref I_d, i);
+                                t_incline *= -1;
+                            }
+                        }
+
+                        tprev = tdbl;
+
+                        //Check for occlusions and transparencies
+                        Ray D = new Ray(Samples[j], dir, 0, RAND.Next());
+                        double x1 = 0, x2 = 0;
+                        List<double> t_in;
+                        List<int> code;
+                        int x3 = 0;
+                        List<Hare.Geometry.Point> x4;
+                        do
+                        {
+                            //Point is behind receiver...
+                            if (!Room.shoot(D, out x1, out x2, out x3, out x4, out t_in, out code) || t_in[0] >= dist)
+                            {
+                                //Clear connection.
+                                for (int oct = 0; oct < 8; oct++) W_temp[oct] *= Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist * trib);
                                 lock (LOCKED)
                                 {
                                     I_d.Add(dir);
                                     I.Add(W_temp);
                                     time.Add(tdbl);
                                 }
-                                //break;
-                                ///TODO: Set W_Temp to zero, and devise means of storing screen atten for later addition to power.
+                                break;
                             }
-                            //if (time.Count > 0)
-                            //    Record_Line_Segment(ref time, ref I, ref I_d, i);
-                            break;
+                            else if (Room.IsTransmissive[x3])
+                            {
+                                //Semi-transparent veil is in between source and receiver...
+                                D.x = x4[0].x;
+                                D.y = x4[0].y;
+                                D.z = x4[0].z;
+                                for (int oct = 0; oct < 8; oct++) W_temp[oct] *= Room.TransmissionValue[x3][oct];
+                                continue;
+                            }
+                            else
+                            {
+                                //obstructed connection.
+                                if (Screen_atten)
+                                {
+                                    if (dist > limit)
+                                    {
+                                        lock (LOCKED)
+                                        {
+                                            I_d.Add(dir);
+                                            I.Add(new double[8] { double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon, double.Epsilon });
+                                            time.Add(tdbl);
+                                        }
+                                        break;
+                                    }
+
+                                    Hare.Geometry.Point[] path = new Point[0];
+                                    double[] Power = Process_Screen_Attenuation(Samples[j], i, ref path, ref dist);
+                                    for (int oct = 0; oct < 8; oct++)
+                                    {
+                                        W_temp[oct] *= Power[oct];
+                                        W_temp[oct] *= Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist * trib);
+                                        if (W_temp[oct] <= 0 || double.IsNaN(W_temp[oct]))
+                                        {
+                                            continue;
+                                        }
+                                    }
+                                    lock (LOCKED)
+                                    {
+                                        I_d.Add(dir);
+                                        I.Add(W_temp);
+                                        time.Add(tdbl);
+                                    }
+                                    //break;
+                                    ///TODO: Set W_Temp to zero, and devise means of storing screen atten for later addition to power.
+                                }
+                                //if (time.Count > 0)
+                                //    Record_Line_Segment(ref time, ref I, ref I_d, i);
+                                break;
+                            }
                         }
-                    }
-                    while (true);
-                }//);
+                        while (true);
+                    }//);
 
-                if (time.Count > 0) Record_Line_Segment(ref time, ref I, ref I_d, i);
+                    if (time.Count > 0) Record_Line_Segment(ref time, ref I, ref I_d, i);
 
-                //Finalize Receiver point0
-                Time_Pt[i] = mintime;
-                if (!SPL_Only)
-                {
-                    int start = (int)Math.Floor(mintime * SampleFreq);
-                    int newlength = (int)Math.Ceiling((maxtime) * SampleFreq) - start;
-                    double total = 0;
-
-                    Io[i][8] = new double[newlength];
-
-                    for (int oct = 0; oct < 8; oct++)
+                    //Finalize Receiver point0
+                    Time_Pt[i] = mintime;
+                    if (!SPL_Only)
                     {
-                        double[] Iotemp = Io[i][oct];
-                        float[][] DRP_temp = Dir_Rec_Pos[i][oct];
-                        float[][] DRN_temp = Dir_Rec_Neg[i][oct];
+                        int start = (int)Math.Floor(mintime * SampleFreq);
+                        int newlength = (int)Math.Ceiling((maxtime) * SampleFreq) - start;
+                        double total = 0;
 
-                        Io[i][oct] = new double[newlength];
-                        Dir_Rec_Pos[i][oct] = new float[newlength][];
-                        Dir_Rec_Neg[i][oct] = new float[newlength][];
+                        Io[i][8] = new double[newlength];
 
-                        int l = Math.Min(newlength, Iotemp.Length - start);
-
-                        for (int t = 0; t < l; t++)
+                        for (int oct = 0; oct < 8; oct++)
                         {
-                            total += Iotemp[(t + start)];
-                            Io[i][oct][t] = Iotemp[(t + start)];
-                            Io[i][8][t] += Io[i][oct][t];
-                            Dir_Rec_Pos[i][oct][t] = DRP_temp[(t + start)];
-                            Dir_Rec_Neg[i][oct][t] = DRN_temp[(t + start)];
+                            double[] Iotemp = Io[i][oct];
+                            float[][] DRP_temp = Dir_Rec_Pos[i][oct];
+                            float[][] DRN_temp = Dir_Rec_Neg[i][oct];
+
+                            Io[i][oct] = new double[newlength];
+                            Dir_Rec_Pos[i][oct] = new float[newlength][];
+                            Dir_Rec_Neg[i][oct] = new float[newlength][];
+
+                            int l = Math.Min(newlength, Iotemp.Length - start);
+
+                            for (int t = 0; t < l; t++)
+                            {
+                                total += Iotemp[(t + start)];
+                                Io[i][oct][t] = Iotemp[(t + start)];
+                                Io[i][8][t] += Io[i][oct][t];
+                                Dir_Rec_Pos[i][oct][t] = DRP_temp[(t + start)];
+                                Dir_Rec_Neg[i][oct][t] = DRN_temp[(t + start)];
+                            }
                         }
+                        Validity[i] = (total != 0);
                     }
-                    Validity[i] = (total != 0);
-                }
-                else
-                {
-                    Validity[i] = (Io[i][0][0] != 0);
+                    else
+                    {
+                        Validity[i] = (Io[i][0][0] != 0);
+                    }
                 }
             });
 
@@ -1924,8 +1942,6 @@ namespace Pachyderm_Acoustic
             Validity = new Boolean[R.Count];
 
             double C_Sound = Room.Sound_speed(0);
-
-            //int MT = MaxT;
 
             List<int> rndList = new List<int>();
             for (int i = 0; i < R.Count; i++)
@@ -1981,8 +1997,6 @@ namespace Pachyderm_Acoustic
                 ////Special_Status.Instance.progress += 1.0f / R.Count;
                 //S.Release();
             });
-
-            //MaxT = MT;
 
             for (int rec_id = 0; rec_id < R.Count; rec_id++)
             {

@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
+//'Copyright (c) 2008-2025, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -756,7 +756,7 @@ namespace Pachyderm_Acoustic
                 Sound_Speed = C_Sound_in;
                 Rho_C = C_Sound_in * rho;
                 Atten = new double[8];
-                for (int o = 0; o < 8; o++) Atten[o] = Attenuation[o] * 2;
+                for (int o = 0; o < 8; o++) Atten[o] = Attenuation[o];
                 SizeMod = 1 / Math.PI;
                 Recs = new Directional_Histogram(SampleRate, CO_Time);
                 Reflection_Analysis_Data = new double[3][][];
@@ -817,9 +817,10 @@ namespace Pachyderm_Acoustic
                 {
                     double tsphere = (t2 - t1) * 0.5;
                     double RayTime = t * Inv_C_Sound + R.t_sum;
-                    foreach(int oct in R.Freq_Bands)
+                    double raydist = RayTime * C_Sound;
+                    foreach (int oct in R.Freq_Bands)
                     {
-                        double energy = R.Energy[oct] * Math.Pow(10, -.1 * Atten[oct] * t) * SizeMod * tsphere;
+                        double energy = R.Energy[oct] * Math.Pow(10, -.1 * Atten[oct] * raydist) * SizeMod * tsphere; //* t
                         Recs.Add(RayTime, energy, -R.dx, -R.dy, -R.dz, Rho_C, oct);
                         int sample = (int)(RayTime * SampleRate);
                         if (sample < Reflection_Analysis_Data[0][oct].Length) Reflection_Analysis_Data[0][oct][sample] += energy;
@@ -851,7 +852,7 @@ namespace Pachyderm_Acoustic
                 {
                     double tsphere = (t2 - t1) * 0.5;
                     double Raytime = t * Inv_C_Sound + R.t_sum;
-                    double energy = R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * t) * SizeMod * tsphere;
+                    double energy = R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * Raytime * C_Sound) * SizeMod * tsphere; // t
                     Recs.Add(Raytime, energy, -R.dx, -R.dy, -R.dz, Rho_C, R.Octave);
                     int sample = (int)(Raytime * SampleRate); 
                     if (sample < Reflection_Analysis_Data[0][0].Length)

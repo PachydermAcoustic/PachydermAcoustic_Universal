@@ -82,8 +82,8 @@ namespace Pachyderm_Acoustic {
         
         /// <summary>
         ///   Looks up a localized string similar to 3/8&quot; Plywood Wall:3228221709101113
-        ///Plaster - rough on lath:0202330405040302
-        ///Large 1/4&quot; Plate Glass:2518060403020232
+        ///Plaster - rough on lath:0202530405040302
+        ///Large 1/4&quot; Plate Glass:2518060403020252
         ///Unoccupied:3035404550555550
         ///Occupied:3945506070706560
         ///Schroeder Diffusor:1822243223191919.

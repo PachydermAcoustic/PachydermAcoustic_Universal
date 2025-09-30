@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
+//'Copyright (c) 2008-2025, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -236,15 +236,14 @@ namespace Pachyderm_Acoustic
         {
             for (int i = 0; i < Rec_List.Length; i++)
             {
+                int tsample = 0;// (int)Math.Floor(D.Time(i) / SampleRate);
                 Vector dir = S.Origin - Rec_List[i].Origin;
                 dir.Normalize();
                 for (int oct = 0; oct < 8; oct++)
                 {
-                    int tsample = 0;
                     int length = D.Io[i][oct].Length;
                     for (int s = 0; s < length; s++)
                     {
-                        if (D.EnergyValue(oct, s, i) > 0 && tsample == 0) tsample = s;
                         if (s < Rec_List[i].Recs.SampleCT && (D.Validity[i] || D.Screen_atten)) Rec_List[i].Combine_Sample(s - tsample, D.EnergyValue(oct, s, i), Math.Sqrt(D.EnergyValue(oct, s, i)), dir, dir, oct);
                     }
                 }
@@ -1454,8 +1453,21 @@ namespace Pachyderm_Acoustic
                 Radius2 = Radius * Radius;
                 this.Rho_C = rho * Sound_Speed;
                 this.SizeMod = 1 / (Math.PI * Radius2);
-                double L1x = Src.Origin.x - Origin.x, L1y = Src.Origin.y - Origin.y, L1z = Src.Origin.z - Origin.z;
-                Direct_Time = Math.Sqrt(L1x * L1x + L1y * L1y + L1z * L1z) / C_Sound;
+                if (Src is SourceCluster)
+                {
+                    SourceCluster SrcC = (SourceCluster)Src;
+                    foreach (Source s in SrcC.Sources)
+                    {
+                        double Lx = Src.Origin.x - Origin.x, Ly = Src.Origin.y - Origin.y, Lz = Src.Origin.z - Origin.z;
+                        double dt = Math.Sqrt(Lx * Lx + Ly * Ly + Lz * Lz) / C_Sound;
+                        Direct_Time = Math.Min(Direct_Time, dt);
+                    }
+                }
+                else
+                {
+                    double L1x = Src.Origin.x - Origin.x, L1y = Src.Origin.y - Origin.y, L1z = Src.Origin.z - Origin.z;
+                    Direct_Time = Math.Sqrt(L1x * L1x + L1y * L1y + L1z * L1z) / C_Sound;
+                }
 
                 if (!Time1Pt)
                 {

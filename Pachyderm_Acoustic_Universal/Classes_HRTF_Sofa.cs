@@ -513,7 +513,7 @@ namespace Pachyderm_Acoustic
                 }
 
                 // Allocate a buffer for the data
-                double[,,] dataIR;
+                float[,,] dataIR;
 
                 try
                 {
@@ -524,7 +524,7 @@ namespace Pachyderm_Acoustic
 
                     H5S.get_simple_extent_dims(dataspaceId, dims, null);
 
-                    dataIR = new double[dims[0], dims[1], dims[2]];
+                    dataIR = new float[dims[0], dims[1], dims[2]];
                     GCHandle handle = GCHandle.Alloc(dataIR, GCHandleType.Pinned);
                     try
                     {

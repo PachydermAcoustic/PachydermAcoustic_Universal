@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
+//'Copyright (c) 2008-2025, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -205,6 +205,7 @@ namespace Pachyderm_Acoustic
             {
                 double T = Tk - 273.15;
                 double h = hr * Math.Pow(10, -6.8346 * Math.Pow(273.16 / Tk, 1.261) + 4.6151) / (Pa / 101.325);
+                Pa /= 10;
                 double frO = (Pa / 101.325) * (24 + 4.04 * Math.Pow(10, 4) * h * ((0.02 + h) / (0.391 + h)));
                 double frN = (Pa / 101.325) * Math.Pow(Tk / 293.15, -1 / 2) * (9 + 280 * h * Math.Exp(-4.170 * (Math.Pow((Tk / 293.15), (-1 / 3)) - 1)));
 
@@ -291,7 +292,7 @@ namespace Pachyderm_Acoustic
                 this.Tk = Tk;
                 this.hr = hr;
 
-                for (int i = 0; i < Atten_Coef.Length; i++) Atten_Coef[i] *= 0.1151;
+                //for (int i = 0; i < Atten_Coef.Length; i++) Atten_Coef[i] *= 0.1151;
                 C_Sound = Utilities.AcousticalMath.SoundSpeed(Tk-273.15);
                 Zmed = rho * C_Sound;
                 ISO9613_1_Spline(Tk, Pa, hr);

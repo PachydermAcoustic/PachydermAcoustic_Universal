@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
+//'Copyright (c) 2008-2025, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -129,18 +129,18 @@ namespace Pachyderm_Acoustic
 
                 public static double[] Butter_FreqResponse(int order, double freq_l, double freq_u, double sampling_freq, int length)
                 {
-                    double[] H = new double[length];
+                    double[] H = new double[length/2];
                     double w_l = Utilities.Numerics.PiX2 * freq_l;
                     double w_u = Utilities.Numerics.PiX2 * freq_u;
                     double max = 0;
 
-                    for (int i = 0; i < length; i++)
+                    for (int i = 0; i < H.Length; i++)
                     {
                         double w_f = Utilities.Numerics.PiX2 * i * sampling_freq / length;
                         H[i] = 1 / (Math.Sqrt(1 + Math.Pow(w_f / w_l, 2 * order)) * Math.Sqrt(1 + Math.Pow(w_u / w_f, 2 * order)));
                         max = max > H[i]? max : H[i];
                     }
-                    for (int i = 0; i < length; i++) H[i] /= max;
+                    for (int i = 0; i < H.Length; i++) H[i] /= max;
 
                     return H;
                 }

@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
+//'Copyright (c) 2008-2025, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -360,7 +360,7 @@ namespace Pachyderm_Acoustic
                 List<Hare.Geometry.Point[]> PathVertices = new List<Hare.Geometry.Point[]>();
                 Hare.Geometry.Point S = Src.Origin;
                 Hare.Geometry.Point E = Rec[rec_id];
-                double df = SampleRate * .5 / 4096;
+                double df = SampleRate * .5 / 16384;
 
                 //Find all Path Legs from Receiver to Source
                 for (int r = 0; r < Images.Length; r++)
@@ -1126,7 +1126,7 @@ namespace Pachyderm_Acoustic
         //        List<Hare.Geometry.Point[]> PathVertices = new List<Hare.Geometry.Point[]>();
         //        Hare.Geometry.Point S = Src.Origin;
         //        Hare.Geometry.Point E = Rec[rec_id];
-        //        double df = SampleRate * .5 / 4096;
+        //        double df = SampleRate * .5 / 16384;
 
         //        //Find all Path Legs from Receiver to Source
         //        //for (int r = 0; r < Images.Length; r++)
@@ -1761,7 +1761,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
             }
-            IS.Create_Filter(Direct.SWL, 4096, VB);
+            IS.Create_Filter(Direct.SWL, 16384, VB);
             return IS;
         }
 
@@ -1958,7 +1958,7 @@ namespace Pachyderm_Acoustic
 
             for (int i = 0; i < 8; i++) prms[i] = AcousticalMath.Pressure_Intensity(PathEnergy[i], Room.Rho_C(Path[0]));
 
-            Special_Filter = new System.Numerics.Complex[4096];
+            Special_Filter = new System.Numerics.Complex[16384];
             for (int i = 0; i < Special_Filter.Length; i++) Special_Filter[i] = 1;
 
             foreach (int q in Seq_Polys)
@@ -1971,7 +1971,7 @@ namespace Pachyderm_Acoustic
                     Hare.Geometry.Vector d = Path[i + 1] - Path[i + 2]; d.Normalize();
                     if (!(Room.AbsorptionValue[Seq_Polys[i]] is Basic_Material))
                     {
-                        System.Numerics.Complex[] Ref = Room.AbsorptionValue[Seq_Polys[i]].Reflection_Spectrum(44100, 4096, Room.Normal(Seq_Polys[i]), d, thread);
+                        System.Numerics.Complex[] Ref = Room.AbsorptionValue[Seq_Polys[i]].Reflection_Spectrum(44100, 16384, Room.Normal(Seq_Polys[i]), d, thread);
                         for (int j = 0; j < Special_Filter.Length; j++) Special_Filter[j] *= Ref[j];
                     }
                 }
@@ -1988,7 +1988,6 @@ namespace Pachyderm_Acoustic
         public override void Create_Filter(int length, int threadid)
         {
             F = Audio.Pach_SP.Filter.Transfer_Function(prms, 44100, length, threadid);
-            //double[] FSPL = Utilities.AcousticalMath.SPL_Pressure_Signal(F);
         }
 
         public override double[] Create_Filter(double[] SWL, int SampleFrequency, int length, int dim, int threadid)
@@ -2102,7 +2101,7 @@ namespace Pachyderm_Acoustic
             Hare.Geometry.Vector V = Path[0][Path[0].Length - 1] - Path[0][Path[0].Length - 2];
             V.Normalize();
             Hare.Geometry.Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V, azi, 0, degrees), 0, alt, degrees);
-            double[] F_Chosen = (SampleFreq == 44100 && flat) ? F : this.Create_Filter(SWL, 4096, SampleFreq, 0)[0];
+            double[] F_Chosen = (SampleFreq == 44100 && flat) ? F : this.Create_Filter(SWL, 16384, SampleFreq, 0)[0];
             double[][] Fn = new double[F_Chosen.Length][];
 
             for (int i = 0; i < F_Chosen.Length; i++)
@@ -2117,7 +2116,7 @@ namespace Pachyderm_Acoustic
             Hare.Geometry.Vector V = -1 * (Path[0][Path[0].Length - 1] - Path[0][Path[0].Length - 2]);
             V.Normalize();
             Hare.Geometry.Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(V, azi, 0, degrees), 0, alt, degrees);
-            double[] F_Chosen = (SampleFreq == 44100 && flat) ? F : this.Create_Filter(SWL, 4096, SampleFreq, 0)[0];
+            double[] F_Chosen = (SampleFreq == 44100 && flat) ? F : this.Create_Filter(SWL, 16384, SampleFreq, 0)[0];
             double[] Fn = new double[F_Chosen.Length];
             if (Figure8)
             {
@@ -2215,7 +2214,7 @@ namespace Pachyderm_Acoustic
         //    Sequence = sequence;
         //    H = H_Function_Omni;
         //    Hdir = H_Function_Dir;
-        //    Create_Filter(4096, 0);
+        //    Create_Filter(16384, 0);
         //    Identify(SrcID, Time);
         //}
 
@@ -2359,16 +2358,12 @@ namespace Pachyderm_Acoustic
             for (int i = 0; i < H.Length; i++)
             {
                 Hare.Geometry.Vector Dir = Path[i][Path[i].Length - 1] - Path[i][Path[i].Length - 2];
-                //Dir.Normalize();
-                //De[i] = Dir * PathEnergy[i][Octave];
-
             }
             return De;
         }
 
         public override Hare.Geometry.Vector[] Dir_Energy(int Octave, double alt, double azi, bool degrees, bool Figure8 = false)
         {
-            //Hare.Geometry.Vector[] V = Dir_Energy(Octave);
             Hare.Geometry.Vector[] Fn = new Hare.Geometry.Vector[H[0].Length];
 
             double[][] Hdir_out = new double[6][];
@@ -2467,7 +2462,7 @@ namespace Pachyderm_Acoustic
 
         public override double[] Dir_Filter(double[] SWL, double alt, double azi, bool degrees, bool Figure8, int sampleFreq, bool flat)
         {
-            double[][] Hdir_out = (sampleFreq == 44100 && flat) ? Fdir : Create_Filter(SWL, sampleFreq, 4096, 0);
+            double[][] Hdir_out = (sampleFreq == 44100 && flat) ? Fdir : Create_Filter(SWL, sampleFreq, 16384, 0);
             double[] Fn = new double[Hdir_out[0].Length];
             if (Figure8)
             {
@@ -2494,7 +2489,7 @@ namespace Pachyderm_Acoustic
 
         public override double[][] Dir_Filter(double[] SWL, double alt, double azi, bool degrees, int sampleFreq, bool flat)
         {
-            double[][] Hdir_out = (sampleFreq == 44100 && flat) ? Fdir : Create_Filter(SWL, sampleFreq, 4096, 0);
+            double[][] Hdir_out = (sampleFreq == 44100 && flat) ? Fdir : Create_Filter(SWL, sampleFreq, 16384, 0);
             double[][] Fn = new double[Hdir_out[0].Length][];
 
             for (int i = 0; i < Hdir_out[0].Length; i++)

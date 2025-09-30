@@ -2,7 +2,7 @@
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
-//'Copyright (c) 2008-2023, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
+//'Copyright (c) 2008-2025, Open Research in Acoustical Science and Education, Inc. - a 501(c)3 nonprofit 
 //'Pachyderm-Acoustic is free software; you can redistribute it and/or modify 
 //'it under the terms of the GNU General Public License as published 
 //'by the Free Software Foundation; either version 3 of the License, or 
@@ -38,15 +38,15 @@ namespace Pachyderm_Acoustic
         public partial class Pach_SP
         {
             static System.Threading.Semaphore S = new System.Threading.Semaphore(1, 1);
-            //For all standard 4096 sample FFTs...
-            static fftw_complexarray[] FFT_ArrayIn4096;
-            static fftw_complexarray[] FFT_ArrayOut4096;
-            static fftw_plan[] FFT_Plan4096;
-            static object[] fftlock4096;
-            static fftw_complexarray[] IFFT_ArrayIn4096;
-            static fftw_complexarray[] IFFT_ArrayOut4096;
-            static fftw_plan[] IFFT_Plan4096;
-            static object[] ifftlock4096;
+            //For all standard 16384 sample FFTs...
+            static fftw_complexarray[] FFT_ArrayIn16384;
+            static fftw_complexarray[] FFT_ArrayOut16384;
+            static fftw_plan[] FFT_Plan16384;
+            static object[] fftlock16384;
+            static fftw_complexarray[] IFFT_ArrayIn16384;
+            static fftw_complexarray[] IFFT_ArrayOut16384;
+            static fftw_plan[] IFFT_Plan16384;
+            static object[] ifftlock16384;
 
 
             //For all others...
@@ -73,15 +73,15 @@ namespace Pachyderm_Acoustic
             public static void Initialize_FFTW()
             {
                 int proc = System.Environment.ProcessorCount;
-                FFT_ArrayIn4096 = new fftw_complexarray[proc];
-                FFT_ArrayOut4096 = new fftw_complexarray[proc];
-                FFT_Plan4096 = new fftw_plan[proc];
-                fftlock4096 = new object[proc];
+                FFT_ArrayIn16384 = new fftw_complexarray[proc];
+                FFT_ArrayOut16384 = new fftw_complexarray[proc];
+                FFT_Plan16384 = new fftw_plan[proc];
+                fftlock16384 = new object[proc];
 
-                IFFT_ArrayIn4096 = new fftw_complexarray[proc];
-                IFFT_ArrayOut4096 = new fftw_complexarray[proc];
-                IFFT_Plan4096 = new fftw_plan[proc];
-                ifftlock4096 = new object[proc];
+                IFFT_ArrayIn16384 = new fftw_complexarray[proc];
+                IFFT_ArrayOut16384 = new fftw_complexarray[proc];
+                IFFT_Plan16384 = new fftw_plan[proc];
+                ifftlock16384 = new object[proc];
 
                 FFT_ArrayIn = new fftw_complexarray[proc];
                 FFT_ArrayOut = new fftw_complexarray[proc];
@@ -94,14 +94,14 @@ namespace Pachyderm_Acoustic
 
                 for (int i = 0; i < proc; i++)
                 {
-                    FFT_ArrayIn4096[i] = new fftw_complexarray(4096);
-                    FFT_ArrayOut4096[i] = new fftw_complexarray(4096);
-                    FFT_Plan4096[i] = fftw_plan.dft_1d(4096, FFT_ArrayIn4096[i], FFT_ArrayOut4096[i], fftw_direction.Forward, fftw_flags.Estimate);
-                    fftlock4096[i] = new object();
-                    IFFT_ArrayIn4096[i] = new fftw_complexarray(4096);
-                    IFFT_ArrayOut4096[i] = new fftw_complexarray(4096);
-                    IFFT_Plan4096[i] = fftw_plan.dft_1d(4096, IFFT_ArrayIn4096[i], IFFT_ArrayOut4096[i], fftw_direction.Forward, fftw_flags.Estimate);
-                    ifftlock4096[i] = new object();
+                    FFT_ArrayIn16384[i] = new fftw_complexarray(16384);
+                    FFT_ArrayOut16384[i] = new fftw_complexarray(16384);
+                    FFT_Plan16384[i] = fftw_plan.dft_1d(16384, FFT_ArrayIn16384[i], FFT_ArrayOut16384[i], fftw_direction.Forward, fftw_flags.Estimate);
+                    fftlock16384[i] = new object();
+                    IFFT_ArrayIn16384[i] = new fftw_complexarray(16384);
+                    IFFT_ArrayOut16384[i] = new fftw_complexarray(16384);
+                    IFFT_Plan16384[i] = fftw_plan.dft_1d(16384, IFFT_ArrayIn16384[i], IFFT_ArrayOut16384[i], fftw_direction.Forward, fftw_flags.Estimate);
+                    ifftlock16384[i] = new object();
                     fftlock[i] = new object();
                     ifftlock[i] = new object();
                 }
@@ -152,7 +152,9 @@ namespace Pachyderm_Acoustic
                 {
                     double[] m_spec = Pach_SP.Magnitude_Filter(OctavePressure, SampleFrequency, LengthStartToFinish, Threadid);
                     double[] response = Pach_SP.Linear_Phase_Response(m_spec, SampleFrequency, Threadid);
-                    Raised_Cosine_Window(ref response);
+                    //Enhanced_Cosine_Window(ref response, SampleFrequency);
+                    //Raised_Cosine_Window(ref response);
+                    Adaptive_RCosine_Window(ref response, SampleFrequency);
                     return response;
                 }
 
@@ -231,6 +233,104 @@ namespace Pachyderm_Acoustic
                 for (int i = 0; i < h.Length; i++) h[i] *= factor;
             }
 
+            //public static void Enhanced_Cosine_Window(ref double[] h, int SampleFrequency)
+            //{
+            //    double sum_before = 0;
+            //    double sum_after = 0;
+
+            //    // Calculate window parameters based on lowest frequency
+            //    double lowestFreq = 31.25; // Hz
+            //    int minSamples = (int)(SampleFrequency / lowestFreq * 2); // Two cycles of lowest frequency
+
+            //    // Ensure the window isn't smaller than needed for low frequencies
+            //    int div = 4;
+            //    if (h.Length < minSamples) div = 3; // Less aggressive window for short signals
+
+            //    // Calculate window bounds
+            //    int idl = (div / 2 - 1) * h.Length / div;
+            //    int idu = (div / 2 + 1) * h.Length / div;
+
+            //    // First, store original energy in the preserved region
+            //    for (int i = idl; i < idu; i++)
+            //    {
+            //        sum_before += h[i] * h[i];
+            //    }
+
+            //    // Zero out ends (just like original)
+            //    for (int i = 0; i < idl; i++)
+            //    {
+            //        h[i] = 0;
+            //    }
+
+            //    for (int i = idu; i < h.Length; i++)
+            //    {
+            //        h[i] = 0;
+            //    }
+
+            //    // Apply window to transition region
+            //    for (int i = idl; i < idu; i++)
+            //    {
+            //        double weight = (-Math.Cos(((double)(i - idl) / (2 * h.Length / div)) * 2 * Math.PI) + 1) * .5;
+            //        h[i] *= weight;
+            //        sum_after += h[i] * h[i];
+            //    }
+
+            //    // Apply energy conservation factor
+            //    double factor = Math.Sqrt(sum_before / (sum_after));
+            //    for (int i = 0; i < h.Length; i++) h[i] *= factor;
+            //}
+
+            public static void Adaptive_RCosine_Window(ref double[] h, int sampleRate)
+            {
+                double sum_before = 0;
+                double sum_after = 0;
+
+                // Adaptive window based on frequency content
+                double lowestFreq = 31.25; // Hz
+                int minTransitionWidth = (int)(sampleRate / lowestFreq); // One cycle of lowest frequency
+
+                // Use gentler fade-in/out with more preserved content
+                int div = 8; // Less aggressive than 4
+                int preservedCenter = (int)(h.Length * 0.5); // Preserve 75% in the center
+
+                int idl = (h.Length - preservedCenter) / 2;
+                int idu = idl + preservedCenter;
+
+                // Ensure transition is at least one cycle of lowest frequency
+                idl = Math.Min(idl, minTransitionWidth);
+                idu = Math.Max(idu, h.Length - minTransitionWidth);
+
+                // Apply a gentle fade-in
+                for (int i = 0; i < idl; i++)
+                {
+                    sum_before += h[i] * h[i];
+                    // Use half-cosine window for smoother transition
+                    double weight = 0.5 * (1.0 - Math.Cos(Math.PI * i / idl));
+                    h[i] *= weight;
+                    sum_after += h[i] * h[i];
+                }
+
+                // Middle section remains unchanged
+                for (int i = idl; i < idu; i++)
+                {
+                    sum_before += h[i] * h[i];
+                    sum_after += h[i] * h[i];
+                }
+
+                // Apply a gentle fade-out
+                for (int i = idu; i < h.Length; i++)
+                {
+                    sum_before += h[i] * h[i];
+                    double weight = 0.5 * (1.0 + Math.Cos(Math.PI * (i - idu) / (h.Length - idu)));
+                    h[i] *= weight;
+                    sum_after += h[i] * h[i];
+                }
+
+                // Energy preservation
+                double factor = Math.Sqrt(sum_before / sum_after);
+                for (int i = 0; i < h.Length; i++) h[i] *= factor;
+            }
+
             public static double[] MaximumLengthSequence(int length)
             {
                 bool[] MLS = new bool[length];
@@ -267,7 +367,7 @@ namespace Pachyderm_Acoustic
             {
                 int length = h.Length;
 
-                if (length != 4096)
+                if (length != 16384)
                 {
                     Array.Resize(ref h, (int)Math.Pow(2, Math.Ceiling(Math.Log(h.Length, 2)) + 1));
                 }
@@ -287,7 +387,7 @@ namespace Pachyderm_Acoustic
                 //Complex[] magspec = Pach_SP.IIR_Design.AB_FreqResponse(Bc.ToList(), Ac.ToList(), freq);
                 //Complex[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(freq, 10, freq_l, freq_u);
                 //double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq,h.Length);
-                double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq, h.Length / 2);
+                double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq, h.Length);
 
                 /////////////Use Zero Phase Bandpass//////////////////////
                 //Array.Resize(ref magspec, h.Length / 2);
@@ -323,14 +423,14 @@ namespace Pachyderm_Acoustic
             {
                 int length = h.Length;
 
-                if (length != 4096)
+                if (length != 16384)
                 {
                     Array.Resize(ref h, (int)Math.Pow(2, Math.Ceiling(Math.Log(h.Length, 2)) + 1));
                 }
 
                 double ctr = 62.5 * Math.Pow(2, octave_index);
-                double freq_l = 1.25 * ctr / Utilities.Numerics.rt2;
-                double freq_u = 0.75 * ctr * Utilities.Numerics.rt2;
+                double freq_l = ctr / Utilities.Numerics.rt2;//1.l25*
+                double freq_u = ctr * Utilities.Numerics.rt2;//0.75*
                 //int idl = (int)Math.Round((h.Length * freq_l) / (Sample_Freq));
                 //int idu = (int)Math.Round((h.Length * freq_u) / (Sample_Freq));
 
@@ -343,21 +443,10 @@ namespace Pachyderm_Acoustic
                 //Complex[] magspec = Pach_SP.IIR_Design.AB_FreqResponse(Bc.ToList(), Ac.ToList(), freq);
                 //Complex[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(freq, 10, freq_l, freq_u);
                 //double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq,h.Length);
-                double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq, h.Length / 2);
+                double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(180, freq_l, freq_u, Sample_Freq, h.Length);
 
-                /////////////Use Zero Phase Bandpass//////////////////////
-                //Array.Resize(ref magspec, h.Length / 2);
+                /////////////Use Zero Phase FIR Bandpass//////////////////////
                 System.Numerics.Complex[] filter = Mirror_Spectrum(magspec);
-
-                //double[] f_r = new double[filter.Length];
-                //double[] f_i = new double[filter.Length];
-                //double[] f_m = new double[filter.Length];
-
-                //for (int i = 0; i < filter.Length; i++) { f_r[i] = filter[i].Real; f_i[i] = filter[i].Imaginary; f_m[i] = filter[i].Magnitude; }
-
-                /////////////Minimum Phase Bandpass///////////////////////
-                //double[] response = Minimum_Phase_Response(magspec, 44100, 0);
-                //filter = FFT_General(response, 0);
 
                 //Convolve signal with Bandpass Filter.
                 Complex[] freq_h = FFT_General(h, thread);
@@ -380,11 +469,12 @@ namespace Pachyderm_Acoustic
                 double[] octave_Pressure = new double[8];
                 for (int i = 0; i < 8; i++) octave_Pressure[i] = Math.Pow(10, (OctaveSWL[i]) / 20); //Math.Pow(10,(SWL[5] - SWL[i])/20);
 
-                int length = 8192;
+                int length = 16384;
                 double[] pulse = (Audio.Pach_SP.Filter is Audio.Pach_SP.Linear_Phase_System) ? Audio.Pach_SP.Minimum_Phase_Signal(octave_Pressure, SampleFrequency, length, threadid) : Audio.Pach_SP.Linear_Phase_Signal_Centered(octave_Pressure, SampleFrequency, length, threadid);//
-                //for (int i = 0; i < pulse.Length; i++) pulse[i] /= Math.Sqrt(2);
+                double rt512 = Math.Sqrt(512);
+                for (int i = 0; i < pulse.Length; i++) pulse[i] /= rt512; //Math.Sqrt(2);
                 //pulse = pulse.Reverse().ToArray();
-                Raised_HCosine_Window(ref pulse);// new double[pulse.Length / 2];
+                //Raised_HCosine_Window(ref pulse);// new double[pulse.Length / 2];
                 //Array.Resize(ref pulse2, 4096);
                 //for (int i = 0; i < pulse.Length / 2; i++) pulse2[i] = pulse[pulse.Length / 2 - 1 + i];
                 //pulse2 = pulse2.Reverse().ToArray();
@@ -395,45 +485,38 @@ namespace Pachyderm_Acoustic
                 return Signal;
             }
 
-            public static System.Numerics.Complex[] FFT4096(double[] Signal, int threadid)
+            public static System.Numerics.Complex[] FFT16384(double[] Signal, int threadid)
             {
-                lock (fftlock4096[threadid])
+                lock (fftlock16384[threadid])
                 {
-
                     //FFTW.Net Setup//
-                    FFT_ArrayIn4096[threadid].SetData(Signal);
-                    FFT_Plan4096[threadid].Execute();
-
-                    System.Numerics.Complex[] Out = FFT_ArrayOut4096[threadid].GetData_Complex();
+                    FFT_ArrayIn16384[threadid].SetData(Signal);
+                    FFT_Plan16384[threadid].Execute();
+                    System.Numerics.Complex[] Out = FFT_ArrayOut16384[threadid].GetData_Complex();
                     return Out;
                 }
             }
 
-            public static double[] IFFT_Real4096(System.Numerics.Complex[] spectrum, int threadid)
+            public static double[] IFFT_Real16384(System.Numerics.Complex[] spectrum, int threadid)
             {
-                lock (ifftlock4096[threadid])
+                lock (ifftlock16384[threadid])
                 {
-
                     //FFTW.Net Setup//
-                    IFFT_ArrayIn4096[threadid].SetData(spectrum);
-                    IFFT_Plan4096[threadid].Execute();
-
-                    double[] Out = IFFT_ArrayOut4096[threadid].GetData_Real();
-
+                    IFFT_ArrayIn16384[threadid].SetData(spectrum);
+                    IFFT_Plan16384[threadid].Execute();
+                    double[] Out = IFFT_ArrayOut16384[threadid].GetData_Real();
                     return Out;
                 }
             }
 
-            public static Complex[] IFFT4096(System.Numerics.Complex[] spectrum, int threadid)
+            public static Complex[] IFFT16384(System.Numerics.Complex[] spectrum, int threadid)
             {
                 lock (ifftlock[threadid])
                 {
                     //FFTW.Net Setup//
-                    IFFT_ArrayIn4096[threadid].SetData(spectrum);
-                    IFFT_Plan4096[threadid].Execute();
-
-                    System.Numerics.Complex[] Out = IFFT_ArrayOut4096[threadid].GetData_Complex();
-
+                    IFFT_ArrayIn16384[threadid].SetData(spectrum);
+                    IFFT_Plan16384[threadid].Execute();
+                    System.Numerics.Complex[] Out = IFFT_ArrayOut16384[threadid].GetData_Complex();
                     return Out;
                 }
             }
@@ -447,7 +530,6 @@ namespace Pachyderm_Acoustic
                     FFT_ArrayOut[threadid] = new fftw_complexarray(Signal.Length);
                     FFT_Plan[threadid] = fftw_plan.dft_1d(Signal.Length, FFT_ArrayIn[threadid], FFT_ArrayOut[threadid], fftw_direction.Forward, fftw_flags.Estimate);
                     FFT_Plan[threadid].Execute();
-
                     System.Numerics.Complex[] Out = FFT_ArrayOut[threadid].GetData_Complex();
                     return Out;
                 }
@@ -464,7 +546,6 @@ namespace Pachyderm_Acoustic
                     FFT_ArrayIn[threadid] = new fftw_complexarray(Sig_complex);
                     FFT_ArrayOut[threadid] = new fftw_complexarray(Signal.Length);
                     FFT_Plan[threadid] = fftw_plan.dft_1d(Signal.Length, FFT_ArrayIn[threadid], FFT_ArrayOut[threadid], fftw_direction.Forward, fftw_flags.Estimate);
-
                     FFT_Plan[threadid].Execute();
 
                     System.Numerics.Complex[] Out = FFT_ArrayOut[threadid].GetData_Complex();
@@ -821,35 +902,36 @@ namespace Pachyderm_Acoustic
                 if (Octave_pressure.Length == 8)
                 {
                     f.Add(0);
-
                     for (int oct = 0; oct < 9; oct++)
                     {
-                        f.Add(62.5 * Math.Pow(2, oct) / Utilities.Numerics.rt2);
-                        f.Add(62.5 * Math.Pow(2, oct) * .8);
-                        f.Add(62.5 * Math.Pow(2, oct));
-                        f.Add(62.5 * Math.Pow(2, oct) * 1.2);
+                        double c = 62.5 * Math.Pow(2, oct);
+                        f.Add(c / Utilities.Numerics.rt2);
+                        f.Add(c * 0.8);
+                        f.Add(c);
+                        f.Add(c * 1.2);
                     }
-                    f.Add(sample_frequency / 2);
+                    f.Add(sample_frequency / 2.0);
 
-                    pr.Add(Octave_pressure[0] * 0.0000000001);
-                    pr.Add(Octave_pressure[0] * 0.00000001);
-                    pr.Add(Octave_pressure[0] * 0.001);
+                    pr.Add(Octave_pressure[0] * 1e-1);
+                    pr.Add(Octave_pressure[0]);
+                    pr.Add(Octave_pressure[0]);
                     pr.Add(Octave_pressure[0]);
                     pr.Add(Octave_pressure[0]);
 
-                    for (int oct = 1; oct < 7; oct++)
+                    for (int oct = 1; oct < 8; oct++)
                     {
                         double min = Math.Min(Octave_pressure[oct], pr.Last());
                         double max = Math.Max(Octave_pressure[oct], pr.Last());
-                        pr.Add((max * .95 + min * .05));
+                        pr.Add(max * .95 + min * .05);
                         pr.Add(Octave_pressure[oct]);
                         pr.Add(Octave_pressure[oct]);
                         pr.Add(Octave_pressure[oct]);
                     }
-                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7]);//8k
-                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .9);//10k
-                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .5);//12k
-                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .25);//16k
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7]);       // 8k
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7]);       // 8k
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .9);  // 10k
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .5);  // 12k
+                    if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .25); // 16k
                     int mod = 0;
                     while (pr.Count < f.Count)
                     {
@@ -859,36 +941,153 @@ namespace Pachyderm_Acoustic
                 }
                 else if (Octave_pressure.Length == 24)
                 {
-                    if (Octave_pressure.Length == 8)
+                    f.Add(20);
+                    pr.Add(Octave_pressure[0] * 0.0001);
+                    for (int oct = 0; oct < 24; oct++)
                     {
-                        f.Add(20);
-                        pr.Add(Octave_pressure[0] * 0.0001);
-
-                        for (int oct = 0; oct < 24; oct++)
-                        {
-                            f.Add(20 * Math.Pow(2, 1 + oct / 3.0));
-                            pr.Add(Octave_pressure[oct]);
-                        }
-                        f.Add(sample_frequency / 2);
-                        pr.Add(Octave_pressure[23] * 0.0001);
-
+                        f.Add(20 * Math.Pow(2, 1 + oct / 3.0));
+                        pr.Add(Octave_pressure[oct]);
                     }
+                    f.Add(sample_frequency / 2.0);
+                    pr.Add(Octave_pressure[23] * 0.0001);
                 }
                 else throw new Exception();
-                //MathNet.Numerics.Interpolation.CubicSpline prm = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaSorted(f.ToArray(), pr.ToArray(),);
-                MathNet.Numerics.Interpolation.LinearSpline prm = MathNet.Numerics.Interpolation.LinearSpline.InterpolateSorted(f.ToArray(), pr.ToArray());
+
+                var prm = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaSorted(f.ToArray(), pr.ToArray());
 
                 double[] p_i = new double[spec_length];
 
+                // IMPORTANT: sample 0..Nyquist. j=0=>DC, j=spec_length-1=>Nyquist
+                double step = (sample_frequency / 2.0) / (spec_length - 1);
                 for (int j = 0; j < spec_length; j++)
                 {
-                    double fr = (j + 1) * (sample_frequency / 2) / spec_length;
-                    p_i[j] = prm.Interpolate(fr);// / (fr);
-                    if (p_i[j] < 0) p_i[j] = 0;
+                    double fr = j * step;
+                    double val = prm.Interpolate(fr);
+                    p_i[j] = val < 0 ? 0 : val;
                 }
+                p_i[0] = 0; // ensure no DC
+
+                // Per-octave energy balancing (iterative normalization)
+                //int bandCount = Octave_pressure.Length;
+                //double[] idxL = new double[bandCount];
+                //double[] idxU = new double[bandCount];
+
+                //for (int oct = 0; oct < bandCount; oct++)
+                //{
+                //    double ctr = (Octave_pressure.Length == 8) ? 62.5 * Math.Pow(2, oct) : 20 * Math.Pow(2, oct / 3.0 + 1);
+                //    double fl = ctr / Utilities.Numerics.rt2;
+                //    double fu = ctr * Utilities.Numerics.rt2;
+
+                //    int kL = Math.Max(0, (int)Math.Round(fl / step));
+                //    int kU = Math.Min(spec_length - 1, (int)Math.Round(fu / step));
+                //    idxL[oct] = kL;
+                //    idxU[oct] = kU;
+                //}
+
+                //int iters = 4;           // few passes are enough
+                //double relax = 0.6;      // relaxation to avoid ping-pong on overlaps
+                //for (int it = 0; it < iters; it++)
+                //{
+                //    for (int oct = 0; oct < bandCount; oct++)
+                //    {
+                //        int kL = (int)idxL[oct];
+                //        int kU = (int)idxU[oct];
+                //        if (kU <= kL) continue;
+
+                //        // current “energy” in this band (proportional to time-domain energy by Parseval)
+                //        double E = 0;
+                //        for (int k = kL; k <= kU; k++) E += p_i[k] * p_i[k];
+
+                //        double Etarget = Octave_pressure[oct] * Octave_pressure[oct];
+                //        if (E <= 0 || Etarget <= 0) continue;
+
+                //        double g = Math.Sqrt(Etarget / E);
+                //        double s = 1.0 + (g - 1.0) * relax;
+
+                //        for (int k = kL; k <= kU; k++) p_i[k] *= s;
+                //    }
+                //}
 
                 return p_i;
             }
+
+            //public static double[] Magnitude_Filter(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
+            //{
+            //    int spec_length = length_starttofinish / 2;
+            //    List<double> f = new List<double>();
+            //    List<double> pr = new List<double>();
+
+            //    if (Octave_pressure.Length == 8)
+            //    {
+            //        f.Add(0);
+
+            //        for (int oct = 0; oct < 9; oct++)
+            //        {
+            //            f.Add(62.5 * Math.Pow(2, oct) / Utilities.Numerics.rt2);
+            //            f.Add(62.5 * Math.Pow(2, oct) * .8);
+            //            f.Add(62.5 * Math.Pow(2, oct));
+            //            f.Add(62.5 * Math.Pow(2, oct) * 1.2);
+            //        }
+            //        f.Add(sample_frequency / 2);
+
+            //        pr.Add(Octave_pressure[0] * 0.0000000001);
+            //        pr.Add(Octave_pressure[0] * 0.00000001);
+            //        pr.Add(Octave_pressure[0] * 0.001);
+            //        pr.Add(Octave_pressure[0]);
+            //        pr.Add(Octave_pressure[0]);
+
+            //        for (int oct = 1; oct < 7; oct++)
+            //        {
+            //            double min = Math.Min(Octave_pressure[oct], pr.Last());
+            //            double max = Math.Max(Octave_pressure[oct], pr.Last());
+            //            pr.Add((max * .95 + min * .05));
+            //            pr.Add(Octave_pressure[oct]);
+            //            pr.Add(Octave_pressure[oct]);
+            //            pr.Add(Octave_pressure[oct]);
+            //        }
+            //        if (pr.Count < f.Count) pr.Add(Octave_pressure[7]);//8k
+            //        if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .9);//10k
+            //        if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .5);//12k
+            //        if (pr.Count < f.Count) pr.Add(Octave_pressure[7] * .25);//16k
+            //        int mod = 0;
+            //        while (pr.Count < f.Count)
+            //        {
+            //            mod++;
+            //            pr.Add(Octave_pressure[7] * .125 * Math.Pow(.5, mod));
+            //        }
+            //    }
+            //    else if (Octave_pressure.Length == 24)
+            //    {
+            //        if (Octave_pressure.Length == 8)
+            //        {
+            //            f.Add(20);
+            //            pr.Add(Octave_pressure[0] * 0.0001);
+
+            //            for (int oct = 0; oct < 24; oct++)
+            //            {
+            //                f.Add(20 * Math.Pow(2, 1 + oct / 3.0));
+            //                pr.Add(Octave_pressure[oct]);
+            //            }
+            //            f.Add(sample_frequency / 2);
+            //            pr.Add(Octave_pressure[23] * 0.0001);
+
+            //        }
+            //    }
+            //    else throw new Exception();
+            //    //MathNet.Numerics.Interpolation.CubicSpline prm = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaSorted(f.ToArray(), pr.ToArray(),);
+            //    MathNet.Numerics.Interpolation.LinearSpline prm = MathNet.Numerics.Interpolation.LinearSpline.InterpolateSorted(f.ToArray(), pr.ToArray());
+
+            //    double[] p_i = new double[spec_length];
+
+            //    for (int j = 0; j < spec_length; j++)
+            //    {
+            //        double fr = (j + 1) * (sample_frequency) / spec_length;
+            //        p_i[j] = prm.Interpolate(fr);// / (fr);
+            //        if (p_i[j] < 0) p_i[j] = 0;
+            //    }
+
+            //    return p_i;
+            //}
 
             public static double[] Magnitude_Filter_BW(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
@@ -1004,7 +1203,7 @@ namespace Pachyderm_Acoustic
                     else logspec[i] = Math.Log(M_spec[i]);
                 }
 
-                double[] real_cepstrum = IFFT_Real4096(Mirror_Spectrum(logspec), threadid);
+                double[] real_cepstrum = IFFT_Real16384(Mirror_Spectrum(logspec), threadid);
                 Scale(ref real_cepstrum);
 
                 double[] ym = new double[real_cepstrum.Length];
@@ -1015,14 +1214,14 @@ namespace Pachyderm_Acoustic
                     ym[i] = 2 * real_cepstrum[i];
                 }
                 ym[M_spec.Length] = real_cepstrum[M_spec.Length];
-                System.Numerics.Complex[] ymspec = FFT4096(ym, threadid);
+                System.Numerics.Complex[] ymspec = FFT16384(ym, threadid);
 
                 for (int i = 0; i < ymspec.Length; i++)
                 {
                     ymspec[i] = Complex.Exp(ymspec[i]);
                 }
 
-                double[] Signal = IFFT_Real4096(ymspec, threadid);
+                double[] Signal = IFFT_Real16384(ymspec, threadid);
                 Scale(ref Signal);
 
                 double[] S2 = new double[Signal.Length];
@@ -1073,9 +1272,11 @@ namespace Pachyderm_Acoustic
                 }
 
                 double[] Signal = IFFT_Real_General(ymspec, threadid);
-                Scale(ref Signal);
+                //Scale(ref Signal);
                 double[] S2 = new double[Signal.Length];
-                for (int i = 0; i < Signal.Length; i++) S2[i] = Signal[i];
+                double signalEnergy = Signal.Select(s => s * s).Sum();
+                double scaleFactor = Math.Sqrt(sum_start / signalEnergy);
+                for (int i = 0; i < Signal.Length; i++) S2[i] = Signal[i] * scaleFactor;
 
                 return S2;
             }
@@ -1141,7 +1342,7 @@ namespace Pachyderm_Acoustic
                 }
 
                 ///////////////Create Zero Phase Time Domain Filter/////////////
-                double[] prefilter = IFFT_Real4096(Mirror_Spectrum(M_spec), threadid);
+                double[] prefilter = IFFT_Real16384(Mirror_Spectrum(M_spec), threadid);
                 double scale = 2 * Math.Pow(prefilter.Length, 3.0 / 2.0);
                 //Rotate filter in time domain to center.
                 int hw = prefilter.Length / 2;
@@ -1152,7 +1353,7 @@ namespace Pachyderm_Acoustic
                     filter[i] = prefilter[(i + hw) % prefilter.Length] / scale;
                 }
 
-                Complex[] spectrum = FFT4096(filter, threadid);
+                Complex[] spectrum = FFT16384(filter, threadid);
                 Array.Resize<Complex>(ref spectrum, hw);
                 return spectrum;
             }
@@ -1160,7 +1361,7 @@ namespace Pachyderm_Acoustic
             public static double[] Linear_Phase_Response(double[] M_spec, int sample_frequency, int threadid)
             {
                 ///////////////Create Zero Phase Time Domain Filter/////////////
-                double[] prefilter = IFFT_Real4096(Mirror_Spectrum(M_spec), threadid);
+                double[] prefilter = IFFT_Real16384(Mirror_Spectrum(M_spec), threadid);
                 double scale = 2 * Math.Pow(prefilter.Length, 2.0);
                 //Rotate filter in time domain to center.
                 int hw = prefilter.Length / 2;
@@ -1186,7 +1387,7 @@ namespace Pachyderm_Acoustic
             public static double[] Arbitrary_Phase_Response(System.Numerics.Complex[] M_spec, int sample_frequency, int threadid)
             {
                 ///////////////Create Zero Phase Time Domain Filter/////////////
-                double[] prefilter = (M_spec.Length == 2048) ? IFFT_Real4096(Mirror_Spectrum(M_spec), threadid) : IFFT_Real_General(Mirror_Spectrum(M_spec), threadid);
+                double[] prefilter = (M_spec.Length == 8192) ? IFFT_Real16384(Mirror_Spectrum(M_spec), threadid) : IFFT_Real_General(Mirror_Spectrum(M_spec), threadid);
                 double scale = 2 * Math.Pow(prefilter.Length, 2.0);
                 //Rotate filter in time domain to center.
                 int hw = prefilter.Length / 2;
@@ -1200,110 +1401,342 @@ namespace Pachyderm_Acoustic
                 return filter;
             }
 
-            public static double[] ETCToFilter(double[][] Octave_PRMS, double[] SWL, int sample_frequency_in = 44100, int sample_frequency_out = 44100)
+            /// <summary>
+            /// Reconstruct IR by convolving each octave-band echogram (pressure RMS envelope at 44.1 kHz)
+            /// with a deterministic band-limited carrier (noise inside that octave). No Transfer_Function,
+            /// no per-slice synthesis. Carriers have RMS=1 so envelope scaling maps directly to pressure.
+            /// </summary>
+            /// <param name="Octave_PRMS">[8][T] per-band pressure-RMS echograms</param>
+            /// <param name="SWL">Source weighting (8)</param>
+            /// <param name="sample_frequency">Sampling frequency (must be 44100 here)</param>
+            /// <param name="carrierLength">Length of each band carrier (power-of-two recommended)</param>
+            /// <param name="reuseEdgeForOutside">If true, below 63 Hz and above 8 kHz energy just follows band 0 / 7 carriers</param>
+            public static double[] ETCToFilter(double[][] Octave_PRMS, double[] SWL, int sample_frequency = 44100, int sample_frequency_out = 44100, bool reuseEdgeForOutside = true)
             {
-                int length = 4096;
+                int carrierLength = 16384;
+                if (Octave_PRMS == null || Octave_PRMS.Length != 8)
+                    throw new ArgumentException("Octave_PRMS must be 8 bands.");
+                int T = Octave_PRMS[0].Length;
+                for (int b = 1; b < 8; b++)
+                    if (Octave_PRMS[b].Length != T) throw new ArgumentException("Inconsistent band lengths.");
+
+                double[] p_mod = new double[8];
+                for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20.0);
+
+                // Precompute carriers
+                double[][] carriers = new double[8][];
+                for (int b = 0; b < 8; b++)
+                {
+                    double fc = 62.5 * Math.Pow(2, b);
+                    double fl = fc / Utilities.Numerics.rt2;
+                    double fu = fc * Utilities.Numerics.rt2;
+                    carriers[b] = GenerateBandLimitedSincPulse(carrierLength, sample_frequency, fl, fu);
+                }
+
+                // Output length = T + carrierLength - 1
+                int outLen = T + carrierLength - 1;
+                double[] IR = new double[outLen];
+
+                double Inv_N = 1.0;// carrierLength;//Octave_PRMS[0].Length;
+
+                // Convolve each band envelope with its carrier (FFT convolution)
+                for (int b = 0; b < 8; b++)
+                {
+                    double[] env = new double[T];
+                    double scale = p_mod[b];
+                    var src = Octave_PRMS[b];
+                    for (int t = 0; t < T; t++)
+                        env[t] = Math.Abs(src[t]) * scale;
+
+                    double[] bandIR = FFT_Convolution_double(env, carriers[b], 0);
+                    int copyLen = Math.Min(outLen, bandIR.Length);
+                    for (int i = 0; i < copyLen; i++)
+                        IR[i] += bandIR[i] * Inv_N;
+                }
+
+                // Add 16 kHz band based on 8 kHz band with additional air attenuation
+                {
+                    // Calculate air attenuation coefficients for 8 kHz and 16 kHz using ISO 9613-1
+                    double tempK = 20 + 273.15; // Convert to Kelvin
+                    double pressurePa = 101.325 * 1000; // Convert kPa to Pa
+                    double humidity = 50.0; // Relative humidity in %
+
+                    double atten8kHz = Pachyderm_Acoustic.Environment.Medium_Properties.ISO9613_1_attencoef(8000.0, tempK, pressurePa, humidity);
+                    double atten16kHz = Pachyderm_Acoustic.Environment.Medium_Properties.ISO9613_1_attencoef(16000.0, tempK, pressurePa, humidity);
+
+                    // Calculate additional attenuation per meter for 16 kHz relative to 8 kHz
+                    double additionalAttenuation = atten16kHz - atten8kHz; // dB/m
+
+                    // Create 16 kHz band carrier
+                    double fc16k = 16000.0;
+                    double fl16k = fc16k / Utilities.Numerics.rt2;
+                    double fu16k = fc16k * Utilities.Numerics.rt2;
+                    double[] carrier16k = GenerateBandLimitedSincPulse(carrierLength, sample_frequency, fl16k, fu16k);
+
+                    // Create 16 kHz envelope from 8 kHz band with distance-dependent air attenuation
+                    double[] env16k = new double[T];
+                    double scale16k = p_mod[7]; // Use same SWL as 8 kHz band
+                    double soundSpeed = 343.0; // m/s at 20°C
+                    double samplePeriod = 1.0 / sample_frequency; // seconds
+
+                    var src8k = Octave_PRMS[7]; // 8 kHz band
+                    for (int t = 0; t < T; t++)
+                    {
+                        // Estimate distance based on time (rough approximation)
+                        double estimatedDistance = t * samplePeriod * soundSpeed; // meters
+
+                        // Apply additional air attenuation: Convert dB to linear scale
+                        // Attenuation = 10^(-dB/20) for pressure
+                        double attenuationFactor = Math.Pow(10, -additionalAttenuation * estimatedDistance / 20.0);
+
+                        // Apply additional attenuation to 8 kHz data to get 16 kHz data
+                        env16k[t] = Math.Abs(src8k[t]) * scale16k * attenuationFactor;
+                    }
+
+                    // Convolve 16 kHz envelope with its carrier
+                    double[] bandIR16k = FFT_Convolution_double(env16k, carrier16k, 0);
+
+                    // Add 16 kHz contribution to the IR
+                    int copyLen16k = Math.Min(outLen, bandIR16k.Length);
+                    for (int i = 0; i < copyLen16k; i++)
+                        IR[i] += bandIR16k[i] * Inv_N;
+                }
+
+                return IR;
+            }
+
+            static double[] GenerateBandLimitedSincPulse(int length, int fs, double fl, double fu)
+            {
+                double[] carrier = new double[length];
+                double fc = (fl + fu) / 2.0;
+                double bw = fu - fl;
+                double t0 = (length - 1) / 2.0;
+                double norm = 0;
+
+                for (int n = 0; n < length; n++)
+                {
+                    double t = (n - t0) / fs;
+                    double sinc = (bw == 0) ? 1.0 : Math.Sin(Math.PI * bw * t) / (Math.PI * bw * t);
+                    carrier[n] = sinc * Math.Cos(2 * Math.PI * fc * t);
+                    //L1 Normalization:
+                    norm += Math.Abs(carrier[n]);
+                }
+
+                norm = 2 / (norm * length);
+                if (norm > 0)
+                    for (int n = 0; n < length; n++) carrier[n] *= norm;
+
+                return carrier;
+            }
+
+            /// <summary>
+            /// Generate a deterministic real band-limited carrier (random phase noise confined to [fl,fu]),
+            /// RMS-normalized to 1. Uses hard rectangular passband; can be softened later if desired.
+            /// </summary>
+            public static double[] ETCToFilter_Pulses(double[][] Octave_PRMS, double[] SWL, int sample_frequency_in = 44100, int sample_frequency_out = 44100)
+            {
+                int length = 16384;
                 double BW = (double)sample_frequency_out / (double)sample_frequency_in;
                 double[] IR = new double[(int)Math.Floor((double)(Octave_PRMS[0].Length * BW)) + (int)length];
 
                 double[] p_mod = new double[8];
                 for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
 
-                //Convert to Pressure & Interpolate full resolution IR
                 int proc = System.Environment.ProcessorCount;
-                double[][] output = new double[proc][];
-                double[][] samplep = new double[proc][];
-                System.Threading.Thread[] T = new System.Threading.Thread[proc];
-                int[] to = new int[proc];
-                int[] from = new int[proc];
-
-                Task[] tsk = new Task[proc];
-
-                //Action<int> processchunk = (p) =>
-                Parallel.For(0,proc, p =>
+                Parallel.For(0, proc, p =>
                 {
-                    output[p] = new double[length];
-                    samplep[p] = new double[length * 2];
-                    to[p] = p * Octave_PRMS[0].Length / proc;
-                    from[p] = (p + 1) * Octave_PRMS[0].Length / proc;
-
-                    for (int t = to[p]; t < from[p]; t++)
+                    double[] pulse = new double[length];
+                    for (int t = p * Octave_PRMS[0].Length / proc; t < (p + 1) * Octave_PRMS[0].Length / proc; t++)
                     {
+                        // build per-time-slice octave pressures (pressure RMS)
                         double[] pr = new double[8];
-                        for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Abs(Octave_PRMS[oct][t]) * p_mod[oct];
                         double sum = 0;
-                        foreach (double d in pr) sum += d;
-                        if (sum > 0)
+                        for (int oct = 0; oct < 8; oct++)
                         {
-                            output[p] = Filter.Transfer_Function(pr, sample_frequency_out, length, p);
-                            for (int k = 0; k < length; k++)
-                            {
-                                IR[(int)Math.Floor(t * BW) + k] += output[p][k];
-                            }
+                            pr[oct] = Math.Abs(Octave_PRMS[oct][t]) * p_mod[oct];
+                            sum += pr[oct];
                         }
+                        if (sum <= 0) continue;
+
+                        // Synthesize the broadband pulse (min- or linear-phase as you already do)
+                        pulse = Filter.Transfer_Function(pr, sample_frequency_out, length, p);
+
+                        // Enforce per-band energy on this pulse using the exact pr targets (no diffuse assumption)
+                        FitPulseBandEnergyHard(ref pulse, sample_frequency_out, pr, p);
+
+                        // Place with fractional delay
+                        double pos = t * BW;
+                        int i0 = (int)Math.Floor(pos);
+
+                        //// Add to IR
+                        int maxCopy = Math.Min(pulse.Length, IR.Length - i0);
+                        for (int k = 0; k < maxCopy; k++) IR[i0 + k] += pulse[k];
                     }
                 });
-
-                    //for (int p = 0; p < proc; p++)
-                    //{
-                    //    int id = (int)p;
-                    //    //tsk[p] = Task.Run(() => processchunk(id));
-                    //    tsk[p] = Task.Factory.StartNew(() => processchunk(id), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-                    //}
-
-                //Task.WaitAll(tsk);
-
-                //System.Threading.CountdownEvent CDE = new System.Threading.CountdownEvent(Octave_PRMS[0].Length);
-
-                //for (int p = 0; p < proc; p++)
-                //{
-                //    output[p] = new double[length];
-                //    samplep[p] = new double[length * 2];
-                //    to[p] = p * Octave_PRMS[0].Length / proc;
-                //    from[p] = (p + 1) * Octave_PRMS[0].Length / proc;
-
-                //    T[p] = new System.Threading.Thread((thread) =>
-                //    {
-                //        int thr = (int)thread;
-                //        for (int t = to[thr]; t < from[thr]; t++)
-                //        {
-                //            double[] pr = new double[8];
-                //            for (int oct = 0; oct < 8; oct++) pr[oct] = Math.Abs(Octave_PRMS[oct][t]) * p_mod[oct];
-                //            double sum = 0;
-                //            foreach (double d in pr) sum += d;
-                //            if (sum > 0)
-                //            {
-                //                output[thr] = Filter.Transfer_Function(pr, sample_frequency_out, length, thr);
-                //                for (int k = 0; k < length; k++)
-                //                {
-                //                    IR[(int)Math.Floor(t * BW) + k] += output[thr][k];
-                //                }
-                //            }
-                //            CDE.Signal();
-                //        }
-                //    });
-                //    T[p].Start(p);
-                //}
-
-                //do
-                //{
-                //    if (CDE.IsSet)
-                //    {
-                //        break;
-                //    }
-                //    System.Threading.Thread.Sleep(500);
-                //} while (true);
 
                 return IR;
             }
 
-            /// <summary>
-            /// Frequency domain convolution.
-            /// </summary>
-            /// <param name="SignalBuffer">the dry signal.</param>
-            /// <param name="Filter">the pressure domain impulse response.</param>
-            /// <returns>the convolved signal.</returns>
-            public static float[] FFT_Convolution(double[] SignalBuffer, double[] Filter, int threadid)
+            // Cache smooth octave masks per (specLen, fs) to avoid rebuilding every pulse
+            static readonly System.Collections.Concurrent.ConcurrentDictionary<(int SpecLen, int Fs), double[][]> _octaveMaskCache = new();
+            static void FitPulseBandEnergyHard(ref double[] pulse, int fs, double[] octavePressure, int threadId)
+            {
+                if (pulse == null || pulse.Length == 0) return;
+                if (octavePressure == null || octavePressure.Length < 8) return;
+
+                // FFT (full complex), bin layout: 0..N-1, with 0..half mirror
+                var S = FFT_General(pulse, threadId);
+                int N = S.Length;
+                int half = N / 2;
+                double ny = fs / 2.0;
+                double df = (half > 0) ? ny / half : ny; // k in [0..half] -> f = k*df
+
+                // ISO octave centers and bounds
+                double[] fc = new double[8];
+                double[] fl = new double[8];
+                double[] fu = new double[8];
+                for (int b = 0; b < 8; b++)
+                {
+                    fc[b] = 62.5 * Math.Pow(2, b);
+                    fl[b] = fc[b] / Utilities.Numerics.rt2;
+                    fu[b] = fc[b] * Utilities.Numerics.rt2;
+                }
+
+                // Winner-takes-all ownership using ISO bounds only (no IIRs)
+                // If multiple bands cover a bin, pick the one with smallest |log2(f/fc)|.
+                // If no band covers (below first or above last), mark unowned (-1) and optionally zero later.
+                int[] owner = new int[half + 1];
+                for (int k = 0; k <= half; k++)
+                {
+                    double f = k * df;
+                    if (f <= 0) { owner[k] = -1; continue; }
+
+                    int bestBand = -1;
+                    double bestDist = double.MaxValue;
+                    for (int b = 0; b < 8; b++)
+                    {
+                        if (f < fl[b] || f > fu[b]) continue;
+                        double d = Math.Abs(Math.Log(f / fc[b]) / Math.Log(2.0)); // |log2(f/fc)|
+                        if (d < bestDist) { bestDist = d; bestBand = b; }
+                    }
+                    owner[k] = bestBand; // may be -1 (unowned)
+                }
+
+                // Targets (pressure^2)
+                double[] Et = new double[8];
+                for (int b = 0; b < 8; b++) Et[b] = octavePressure[b] * octavePressure[b];
+
+                // Measure current per-band energy from owned bins (Parseval)
+                double[] Em = new double[8];
+
+                // DC (only if owned; typically not, since fl0 > 0)
+                if (owner[0] >= 0)
+                {
+                    int b0 = owner[0];
+                    double m0 = S[0].Magnitude;
+                    Em[b0] += m0 * m0;
+                }
+
+                // 1..half-1
+                for (int k = 1; k < half; k++)
+                {
+                    int b = owner[k];
+                    if (b < 0) continue;
+                    double mag2 = S[k].Magnitude * S[k].Magnitude;
+                    Em[b] += 2.0 * mag2; // conjugate pair
+                }
+
+                // Nyquist (even N)
+                if (N % 2 == 0 && owner[half] >= 0)
+                {
+                    int bh = owner[half];
+                    double mh = S[half].Magnitude;
+                    Em[bh] += mh * mh;
+                }
+
+                for (int b = 0; b < 8; b++) Em[b] /= N; // time-domain energy
+
+                // Per-band gains with safety clamps
+                const double maxBoostDb = 24.0;  // +24 dB
+                const double maxCutDb = -80.0; // -80 dB (zero-ish)
+                double sMax = Math.Pow(10.0, maxBoostDb / 20.0);
+                double sMin = Math.Pow(10.0, maxCutDb / 20.0);
+                double epsE = 1e-24;
+
+                double[] sb = new double[8];
+                for (int b = 0; b < 8; b++)
+                {
+                    if (Et[b] <= 0) { sb[b] = 0.0; continue; } // true zero band
+                    double Emb = Math.Max(Em[b], epsE);
+                    double s = Math.Sqrt(Et[b] / Emb);
+                    if (double.IsNaN(s) || double.IsInfinity(s)) s = 1.0;
+                    sb[b] = Math.Min(sMax, Math.Max(sMin, s));
+                }
+
+                // Apply gains per owned bin; zero unowned if desired
+                bool zeroOutOfBands = true;
+
+                // DC
+                {
+                    int b0 = owner[0];
+                    if (b0 >= 0)
+                        S[0] = new Complex(S[0].Real * sb[b0], 0);
+                    else if (zeroOutOfBands)
+                        S[0] = Complex.Zero;
+                    else
+                        S[0] = new Complex(S[0].Real, 0);
+                }
+
+                // 1..half-1
+                for (int k = 1; k < half; k++)
+                {
+                    int b = owner[k];
+                    if (b >= 0)
+                    {
+                        double g = sb[b];
+                        S[k] *= g;
+                        S[N - k] = Complex.Conjugate(S[k]);
+                    }
+                    else
+                    {
+                        if (zeroOutOfBands)
+                        {
+                            S[k] = Complex.Zero;
+                            S[N - k] = Complex.Zero;
+                        }
+                        else
+                        {
+                            S[N - k] = Complex.Conjugate(S[k]);
+                        }
+                    }
+                }
+
+                // Nyquist
+                if (N % 2 == 0)
+                {
+                    int b = owner[half];
+                    if (b >= 0)
+                        S[half] = new Complex(S[half].Real * sb[b], 0);
+                    else if (zeroOutOfBands)
+                        S[half] = Complex.Zero;
+                    else
+                        S[half] = new Complex(S[half].Real, 0);
+                }
+
+                // IFFT and 1/N
+                var y = IFFT_Real_General(S, threadId);
+                double invN = 1.0 / N;
+                int L = Math.Min(pulse.Length, y.Length);
+                for (int i = 0; i < L; i++) pulse[i] = y[i] * invN;
+            }
+
+        /// <summary>
+        /// Frequency domain convolution.
+        /// </summary>
+        /// <param name="SignalBuffer">the dry signal.</param>
+        /// <param name="Filter">the pressure domain impulse response.</param>
+        /// <returns>the convolved signal.</returns>
+        public static float[] FFT_Convolution(double[] SignalBuffer, double[] Filter, int threadid)
             {
                 if (SignalBuffer == null) return null;
                 int minlength = SignalBuffer.Length > Filter.Length ? SignalBuffer.Length : Filter.Length;

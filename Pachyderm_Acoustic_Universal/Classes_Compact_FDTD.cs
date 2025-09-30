@@ -1676,8 +1676,11 @@ namespace Pachyderm_Acoustic
                     {
                         if (Loc_in[i].Type() == "Line Source")
                         {
-                            Loc.AddRange((Loc_in[i] as LineSource).Samples);
-                            for (int j = 0; j < (Loc_in[i] as LineSource).Samples.Length; j++) SWL.Add((Loc_in[i] as LineSource).Power);
+                            for(int h = 0; h < (Loc_in[i] as LineSource).Samples.Length; h++)
+                            {
+                                Loc.AddRange((Loc_in[i] as LineSource).Samples[h]);
+                                for (int j = 0; j < (Loc_in[i] as LineSource).Samples[h].Length; j++) SWL.Add((Loc_in[i] as LineSource).Power[h]);
+                            }
                         }
                         else
                         { 
