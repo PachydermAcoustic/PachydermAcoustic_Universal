@@ -21,6 +21,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Numerics;
 using System.Threading;
+using System.Collections.Generic;
 
 namespace FFTWSharp
 {
@@ -166,7 +167,7 @@ namespace FFTWSharp
     /// <summary>
     /// Creates, stores, and destroys fftw plans
     /// </summary>
-    public class fftwf_plan
+    public class fftwf_plan : IDisposable
     {
         static Mutex FFTW_Lock = new Mutex();
 
@@ -174,14 +175,35 @@ namespace FFTWSharp
         public IntPtr Handle
         { get { return handle; } }
 
+        private bool disposed = false;
+
         public void Execute()
         {
             fftwf.execute(handle);
         }
 
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposed)
+            {
+                if (handle != IntPtr.Zero)
+                {
+                    fftwf.destroy_plan(handle);
+                    handle = IntPtr.Zero;
+                }
+                disposed = true;
+            }
+        }
+
         ~fftwf_plan()
         {
-            fftwf.destroy_plan(handle);
+            Dispose(false);
         }
 
         #region Plan Creation
@@ -512,22 +534,42 @@ namespace FFTWSharp
     /// <summary>
     /// Creates, stores, and destroys fftw plans
     /// </summary>
-    public class fftw_plan
+    public class fftw_plan : IDisposable
     {
         static Mutex FFTW_Lock = new Mutex();
 
         protected IntPtr handle;
-        public IntPtr Handle
-        { get { return handle; } }
+        public IntPtr Handle { get { return handle; } }
+
+        private bool disposed = false;
 
         public void Execute()
         {
             FFTW.execute(handle);
         }
 
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposed)
+            {
+                if (handle != IntPtr.Zero)
+                {
+                    FFTW.destroy_plan(handle);
+                    handle = IntPtr.Zero;
+                }
+                disposed = true;
+            }
+        }
+
         ~fftw_plan()
         {
-            FFTW.destroy_plan(handle);
+            Dispose(false);
         }
 
         #region Plan Creation

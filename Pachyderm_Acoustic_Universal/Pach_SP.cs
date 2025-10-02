@@ -30,6 +30,8 @@ using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using Eto.Forms;
 using System.Threading;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 
 namespace Pachyderm_Acoustic
 {
@@ -462,6 +464,26 @@ namespace Pachyderm_Acoustic
                 Array.Resize(ref h_oct, length);
 
                 return h_oct;
+            }
+
+            public static double[] FIR_Bandpass(double[] h, double freqLow, double freqHigh, int Sample_Freq, int thread)
+            {
+                int length = h.Length;
+                if (length != 4096)
+                    Array.Resize(ref h, (int)Math.Pow(2, Math.Ceiling(Math.Log(h.Length, 2)) + 1));
+
+                double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freqLow, freqHigh, Sample_Freq, h.Length / 2);
+                System.Numerics.Complex[] filter = Mirror_Spectrum(magspec);
+
+                Complex[] freq_h = FFT_General(h, thread);
+                for (int i = 0; i < freq_h.Length; i++)
+                    freq_h[i] *= filter[i];
+
+                double[] h_filt = IFFT_Real_General(freq_h, thread);
+                Scale(ref h_filt);
+                Array.Resize(ref h_filt, length);
+
+                return h_filt;
             }
 
             public static double[] Filter2Signal(double[] Filter_in, double[] OctaveSWL, int SampleFrequency, int threadid)
@@ -1281,6 +1303,49 @@ namespace Pachyderm_Acoustic
                 return S2;
             }
 
+            public static double[] Minimum_Phase_Complex(Complex[] H, int threadId)
+            {
+                int N = H.Length;
+
+                double sum_start = 0;
+                for (int i = 0; i < N; i++)
+                    sum_start += H[i].Magnitude * H[i].Magnitude;
+
+                double min = double.MaxValue;
+                for (int i = 0; i < N; i++)
+                    if (H[i].Magnitude != 0) min = Math.Min(H[i].Magnitude, min);
+
+                Complex[] logspec = new Complex[N];
+                for (int i = 0; i < N; i++)
+                {
+                    double mag = H[i].Magnitude == 0 ? min * 0.01 : H[i].Magnitude;
+                    logspec[i] = new Complex(Math.Log(mag), 0);
+                }
+
+                double[] real_cepstrum = IFFT_Real_General(Mirror_Spectrum(logspec), threadId);
+                Scale(ref real_cepstrum);
+
+                double[] ym = new double[N];
+                ym[0] = real_cepstrum[0];
+                int half = N / 2;
+                for (int i = 1; i < half; i++)
+                    ym[i] = 2 * real_cepstrum[i];
+                if (N % 2 == 0) ym[half] = real_cepstrum[half];
+
+                Complex[] ymspec = FFT_General(ym, threadId);
+                for (int i = 0; i < ymspec.Length; i++)
+                    ymspec[i] = Complex.Exp(ymspec[i]);
+
+                double[] Signal = IFFT_Real_General(ymspec, threadId);
+
+                double signalEnergy = Signal.Select(s => s * s).Sum();
+                double scaleFactor = Math.Sqrt(sum_start / signalEnergy);
+                for (int i = 0; i < Signal.Length; i++)
+                    Signal[i] *= scaleFactor;
+
+                return Signal;
+            }
+
             public static double[] Linear_Phase_Signal(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
                 double[] M_s = Magnitude_Spectrum(Octave_pressure, sample_frequency, length_starttofinish, threadid);
@@ -1777,35 +1842,31 @@ namespace Pachyderm_Acoustic
             /// <returns>the convolved signal.</returns>
             public static double[] FFT_Convolution_double(double[] SignalBuffer, double[] Filter, int threadid)
             {
-                if (SignalBuffer == null) return null;
-                int minlength = SignalBuffer.Length > Filter.Length ? SignalBuffer.Length : Filter.Length;
+                if (SignalBuffer == null || Filter == null) return null;
 
-                int W = (int)Math.Pow(2, Math.Ceiling(Math.Log(minlength, 2)));
+                int outLength = SignalBuffer.Length + Filter.Length - 1;
+                int W = (int)Math.Pow(2, Math.Ceiling(Math.Log(outLength, 2)));
 
-                if (SignalBuffer.Length < W) Array.Resize(ref SignalBuffer, W);
-                if (Filter.Length < W) Array.Resize(ref Filter, W);
+                double[] paddedSignal = new double[W];
+                double[] paddedFilter = new double[W];
+                Array.Copy(SignalBuffer, paddedSignal, SignalBuffer.Length);
+                Array.Copy(Filter, paddedFilter, Filter.Length);
 
-                System.Numerics.Complex[] freq1 = FFT_General(SignalBuffer, threadid);
-                System.Numerics.Complex[] freq2 = FFT_General(Filter, threadid);
+                System.Numerics.Complex[] freq1 = FFT_General(paddedSignal, threadid);
+                System.Numerics.Complex[] freq2 = FFT_General(paddedFilter, threadid);
 
-                System.Numerics.Complex[] freq3 = new System.Numerics.Complex[W];
+                System.Numerics.Complex[] freqProduct = new System.Numerics.Complex[W];
 
-                for (int i = 0; i < freq1.Length; i++) freq3[i] = freq1[i] * freq2[i];
+                for (int i = 0; i < W; i++)
+                    freqProduct[i] = freq1[i] * freq2[i];
 
-                double[] conv = IFFT_Real_General(freq3, threadid);
+                double[] conv = IFFT_Real_General(freqProduct, threadid);
 
-                double[] output = new double[conv.Length];
-                double mod = 1d / conv.Length;
-                for (int i = 0; i < conv.Length; i++) output[i] = conv[i] * mod;// * mod;
+                double invW = 1.0 / W;
+                for (int i = 0; i < conv.Length; i++)
+                    conv[i] *= invW;
 
-                double maxfilt = Filter.Max();
-                double maxsig = SignalBuffer.Max();
-                double max = conv.Max();
-                double outmax = output.Max();
-                max++;
-                maxsig++;
-                maxfilt++;
-                return output;
+                return conv.Take(outLength).ToArray();
             }
 
             /// <summary>
@@ -2142,6 +2203,51 @@ namespace Pachyderm_Acoustic
                     wav.Close();
 
                     return !clipped;
+                }
+            }
+        }
+
+        public class MutableArraySampleProvider : ISampleProvider
+        {
+            private float[,] samples = new float[0, 0];
+            private int position;
+            private readonly object lockObj = new object();
+
+            public WaveFormat WaveFormat { get; }
+
+            public int Channels => WaveFormat.Channels;
+
+            public MutableArraySampleProvider(int sampleRate, int channels)
+            {
+                WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, channels);
+            }
+
+            public void SetSamples(float[,] newSamples)
+            {
+                lock (lockObj)
+                {
+                    samples = newSamples;
+                    position = 0;
+                }
+            }
+
+            public int Read(float[] buffer, int offset, int count)
+            {
+                lock (lockObj)
+                {
+                    int available = samples.GetLength(0) - position;
+                    int toCopy = Math.Min(available, count / Channels);
+
+                    for (int f = 0; f < toCopy; f++)
+                    {
+                        for (int ch = 0; ch < Channels; ch++)
+                        {
+                            buffer[offset + f * Channels + ch] = samples[position + f, ch];
+                        }
+                    }
+
+                    position += toCopy;
+                    return toCopy * Channels;
                 }
             }
         }
