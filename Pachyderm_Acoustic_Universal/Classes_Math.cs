@@ -3905,10 +3905,6 @@ namespace Pachyderm_Acoustic
 
             public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, Audio.HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, Pachyderm_Acoustic.Audio.SystemResponseCompensation.SystemCompensationSettings sysCompSettings, bool StartAtZero, double alt, double azi, bool degrees, bool flat, bool auto, IProgressFeedback VB = null)
             {
-                //This version of the function achieves an HRTF filter by dividing up the 3 dimensional signal according to a set number of equidistant points on a sphere.
-                //Each directionis weighted according to spherical harmonics to achieve an approximately spherical weighting when all directions are combined.
-                //The signal is then filtered according to the HRTF at each of these points and then recombined to form the final signal.
-
                 double[][] Histogram = new double[2][];
 
                 if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
