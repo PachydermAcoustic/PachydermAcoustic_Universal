@@ -68,29 +68,27 @@ namespace Pachyderm_Acoustic
                     AvgAngularDistanceBack = GetAvgAngularDistanceBack();
                     MaxCoverageGap = GetMaxCoverageGap();
 
-                    string degreeSymbol = "\u00B0";
-
                     if (!AngularDistancePass && !GlobeCoveragePass)
                     {
                         ValidationMessage = "HRTF failed both angular distance and globe coverage checks:\n" +
-                                            $"Average angular distance in front hemisphere: {AvgAngularDistanceFront:F2}{degreeSymbol} (tolerance: 8{degreeSymbol})\n" +
-                                            $"Average angular distance in back hemisphere: {AvgAngularDistanceBack:F2}{degreeSymbol} (tolerance: 8{degreeSymbol})\n" +
-                                            $"Maximum coverage gap found: {MaxCoverageGap:F2}{degreeSymbol} (tolerance: 15{degreeSymbol})\n" +
+                                            $"Average angular distance in front hemisphere: {AvgAngularDistanceFront:F2}° (tolerance: 8°)\n" +
+                                            $"Average angular distance in back hemisphere: {AvgAngularDistanceBack:F2}° (tolerance: 8°)\n" +
+                                            $"Maximum coverage gap found: {MaxCoverageGap:F2}° (tolerance: 15°)\n" +
                                             "For more detailed diagnostics and a visualisation of the sampling density of your .SOFA file, please see: \n" +
                                             "https://github.com/domfrbassett/HRTF_Diagnostic_Tool";
                     }
                     else if (!AngularDistancePass)
                     {
                         ValidationMessage = "HRTF failed angular distance check.\n" +
-                                            $"Average angular distance in front hemisphere: {AvgAngularDistanceFront:F2}{degreeSymbol} (tolerance: 8{degreeSymbol})\n" +
-                                            $"Average angular distance in back hemisphere: {AvgAngularDistanceBack:F2}{degreeSymbol} (tolerance: 8{degreeSymbol})\n" +
+                                            $"Average angular distance in front hemisphere: {AvgAngularDistanceFront:F2}° (tolerance: 8°)\n" +
+                                            $"Average angular distance in back hemisphere: {AvgAngularDistanceBack:F2}° (tolerance: 8°)\n" +
                                             "For more detailed diagnostics and a visualisation of the sampling density of your .SOFA file, please see: \n" +
                                             "https://github.com/domfrbassett/HRTF_Diagnostic_Tool";
                     }
                     else if (!GlobeCoveragePass)
                     {
                         ValidationMessage = "HRTF failed globe coverage check.\n" +
-                                            $"Maximum coverage gap found: {MaxCoverageGap:F2}{degreeSymbol} (tolerance: 15{degreeSymbol})\n" +
+                                            $"Maximum coverage gap found: {MaxCoverageGap:F2}° (tolerance: 15°)\n" +
                                             "For more detailed diagnostics and a visualisation of the sampling density of your .SOFA file, please see: \n" +
                                             "https://github.com/domfrbassett/HRTF_Diagnostic_Tool";
                     }
