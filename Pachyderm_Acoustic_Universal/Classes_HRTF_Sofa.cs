@@ -35,8 +35,8 @@ namespace Pachyderm_Acoustic
             public string ValidationMessage { get; private set; }
             public bool ValidationPassed => AngularDistancePass && GlobeCoveragePass;
 
-            public double AvgAngularDistanceFront { get; private set; }
-            public double AvgAngularDistanceBack { get; private set; }
+            public double AvgAngularDistanceFrontal { get; private set; }
+            public double AvgAngularDistanceRear { get; private set; }
             public double MaxCoverageGap { get; private set; }
 
             double[][][] Loaded_HRIR;
@@ -64,26 +64,39 @@ namespace Pachyderm_Acoustic
                     AngularDistancePass = CheckHrtfAngularDistance();
                     GlobeCoveragePass = CheckHrtfGlobeCoverage(15.0);
 
-                    AvgAngularDistanceFront = GetAvgAngularDistanceFront();
-                    AvgAngularDistanceBack = GetAvgAngularDistanceBack();
+                    AvgAngularDistanceFrontal = GetAvgAngularDistanceFrontal();
+                    AvgAngularDistanceRear = GetAvgAngularDistanceRear();
                     MaxCoverageGap = GetMaxCoverageGap();
 
                     if (!AngularDistancePass && !GlobeCoveragePass)
                     {
                         ValidationMessage = "HRTF failed both angular distance and globe coverage checks:\n" +
-                                            $"Average angular distance in front hemisphere: {AvgAngularDistanceFront:F2}° (tolerance: 8°)\n" +
-                                            $"Average angular distance in back hemisphere: {AvgAngularDistanceBack:F2}° (tolerance: 8°)\n" +
-                                            $"Maximum coverage gap found: {MaxCoverageGap:F2}° (tolerance: 15°)\n" +
-                                            "For more detailed diagnostics and a visualisation of the sampling density of your .SOFA file, please see: \n" +
-                                            "https://github.com/domfrbassett/HRTF_Diagnostic_Tool";
+                                            $"Average angular distance in front hemisphere: {AvgAngularDistanceFrontal:F2}° (tolerance: 8°)\n" +
+                                            $"Average angular distance in back hemisphere: {AvgAngularDistanceRear:F2}°";
+
+                        if (AvgAngularDistanceRear >= 150)
+                        {
+                            ValidationMessage += " (Warning: rear hemisphere appears to be effectively empty)";
+                        }
+
+                        ValidationMessage += $"\nMaximum coverage gap found: {MaxCoverageGap:F2}° (tolerance: 15°)\n" +
+                                             "For more detailed diagnostics and a visualisation of the sampling density of your .SOFA file, please see: \n" +
+                                             "https://github.com/domfrbassett/HRTF_Diagnostic_Tool";
                     }
                     else if (!AngularDistancePass)
                     {
                         ValidationMessage = "HRTF failed angular distance check.\n" +
-                                            $"Average angular distance in front hemisphere: {AvgAngularDistanceFront:F2}° (tolerance: 8°)\n" +
-                                            $"Average angular distance in back hemisphere: {AvgAngularDistanceBack:F2}° (tolerance: 8°)\n" +
-                                            "For more detailed diagnostics and a visualisation of the sampling density of your .SOFA file, please see: \n" +
-                                            "https://github.com/domfrbassett/HRTF_Diagnostic_Tool";
+                                            $"Average angular distance in front hemisphere: {AvgAngularDistanceFrontal:F2}° (tolerance: 8°)\n" +
+                                            $"Average angular distance in back hemisphere: {AvgAngularDistanceRear:F2}°";
+
+                        if (AvgAngularDistanceRear >= 150)
+                        {
+                            ValidationMessage += " (Warning: rear hemisphere appears to be effectively empty)";
+                        }
+
+                        ValidationMessage += " (tolerance: 8°)\n" +
+                                             "For more detailed diagnostics and a visualisation of the sampling density of your .SOFA file, please see:\n" +
+                                             "https://github.com/domfrbassett/HRTF_Diagnostic_Tool";
                     }
                     else if (!GlobeCoveragePass)
                     {
@@ -237,11 +250,11 @@ namespace Pachyderm_Acoustic
                     return false;
 
                 // Compute average minimum angular distance
-                AvgAngularDistanceFront = AverageMinAngularDistance(frontVectors);
-                AvgAngularDistanceBack = AverageMinAngularDistance(backVectors);
+                AvgAngularDistanceFrontal = AverageMinAngularDistance(frontVectors);
+                AvgAngularDistanceRear = AverageMinAngularDistance(backVectors);
 
                 // Check against threshold (8°)
-                return AvgAngularDistanceFront <= 8 && AvgAngularDistanceBack <= 8;
+                return AvgAngularDistanceFrontal <= 8 && AvgAngularDistanceRear <= 8;
             }
 
             private bool CheckHrtfGlobeCoverage(double maxAllowedGapDeg)
@@ -307,14 +320,14 @@ namespace Pachyderm_Acoustic
                 return minAngles.Average();
             }
 
-            public double GetAvgAngularDistanceFront()
+            public double GetAvgAngularDistanceFrontal()
             {
-                return AvgAngularDistanceFront;
+                return AvgAngularDistanceFrontal;
             }
 
-            public double GetAvgAngularDistanceBack()
+            public double GetAvgAngularDistanceRear()
             {
-                return AvgAngularDistanceBack;
+                return AvgAngularDistanceRear;
             }
 
             public double GetMaxCoverageGap()
