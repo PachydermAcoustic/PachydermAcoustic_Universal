@@ -653,7 +653,7 @@ namespace Pachyderm_Acoustic
                     tfRefFreq[i] = Complex.FromPolarCoordinates(tfMag[i], phase);
                 }
 
-                // regularise / floor the reference magnitude
+                // Regularise / floor the reference magnitude
                 double maxRefPower = 0.0;
                 for (int i = 0; i < fftLen; i++)
                 {
@@ -719,7 +719,6 @@ namespace Pachyderm_Acoustic
                             }
                         }
 
-                        // copy back first N samples (overwrite original HRIR buffer)
                         Array.Copy(eqTime, 0, hrirs[dir][ch], 0, N);
                     }
                 }
@@ -727,7 +726,6 @@ namespace Pachyderm_Acoustic
 
             /// <summary>
             /// Free-field equalization: normalize HRTFs with respect to a particular incident direction. Usually frontal to 30 degrees azimuth.
-            /// This method takes the HRIR closest to 0 degrees azimuth, 0 degrees elevation as the reference.
             /// 
             /// Things to be improved:
             /// Use a frequency-dependent regularisation factor.
@@ -768,7 +766,7 @@ namespace Pachyderm_Acoustic
                     Math.Sin(elRad)
                 );
 
-                // Find the HRIR index closest to frontal direction
+                // Find the HRIR index closest to incident direction (generally frontal)
                 int referenceIndex = 0;
                 double minAngle = double.MaxValue;
                 for (int i = 0; i < Directions.Length; i++)
@@ -781,7 +779,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                // FFT of reference HRIR (closest to 0 degrees az/el)
+                // FFT of reference HRIR (closest to incident direction)
                 Complex[] refLeft = Pach_SP.FFT_General(hrirs[referenceIndex][0], threadId);
                 Complex[] refRight = Pach_SP.FFT_General(hrirs[referenceIndex][1], threadId);
 
@@ -822,11 +820,7 @@ namespace Pachyderm_Acoustic
                         for (int f = 0; f < fftSize; f++)
                         {
                             double refMag = refFFT[f].Magnitude;
-
-                            // regulated magnitude
                             double regulatedMag = Math.Sqrt(refMag * refMag + reg);
-
-                            // magnitude scaling while preserving original phase
                             double mag = H[f].Magnitude / regulatedMag;
 
                             if (maxBoostdB.HasValue)
@@ -859,8 +853,6 @@ namespace Pachyderm_Acoustic
                         Array.Copy(equalisedHRIR, 0, hrirs[dir][ear], 0, hrirs[dir][ear].Length);
                     }
                 }
-
-                System.Diagnostics.Debug.WriteLine($"Applied free-field equalisation with a reference azimuth of {FreeFieldIncidence}. Smoothing: {smoothingOct}, Max boost: {maxBoostdB} dB, Low-freq cut-off: {lowFreqHz} Hz");
             }
 
             /// <summary>
@@ -1175,7 +1167,7 @@ namespace Pachyderm_Acoustic
                 if (n < 1)
                     return 1;
 
-                n--; // decrement n to handle exact powers of 2
+                n--;
                 n |= n >> 1;
                 n |= n >> 2;
                 n |= n >> 4;
