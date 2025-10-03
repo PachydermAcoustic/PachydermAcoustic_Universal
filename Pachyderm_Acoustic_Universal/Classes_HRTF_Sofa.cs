@@ -229,8 +229,8 @@ namespace Pachyderm_Acoustic
                 }
 
                 // Separate front/back using X coordinate (positive = front, negative = back)
-                var frontVectors = vectors.Where(v => v.X >= 0).ToArray();
-                var backVectors = vectors.Where(v => v.X < 0).ToArray();
+                var frontVectors = vectors.Where(v => v.dx >= 0).ToArray();
+                var backVectors = vectors.Where(v => v.dx < 0).ToArray();
 
                 // Fail if either hemisphere has no sources
                 if (frontVectors.Length == 0 || backVectors.Length == 0)
