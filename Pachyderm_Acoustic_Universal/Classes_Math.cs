@@ -1033,7 +1033,7 @@ namespace Pachyderm_Acoustic
                 Array.Copy(rawCrossCorrelation, mid, crossCorrelation, 0, n - mid);
                 Array.Copy(rawCrossCorrelation, 0, crossCorrelation, n - mid, mid);
 
-                // Find max in plus or minus 1ms lag window
+                // Find max in ±1ms lag window
                 int maxLagSamples = (int)Math.Round(0.001 * sampleFrequency);
                 mid = crossCorrelation.Length / 2;
                 double maxCorr = double.MinValue;
@@ -1042,7 +1042,7 @@ namespace Pachyderm_Acoustic
                 {
                     if (i >= 0 && i < crossCorrelation.Length)
                     {
-                        double absCorr = Math.Abs(crossCorrelation[i]);
+                        double absCorr = Math.Abs(crossCorrelation[i]); // You can omit Math.Abs if signed value is desired - in ISO it is absolute, however it's a bit more interesting to be able to differentiate between correlation and anti-correlation. I think so long as users know what they are doing, it wouldn't be misleading, but I have kept it as per ISO for now.
                         if (absCorr > maxCorr) maxCorr = absCorr;
                     }
                 }
