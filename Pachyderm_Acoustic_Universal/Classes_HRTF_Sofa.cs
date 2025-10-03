@@ -61,6 +61,8 @@ namespace Pachyderm_Acoustic
                     emitterdirs = ReadSourcePosition(fileId);
                     Fs = ReadSamplingFrequency(fileId);
 
+                    // Tolerances for dataset validation should be treated with a pinch of salt - they are somewhat arbitrary but based on experience with a range of datasets
+
                     AngularDistancePass = CheckHrtfAngularDistance();
                     GlobeCoveragePass = CheckHrtfGlobeCoverage(15.0);
 
