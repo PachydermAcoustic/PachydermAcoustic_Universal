@@ -31,6 +31,7 @@
 		<PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
 		<PackageReference Include="System.Threading.Tasks.Extensions" Version="4.5.4" />
 		<PackageReference Include="NAudio" Version="2.2.1" />
+		<PackageReference Include="MIConvexHull" Version="1.1.19.1019" />
 	</ItemGroup>
 	<ItemGroup Condition="'$(TargetFramework)' == 'net48'">
 		<PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
@@ -43,6 +44,18 @@
 		<None Remove="Acoustic_Materials_and_ECCs.csv" />
 		<None Remove="Resources\CLF_Read.dll" />
 		<None Remove="Wall_Assemblies_EC.csv" />
+	</ItemGroup>
+	<ItemGroup>
+		<Reference Include="SphericalVoronoiLib">
+			<HintPath>Resources\SphericalVoronoiLib.dll</HintPath>
+			<Private>true</Private>
+		</Reference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="Resources\SphericalVoronoiLib.dll">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
 	</ItemGroup>
 	<ItemGroup>
 		<Content Include="Resources\libfftw3-3.dll">

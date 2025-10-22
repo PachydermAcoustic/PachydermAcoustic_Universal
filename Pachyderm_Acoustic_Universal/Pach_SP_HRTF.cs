@@ -15,6 +15,7 @@ using Vector = Hare.Geometry.Vector;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using Eto.Forms;
+using SphericalVoronoiLib;
 
 namespace Pachyderm_Acoustic
 {
@@ -533,6 +534,7 @@ namespace Pachyderm_Acoustic
                 {
                     SystemResponseCompensation.DiffuseFieldEqualisation(
                         hrirs,
+                        Directions,
                         threadId,
                         Fs,
                         1.0 / 3.0,
@@ -575,6 +577,7 @@ namespace Pachyderm_Acoustic
                         case 3:
                             SystemResponseCompensation.DiffuseFieldEqualisation(
                                 hrirs,
+                                Directions,
                                 threadId,
                                 Fs,
                                 settings.SmoothingOct,
@@ -857,13 +860,9 @@ namespace Pachyderm_Acoustic
 
             /// <summary>
             /// Equalises the dataset with respect to the diffuse-field average of HRTFs across all incident directions for both ears.
+            /// Weighting proportional to the solid angle associated to each direction has been added as per Jot, Larcher and Warusfel (1995).
             /// 
             /// For greater robustness, we could consider using a regularised Kirkeby inverse filter. See: https://github.com/Sinnerboy89/DFE/tree/master
-            /// Diffuse-field equalisation really requires a uniform spherical distribution of incident directions.
-            /// In practice, if the measured directions do not sample the sphere uniformly, each HRTF can be given a weight 
-            /// in the averaging process (proportional to a solid angle associated to the corresponding direction).
-            /// Plan for later work: Use MIConvexHull to compute Voronoi-based solid angle weights. Additionally, add a low-frequency 
-            /// roll-off instead of hard cut-off.
             /// 
             /// References:
             /// M. Mein, "Perception de l'information binaurale liee aux reflexions precoces dans une salle. Application a la simulation de la qualite acoustique", 
@@ -877,13 +876,18 @@ namespace Pachyderm_Acoustic
             /// <param name="maxBoostdB"></param>
             /// <param name="minPhase"></param>
             /// <param name="lowFreqHz"></param>
-            public static void DiffuseFieldEqualisation(double[][][] hrirs, int threadId, int Fs,
-                                double? smoothingOct = 1.0 / 3.0,
-                                double? maxBoostdB = 12.0,
-                                bool minPhase = false,
-                                double? lowFreqHz = 50.0)
+            public static void DiffuseFieldEqualisation(
+                double[][][] hrirs,
+                Vector[] Directions,
+                int threadId, 
+                int Fs,
+                double? smoothingOct = 1.0 / 3.0,
+                double? maxBoostdB = 12.0,
+                bool minPhase = false,
+                double? lowFreqHz = 50.0)
             {
                 if (hrirs == null || hrirs.Length == 0) return;
+
                 int nDirs = hrirs.Length;
                 int nEars = 2;
                 int fftSize = hrirs[0][0].Length;
@@ -892,6 +896,37 @@ namespace Pachyderm_Acoustic
                 int lowFreqBin = (lowFreqHz.HasValue)
                     ? (int)Math.Round(lowFreqHz.Value / fRes)
                     : 0;
+
+                double[] weights;
+                try
+                {
+                    if (Directions != null && Directions.Length == nDirs)
+                    {
+                        // Convert Directions vector to array
+                        double[,] dirArray = new double[nDirs, 3];
+
+                        for (int i = 0; i < nDirs; i++)
+                        {
+                            dirArray[i, 0] = Directions[i].dx;
+                            dirArray[i, 1] = Directions[i].dy;
+                            dirArray[i, 2] = Directions[i].dz;
+                        }
+
+                        // Compute Voronoi tessellation to get solid angle weights
+                        var voronoiResult = SphericalVoronoiProcessor.ComputeFromArray(dirArray);
+                        weights = voronoiResult.Weights;
+                    }
+                    else
+                    {
+                        Console.WriteLine("Warning: Directions array is null or has incorrect length. Using uniform weights for diffuse-field equalisation.");
+                        weights = Enumerable.Repeat(1.0 / nDirs, nDirs).ToArray();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Warning: Failed to compute Voronoi tessellation for diffuse-field equalisation. Using uniform weights. Exception: " + ex.Message);
+                    weights = Enumerable.Repeat(1.0 / nDirs, nDirs).ToArray();
+                }
 
                 // Compute FFTs
                 Complex[][][] H = new Complex[nDirs][][];
@@ -910,16 +945,19 @@ namespace Pachyderm_Acoustic
                     avgMag[ch] = new double[nFreqs];
                     for (int f = 0; f < nFreqs; f++)
                     {
-                        double sumPower = 0.0;
-                        int count = 0;
+                        double weightedPowerSum = 0.0;
+                        double totalWeight = 0.0;
                         for (int i = 0; i < nDirs; i++)
                         {
                             if (H[i] == null) continue;
                             double mag = H[i][ch][f].Magnitude;
-                            sumPower += mag * mag;
-                            count++;
+                            double w = (i < weights.Length) ? weights[i] : (1.0 / nDirs);
+                            weightedPowerSum += w * (mag * mag);
+                            totalWeight += w;
                         }
-                        avgMag[ch][f] = (count > 0) ? Math.Sqrt(sumPower / count) : 1e-12;
+                        avgMag[ch][f] = (totalWeight > 0.0) 
+                            ? Math.Sqrt(weightedPowerSum / totalWeight) 
+                            : 1e-12;
                     }
 
                     if (smoothingOct.HasValue)
@@ -932,16 +970,29 @@ namespace Pachyderm_Acoustic
                     Complex[] eqFilterSpec = new Complex[fftSize];
                     for (int f = 0; f < nFreqs; f++)
                     {
+                        double freq = f * fRes;
                         double gaindB = -20.0 * Math.Log10(avgMag[ch][f] + 1e-12);
 
                         if (maxBoostdB.HasValue)
                             gaindB = Math.Max(-maxBoostdB.Value, Math.Min(maxBoostdB.Value, gaindB));
 
-                        if (lowFreqHz.HasValue && f < lowFreqBin)
-                            gaindB = 0.0;
+                        double baseGainLin = Math.Pow(10.0, gaindB / 20.0);
 
-                        double gainLin = Math.Pow(10.0, gaindB / 20.0);
-                        eqFilterSpec[f] = new Complex(gainLin, 0.0);
+                        // Low-frequency roll-off
+                        if (lowFreqHz.HasValue && freq < lowFreqHz.Value)
+                        {
+                            double rollOffExp = 2.0; // Quadratic roll-off
+                            double frac = Math.Max(0.0, freq / lowFreqHz.Value);
+                            double taper = Math.Pow(frac, rollOffExp);
+
+                            double finalGainLin = 1.0 + taper * (baseGainLin - 1.0); // Interpolate between 1.0 (0 dB) at 0 Hz and baseGainLin at lowFreqHz
+                            eqFilterSpec[f] = new Complex(finalGainLin, 0.0);
+                        }
+                        else
+                        {
+                            double gainLin = baseGainLin; // No roll-off
+                            eqFilterSpec[f] = new Complex(gainLin, 0.0);
+                        }
                     }
 
                     for (int f = nFreqs; f < fftSize; f++)
