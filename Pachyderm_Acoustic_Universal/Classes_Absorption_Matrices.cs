@@ -101,45 +101,10 @@ namespace Pachyderm_Acoustic
                 SparseMatrix M = new SparseMatrix(6, 6);
                 h *= -1;
 
-                //double w = Utilities.Numerics.PiX2 * freq;
-                //Complex LameL = FrameElasticity * PoissonRatio / ((1 + PoissonRatio) * (1 - 2 * PoissonRatio));
-                //Complex LameMu = FrameElasticity / (2 * (1 + PoissonRatio));
-                //Complex delta21 = w * w * FrameDensity;
-                //Complex delta22 = w * w * FrameDensity;
-                //Complex delta23 = delta21 / LameMu;
-                // delta21 /= (LameL + 2 * LameMu);
-                //delta22 /= (LameL + 2 * LameMu);
-                ////Complex k1 = k * Complex.Cos(theta);
-                ////Complex k3 = k * Complex.Sin(theta);
-                //Complex k13 = Complex.Sqrt(delta21 - kt * kt);
-                //Complex k23 = Complex.Sqrt(delta22 - kt * kt);
-                //Complex k33 = Complex.Sqrt(delta23 - kt * kt);
-                ////Complex Damping1 = LameMu * (k13 * k13 - k0 * k0);
-                ////Complex Damping2 = 2 * LameMu * k0;
-
-                //double rho12 = Biot_Porous_Absorbers.rho12(porosity, tortuosity);
-                //double rhoa = Biot_Porous_Absorbers.rhoA(rho12);
-                //double Viscous_Permeability = Biot_Porous_Absorbers.Viscous_Permeability(flow_resistivity);
-                //double v = Biot_Porous_Absorbers.v();
-                //Complex Gw = Biot_Porous_Absorbers.G_w(tortuosity, porosity, Viscous_Permeability, characteristic_length, freq, v);
-                //Complex rho12eff = Biot_Porous_Absorbers.rho12eff(rhoa, porosity, flow_resistivity, Gw, freq);
-                //Complex rho22eff = Biot_Porous_Absorbers.rho22eff(rhoa, porosity, flow_resistivity, Gw, freq);
-                //Complex rho11eff = Biot_Porous_Absorbers.rho11eff(FrameDensity, rhoa, porosity, flow_resistivity, Gw, freq);
-
-                //Complex Kf = AmbientMeanPressure / (1 - (gamma - 1) / (gamma * alpha));
-                //Complex P = 4 * FrameShear / 3 + kb + (phi_1 * phi_1) * Kf / porosity;
-                //Complex R = porosity * Kf;
-                //Complex Q = Kf * (1 - porosity);
-                //Complex Mu1 = Q * delta21 - w * w * rho11eff / (w * w *rho22eff - R *delta21);
-                //Complex Mu2 = Q * delta22 - w * w * rho11eff / (w * w * rho22eff - R * delta22);
-                //Complex Mu3 = FrameShear * delta23 - w * w * rho11eff / (w * w * rho22eff);
-
                 Complex D1 = (P + Q * Mu1) * (kt * kt + k13 * k13) - 2 * ShearModulus * kt * kt;
                 Complex D2 = (P + Q * Mu2) * (kt * kt + k23 * k23) - 2 * ShearModulus * kt * kt;
                 Complex E1 = (R * Mu1 + Q) * (kt * kt + k13 * k13);
                 Complex E2 = (R * Mu2 + Q) * (kt * kt + k23 * k23);
-
-                //Complex Mu1 =                         
 
                 //Taken from Lauriks, et. al 1990.
                 M[0, 0] = w * kt * Complex.Cos(k13 * h);
@@ -348,22 +313,7 @@ namespace Pachyderm_Acoustic
                 Dh[3, 2] = D1 * cos_k33_h; // σ_zz for transverse wave, first potential
                 Dh[3, 3] = -Complex.ImaginaryOne * D1 * sin_k33_h; // σ_zz for transverse wave, second potential
 
-                //This is what is in the Allard Atalla book for an explicit version of the inverted D(0) matrix, but it leads to negative absorption values.
-                //SparseMatrix D0_Inverse = new SparseMatrix(4, 4);
-                //D0_Inverse[0, 0] = 2 * kt / (w * d23);
-                //D0_Inverse[0, 2] = -1 / (Mu * d23);
-                //D0_Inverse[1, 1] = (k33 * k33 - kt * kt) / (w * k13 * d23);
-                //D0_Inverse[1, 3] = -kt / (Mu * k13 * d23);
-                //D0_Inverse[2, 1] = kt / (w * d23);
-                //D0_Inverse[2, 3] = 1 / (Mu * d23);
-                //D0_Inverse[3, 0] = (k33 * k33 - kt * kt) / (w * k33 * d23);
-                //D0_Inverse[3, 2] = -kt / (Mu * k33 * d23);
-
-                //return D0_Inverse * Dh;
-
-                //Instead, building the D(0) matrix and inverting seems to work better.
                 SparseMatrix D0 = new SparseMatrix(4, 4);
-                // Build D0 matrix at z=0
                 D0[0, 0] = w * kt;                      // w * kt * cos(0)
                 D0[0, 1] = 0;                          // -w * i * kt * sin(0) = 0
                 D0[0, 2] = 0;                          // w * i * k33 * sin(0) = 0
@@ -392,7 +342,6 @@ namespace Pachyderm_Acoustic
                 }
                 catch
                 {
-                    // Add small regularization for numerical stability
                     var identity = SparseMatrix.CreateIdentity(4);
                     var regularizedD0 = D0 + Complex.ImaginaryOne * 1e-12 * identity;
                     return Dh * (regularizedD0.Inverse() as SparseMatrix);

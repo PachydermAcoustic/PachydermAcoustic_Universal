@@ -2021,7 +2021,7 @@ namespace Pachyderm_Acoustic
                 }
                 return Histogram;
             }
-
+            
             public static double[][] AurFilter_Fig8_3Axis(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double xpos_alt, double xpos_azi, bool degrees, bool flat)
             {
                 double[][] Histogram = new double[3][];
@@ -2034,14 +2034,6 @@ namespace Pachyderm_Acoustic
                     for (int i = 0; i < hist_temp[0].Length; i++)
                     {
                         Hare.Geometry.Vector V = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_temp[0][i] + hist_temp[1][i], hist_temp[2][i] + hist_temp[3][i], hist_temp[4][i] + hist_temp[5][i]), -xpos_azi, 0, true), 0, -xpos_alt, true);
-                        //Hare.Geometry.Vector V = new Hare.Geometry.Vector(hist_temp[0][i] + hist_temp[1][i], hist_temp[2][i] + hist_temp[3][i], hist_temp[4][i] + hist_temp[5][i]); 
-                        //double cos_azi = Math.Abs(Math.Cos(xpos_azi* Math.PI / 180));
-                        //double sin_azi = Math.Abs(Math.Sin(xpos_azi * Math.PI / 180));
-                        //double cos_alt = Math.Abs(Math.Cos(xpos_alt * Math.PI / 180));
-                        //double sin_alt = Math.Abs(Math.Sin(xpos_alt * Math.PI / 180));
-                        //Histogram[0][i] = V.dx * cos_azi * cos_alt + V.dy * sin_azi * cos_alt + V.dz * sin_alt;
-                        //Histogram[1][i] = V.dx * sin_azi * cos_alt + V.dy * cos_azi * cos_alt + V.dz * sin_alt;
-                        //Histogram[2][i] = V.dx * sin_azi + V.dy * cos_azi + V.dz * cos_alt;
                         Histogram[0][i] += V.dx;
                         Histogram[1][i] += V.dy;
                         Histogram[2][i] += V.dz;
@@ -2077,9 +2069,6 @@ namespace Pachyderm_Acoustic
                             int R_Start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
                             double[][] V = value.Dir_Filter(Direct.SWL, xpos_alt, xpos_azi, degrees, Sampling_Frequency, flat);
 
-                            //Hare.Geometry.Vector dir = value.Path[0][value.Path[0].Length - 1] - value.Path[0][value.Path[0].Length - 2];
-                            //dir.Normalize();
-                            //for (int i = 0; i < value.Filter.Length; i++)
                             for (int i = 0; i < V.Length; i++)
                             {
                                 Histogram[0][R_Start + i] += V[i][0];
@@ -3984,7 +3973,7 @@ namespace Pachyderm_Acoustic
             public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, Audio.HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
             {
                 //This version of the function achieves an HRTF filter by dividing up the 3 dimensional signal according to a set number of equidistant points on a sphere.
-                //Each directionis weighted according to spherical harmonics to achieve an approximately spherical weighting when all directions are combined.
+                //Each direction is weighted according to spherical harmonics to achieve an approximately spherical weighting when all directions are combined.
                 //The signal is then filtered according to the HRTF at each of these points and then recombined to form the final signal.
 
                 if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
@@ -4513,10 +4502,8 @@ namespace Pachyderm_Acoustic
                 // mundhenk@usc.edu
                 // C/C++ Macro HSV to RGB
                 double H = h * 180 / Math.PI;
-                while (H < 0) { H += 360; }
-                ;
-                while (H >= 360) { H -= 360; }
-                ;
+                while (H < 0) { H += 360; };
+                while (H >= 360) { H -= 360; };
                 double R, G, B;
                 if (V <= 0)
                 { R = G = B = 0; }

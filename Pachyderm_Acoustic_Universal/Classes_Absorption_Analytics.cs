@@ -464,7 +464,7 @@ namespace Pachyderm_Acoustic
                     double theta = (a + .5) * dt - (Math.PI / 2);
                     double d_mod = Math.Abs(Math.Sin(theta) * dt);//; * Math.Abs(dt);
                     
-	//denominator += d_mod;
+                	//denominator += d_mod;
                     for (int f = 0; f < absorption_Coefficient[a].Length; f++)
                     {
                         numerator[f] += Complex.Abs(absorption_Coefficient[a][f] * d_mod);
