@@ -18,10 +18,14 @@
 
 using System.Collections.Generic;
 using System;
+using System.Numerics;
 using Pachyderm_Acoustic.Environment;
 using System.Linq;
 using Pachyderm_Acoustic.Pach_Graphics;
 using Hare.Geometry;
+using Vector = Hare.Geometry.Vector;
+using System.Runtime.CompilerServices;
+using Pachyderm_Acoustic.Audio;
 
 namespace Pachyderm_Acoustic
 {
@@ -316,6 +320,68 @@ namespace Pachyderm_Acoustic
                 return schroed;
             }
 
+            /// <summary>
+            /// Envelope function in dB, constrained by sliding local maximum (in dB).
+            /// Use when plotting SPL/IR already in dB.
+            /// </summary>
+            public static double[] Envelope(double[] signalDb, double sampleRate, double attackTime = 0.05, double releaseTime = 0.005, double localMaxWindow = 0.02, bool monotonicDown = false)
+            {
+                if (signalDb == null || signalDb.Length == 0) return Array.Empty<double>();
+
+                int w = Math.Max(1, (int)Math.Round(localMaxWindow * sampleRate));
+
+                // Sliding local maximum in dB
+                var localMax = SlidingMax(signalDb, w);
+
+                double a = 1.0 - Math.Exp(-1.0 / (attackTime * sampleRate));   // small
+                double r = 1.0 - Math.Exp(-1.0 / (releaseTime * sampleRate)); // larger
+
+                var y = new double[signalDb.Length];
+                double prev = signalDb[0];
+                y[0] = Math.Min(prev, localMax[0]);
+
+                for (int i = 1; i < signalDb.Length; i++)
+                {
+                    double x = signalDb[i];
+                    double coeff = x > prev ? a : r;
+                    double yn = prev + coeff * (x - prev);
+
+                    yn = Math.Min(yn, localMax[i]);
+
+                    if (monotonicDown && yn > prev)
+                        yn = prev;
+
+                    y[i] = yn;
+                    prev = yn;
+                }
+
+                return y;
+            }
+
+            private static double[] SlidingMax(double[] x, int window)
+            {
+                int n = x.Length;
+                var result = new double[n];
+                var dequeIdx = new int[window]; // store indices
+                int head = 0, tail = -1;
+
+                for (int i = 0; i < n; i++)
+                {
+                    // pop from tail while current x[i] >= x[tail]
+                    while (tail >= head && x[i] >= x[dequeIdx[tail % window]]) tail--;
+                    tail++;
+                    dequeIdx[tail % window] = i;
+
+                    // remove outdated head
+                    int startIdx = i - window + 1;
+                    if (dequeIdx[head % window] < startIdx) head++;
+
+                    int maxIdx = dequeIdx[head % window];
+                    result[i] = x[maxIdx];
+                }
+
+                return result;
+            }
 
             /// <summary>
             /// Gets the logarithmic value of the signal.
@@ -968,6 +1034,100 @@ namespace Pachyderm_Acoustic
                 return 1000 * (t2 - t1) / Sample_Frequency;
             }
 
+            /// <summary>
+            /// Calculate Interaural Cross-Correlation Coefficient (IACC) between left and right ear impulse responses (ISO 3382-1 Annex B).
+            /// </summary>
+            /// <param name="leftEarIR">Impulse response of the left ear.</param>
+            /// <param name="rightEarIR">Impulse response of the right ear.</param>
+            /// <param name="sampleFrequency">Sample frequency in Hz.</param>
+            /// <param name="tStart">Start time in seconds for the analysis window.</param>
+            /// <param name="tEnd">End time in seconds for the analysis window.</param>
+            /// <returns>Interaural Cross-Correlation Coefficient (IACC) value.</
+
+            public static double InterauralCrossCorrelation(
+                double[] leftEarIR,
+                double[] rightEarIR,
+                int sampleFrequency,
+                double tStart,
+                double tEnd)
+            {
+                // Extract window from left and right ear impulse responses
+                int startIndex = (int)Math.Round(tStart * sampleFrequency);
+                int endIndex = (int)Math.Round(tEnd * sampleFrequency);
+                int length = endIndex - startIndex;
+
+                if (length <= 0 || startIndex < 0 || endIndex > leftEarIR.Length || endIndex > rightEarIR.Length)
+                    throw new ArgumentException("Invalid time window for IACC calculation.");
+
+                // Zero-pad signals to next power of two
+                int n = (int)Math.Pow(2, Math.Ceiling(Math.Log(length * 2, 2)));
+
+                double[] leftPadded = new double[n];
+                double[] rightPadded = new double[n];
+
+                for (int i = 0; i < length; i++)
+                {
+                    //Hann window
+                    double w = 0.5 * (1 - Math.Cos(2 * Math.PI * i / (length - 1)));
+                    leftPadded[i] = leftEarIR[startIndex + i] * w;
+                    rightPadded[i] = rightEarIR[startIndex + i] * w;
+                }
+
+                // FFT both signals
+                var leftFreq = Audio.Pach_SP.FFT_General(leftPadded, 0);
+                var rightFreq = Audio.Pach_SP.FFT_General(rightPadded, 0);
+
+                // Cross-spectrum multiply
+                Complex[] crossSpectrum = new Complex[n];
+                for (int i = 0; i < n; i++)
+                {
+                    crossSpectrum[i] = leftFreq[i] * Complex.Conjugate(rightFreq[i]);
+                }
+
+                // IFFT to get the cross-correlation
+                double[] rawCrossCorrelation = Audio.Pach_SP.IFFT_Real_General(crossSpectrum, 0);
+                for (int i = 0; i < rawCrossCorrelation.Length; i++)
+                {
+                    rawCrossCorrelation[i] /= n;
+                }
+
+                double[] crossCorrelation = new double[n];
+                int mid = n / 2;
+
+                Array.Copy(rawCrossCorrelation, mid, crossCorrelation, 0, n - mid);
+                Array.Copy(rawCrossCorrelation, 0, crossCorrelation, n - mid, mid);
+
+                // Find max in ±1ms lag window
+                int maxLagSamples = (int)Math.Round(0.001 * sampleFrequency);
+                mid = crossCorrelation.Length / 2;
+                double maxCorr = double.MinValue;
+
+                for (int i = mid - maxLagSamples; i <= mid + maxLagSamples; i++)
+                {
+                    if (i >= 0 && i < crossCorrelation.Length)
+                    {
+                        double absCorr = Math.Abs(crossCorrelation[i]); // You can omit Math.Abs if signed value is desired - in ISO it is absolute, however it's a bit more interesting to be able to differentiate between correlation and anti-correlation. I think so long as users know what they are doing, it wouldn't be misleading, but I have kept it as per ISO for now.
+                        if (absCorr > maxCorr) maxCorr = absCorr;
+                    }
+                }
+
+                // Normalise by RMS energies of windowed signals
+                double energyLeft = 0;
+                double energyRight = 0;
+                for (int i = 0; i < length; i++)
+                {
+                    double l = leftPadded[i];
+                    double r = rightPadded[i];
+                    energyLeft += l * l;
+                    energyRight += r * r;
+                }
+
+                double normFactor = Math.Sqrt(energyLeft * energyRight);
+                if (normFactor == 0) return 0.0;
+
+                return maxCorr / normFactor;
+            }
+
             public static double[][] nc = new double[][] {
                 new double[]{ 47, 36, 29, 22, 17, 14, 12, 11 },
                 new double[]{ 51, 40, 33, 26, 22, 19, 17, 16 },
@@ -1038,6 +1198,22 @@ namespace Pachyderm_Acoustic
                 }
 
                 return result;
+            }
+
+            public static double Est_SEL_from_Leq(double Leq_dB, double N_events, double T_seconds)
+            {
+                // SEL = Leq - 10 log10(N/T)
+                double ratio = Math.Max(1e-12, N_events / Math.Max(1e-9, T_seconds));
+                return Leq_dB - 10.0 * Math.Log10(ratio);
+            }
+
+            public static double Lmax_from_SEL(double SEL_dB, double r0_m, double v_mps)
+            {
+                // Lmax = SEL - 10 log10(pi*r0/v)
+                r0_m = Math.Max(0.5, r0_m);
+                v_mps = Math.Max(0.5, v_mps);
+                double term = Math.PI * r0_m / v_mps;
+                return SEL_dB - 10.0 * Math.Log10(Math.Max(1e-12, term));
             }
         }
         public static class Geometry
@@ -1840,129 +2016,6 @@ namespace Pachyderm_Acoustic
                 return F;
             }
 
-            public static double[][] Aurfilter_HRTF(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, Audio.HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
-            {
-                double[][] Histogram = new double[2][];
-                Histogram[0] = new double[(int)(RTData.CO_Time / 1000 * Sampling_Frequency) + 16384 + hrtf.SampleCt];
-                Histogram[1] = new double[(int)(RTData.CO_Time / 1000 * Sampling_Frequency) + 16384 + hrtf.SampleCt];
-                int power = hrtf.DirsCT / 2 - 2;
-
-                if (RTData != null)
-                {
-                    double[][] hist_temp = flat ? RTData.Filter_3Axis(Rec_ID) : RTData.Create_Filter(Direct.SWL, Rec_ID, VB);
-                    int[] ids = new int[3];
-                    double[][] hist_rot = PachTools.Rotate_Vector_Rose(hist_temp, azi, alt, true);
-
-                    for (int d = 0; d < hrtf.DirsCT; d++)
-                    {
-                        Vector v = hrtf.Directions[d];
-                        double d_azi = Math.Atan2(v.dy, v.dz);
-                        double d_alt = Math.Asin(v.dz);
-                        ids[0] = (d_azi > Math.PI / 2 && azi < 3 * Math.PI / 2) ? 1 : 0;
-                        ids[1] = (d_azi <= Math.PI) ? 2 : 3;
-                        ids[2] = (d_alt < 0) ? 5 : 4;
-                        int SIGN = 1;
-                        for (int i = 1; i < 2; i++) SIGN *= (ids[i] % 2 == 1) ? -1 : 1;
-
-                        double[] hist1d = new double[hist_rot.Length];
-                        for (int i = 0; i < hist_rot.Length; i++)
-                        {
-                            Hare.Geometry.Vector V = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_rot[i][ids[0]], hist_rot[i][ids[1]], hist_rot[i][ids[2]]), d_azi, 0, true), 0, d_alt, true);
-                            double contribution = V.dx;
-                            V.Normalize();
-                            hist1d[i] = contribution * Math.Pow(Hare_math.Dot(V, v), power);
-                        }
-
-                        double[] HistL = Audio.Pach_SP.FFT_Convolution_double(hist1d, hrtf.HeadRelatedIR(d)[0], 0);
-                        double[] HistR = Audio.Pach_SP.FFT_Convolution_double(hist1d, hrtf.HeadRelatedIR(d)[1], 0);
-
-                        for (int i = 0; i < hist1d.Length; i++)
-                        {
-                            Histogram[0][i] += HistL[i];
-                            Histogram[1][i] += HistR[i];
-                        }
-                    }
-
-                    if (Direct != null && Direct.IsOccluded(Rec_ID))
-                    {
-                        int D_Start = 0;
-                        if (!Start_at_Zero) D_Start = (int)Math.Ceiling(Direct.Time(Rec_ID) * Sampling_Frequency);
-
-                        double[][] hist_d = Direct.Dir_Filter(Rec_ID, alt, azi, degrees, Sampling_Frequency, false, flat);
-                        double[] hist1d = new double[Histogram[0].Length];
-
-                        Vector[] dn = Direct.Directions_Neg(4, Rec_ID, alt, azi, degrees);
-                        Vector[] dp = Direct.Directions_Pos(4, Rec_ID, alt, azi, degrees);
-                        Vector[] dnet = new Vector[dn.Length];
-                        for (int i = 0; i < dn.Length; i++) { dnet[i] = dp[i] - dn[i]; dnet[i].Normalize(); }
-
-                        for (int d = 0; d < hrtf.DirsCT; d++)
-                        {
-                            Vector v = hrtf.Directions[d];
-                            double d_azi = Math.Atan2(v.dy, v.dz);
-                            double d_alt = Math.Asin(v.dz);
-                            ids[0] = (d_azi > Math.PI / 2 && azi < 3 * Math.PI / 2) ? 1 : 0;
-                            ids[1] = (d_azi <= Math.PI) ? 2 : 3;
-                            ids[2] = (d_alt < 0) ? 5 : 4;
-                            int SIGN = 1;
-                            for (int i = 1; i < 2; i++) SIGN *= (ids[i] % 2 == 1) ? -1 : 1;
-                            for (int i = 0; i < hist_d.Length; i++)
-                            {
-                                Hare.Geometry.Vector V = PachTools.Rotate_Vector(PachTools.Rotate_Vector(new Hare.Geometry.Vector(hist_d[i][0], hist_d[i][1], hist_d[i][2]), d_azi, 0, true), 0, d_alt, true);
-                                double contribution = V.dx;
-                                hist1d[i] = contribution * Math.Pow(Hare_math.Dot(dnet[0], v), power);
-                            }
-                            double[] HistL = Audio.Pach_SP.FFT_Convolution_double(hist1d, hrtf.HeadRelatedIR(d)[0], 0);
-                            double[] HistR = Audio.Pach_SP.FFT_Convolution_double(hist1d, hrtf.HeadRelatedIR(d)[1], 0);
-
-                            for (int i = 0; i < hist1d.Length; i++)
-                            {
-                                Histogram[0][i + D_Start] += HistL[i];
-                                Histogram[1][i + D_Start] += HistR[i];
-                            }
-                        }
-                    }
-
-                    if (ISData != null)
-                    {
-                        foreach (Deterministic_Reflection value in ISData.Paths[Rec_ID])
-                        {
-                            if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
-                            {
-                                double[][] filter = new double[6][];
-                                filter[0] = value.Dir_Filter(Direct.SWL, alt, azi, true, false, Sampling_Frequency, true);
-                                filter[1] = value.Dir_Filter(Direct.SWL, alt, (azi + 180) % 360, true, false, Sampling_Frequency, true);
-                                filter[2] = value.Dir_Filter(Direct.SWL, alt, (azi + 90) % 360, true, false, Sampling_Frequency, true);
-                                filter[3] = value.Dir_Filter(Direct.SWL, alt, (azi + 270) % 360, true, false, Sampling_Frequency, true);
-                                if (alt > 0)
-                                {
-                                    filter[4] = value.Dir_Filter(Direct.SWL, 90 - alt, (azi + 180) % 360, true, false, Sampling_Frequency, true);
-                                    filter[5] = value.Dir_Filter(Direct.SWL, -(90 - alt), azi, true, false, Sampling_Frequency, true);
-                                }
-                                else
-                                {
-                                    filter[5] = value.Dir_Filter(Direct.SWL, 90 - alt, (azi + 180) % 360, true, false, Sampling_Frequency, true);
-                                    filter[4] = value.Dir_Filter(Direct.SWL, -(90 - alt), azi, true, false, Sampling_Frequency, true);
-                                }
-                                double[][] hist = hrtf.Filter(filter);
-                                int end = hist[0].Length < Histogram.Length - (int)Math.Ceiling(Sampling_Frequency * value.TravelTime) ? hist[0].Length : Histogram.Length - (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
-                                int R_start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
-                                for (int t = 0; t < end; t++)
-                                {
-                                    int t_s = R_start + t;
-                                    if (t_s >= 0 && t_s + t < Histogram[0].Length)
-                                    {
-                                        Histogram[0][t_s + t] += hist[0][t];
-                                        Histogram[1][t_s + t] += hist[1][t];
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                return Histogram;
-            }
-
             public static double[] Aurfilter_Directional(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, bool Start_at_Zero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
             {
                 double[] Histogram;
@@ -2049,11 +2102,12 @@ namespace Pachyderm_Acoustic
                 if (Direct != null && Direct.IsOccluded(Rec_ID))
                 {
                     int D_Start = 0;
-                    if (!Start_at_Zero) D_Start = (int)Math.Ceiling(Direct.Time(Rec_ID) * Sampling_Frequency);
+                    if (!Start_at_Zero) D_Start = (int)Math.Ceiling(Direct.Time(Rec_ID) * Sampling_Frequency) + 8192;
 
                     double[][] V = Direct.Dir_Filter(Rec_ID, xpos_alt, xpos_azi, degrees, Sampling_Frequency, true, flat);
                     for (int i = 0; i < V.Length; i++)
                     {
+                        if (V[i] == null) break;
                         Histogram[0][D_Start + i] += V[i][0];
                         Histogram[1][D_Start + i] += V[i][1];
                         Histogram[2][D_Start + i] += V[i][2];
@@ -3919,12 +3973,8 @@ namespace Pachyderm_Acoustic
                 return Histogram;
             }
 
-            public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, Audio.HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
+            public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, Audio.HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, Pachyderm_Acoustic.Audio.SystemResponseCompensation.SystemCompensationSettings sysCompSettings, bool StartAtZero, double alt, double azi, bool degrees, bool flat, bool auto, IProgressFeedback VB = null)
             {
-                //This version of the function achieves an HRTF filter by dividing up the 3 dimensional signal according to a set number of equidistant points on a sphere.
-                //Each direction is weighted according to spherical harmonics to achieve an approximately spherical weighting when all directions are combined.
-                //The signal is then filtered according to the HRTF at each of these points and then recombined to form the final signal.
-
                 if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
                 if (ISData == null) ISData = new ImageSourceData[SrcIDs[SrcIDs.Count - 1] + 1];
                 if (RTData == null) RTData = new Environment.Receiver_Bank[SrcIDs[SrcIDs.Count - 1] + 1];
@@ -3954,7 +4004,7 @@ namespace Pachyderm_Acoustic
 
                 foreach (int s in SrcIDs)
                 {
-                    double[][] IR = Aurfilter_HRTF(Direct.ElementAt<Direct_Sound>(s), ISData.ElementAt<ImageSourceData>(s), RTData.ElementAt<Receiver_Bank>(s), hrtf, CO_Time_ms, Sampling_Frequency, Rec_ID, StartAtZero, alt, azi, degrees, flat, VB);
+                    double[][] IR = Aurfilter_HRTF(Direct, ISData, RTData, hrtf, CO_Time_ms, Sampling_Frequency, Rec_ID,new int[1] {s}.ToList(), StartAtZero, alt, azi, degrees, flat, VB);
                     if (Histogram[0] == null)
                     {
                         Histogram[0] = new double[IR[0].Length];
@@ -4003,24 +4053,31 @@ namespace Pachyderm_Acoustic
 
                 double[][] Histogram = new double[2][];
 
+                int maxDelaySamples = (int)Math.Ceiling(maxdelay * Sampling_Frequency / 1000);
                 int no_of_irs = 0;
+
+                SystemResponseCompensation.SystemCompensationSettings sysCompSettings = new Audio.SystemResponseCompensation.SystemCompensationSettings();
+
                 foreach (int s in SrcIDs)
                 {
-                    hrtf.Load(Direct.ElementAt<Direct_Sound>(s), ISData.ElementAt<ImageSourceData>(s), RTData.ElementAt<Receiver_Bank>(s), CO_Time_ms, Sampling_Frequency, Rec_ID, StartAtZero, flat);
+                    hrtf.Load(Direct.ElementAt<Direct_Sound>(s), ISData.ElementAt<ImageSourceData>(s), RTData.ElementAt<Receiver_Bank>(s), sysCompSettings, CO_Time_ms, Sampling_Frequency, Rec_ID, StartAtZero, flat, false);
                     double[][] IR = hrtf.Binaural_IR(azi, alt);
 
                     if (Histogram[0] == null)
                     {
-                        no_of_irs++;
-                        Histogram[0] = new double[IR[0].Length];
-                        Histogram[1] = new double[IR[0].Length];
+                        int histogramLength = maxDelaySamples + IR[0].Length;
+                        Histogram[0] = new double[histogramLength];
+                        Histogram[1] = new double[histogramLength];
                     }
 
+                    no_of_irs++;
+
+                    int insertionIdx = (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency);
                     for (int i = 0; i < IR[0].Length; i++)
                     {
-
-                        Histogram[0][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[0][i] / hrtf.SampleCt;
-                        Histogram[1][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[1][i] / hrtf.SampleCt;
+                        if (i + insertionIdx >= Histogram[0].Length) continue;
+                        Histogram[0][i + insertionIdx] += IR[0][i];
+                        Histogram[1][i + insertionIdx] += IR[1][i];
                     }
                 }
 
@@ -4167,16 +4224,26 @@ namespace Pachyderm_Acoustic
                     pitch = azi;
                 }
 
-                ///Implicit Sparse Rotation Matrix
+                // Define forward vector for yaw rotation
                 Hare.Geometry.Vector fwd = new Hare.Geometry.Vector(Math.Cos(yaw), 0, Math.Sin(yaw));
-                Hare.Geometry.Vector up = new Hare.Geometry.Vector(0, 0, 1) - Hare.Geometry.Hare_math.Dot(new Hare.Geometry.Vector(0, 0, 1), fwd) * fwd;
-                Hare.Geometry.Vector right = Hare.Geometry.Hare_math.Cross(up, fwd);
 
-                ///Implicit Sparse Rotation Matrix
-                Vector fwdazi = new Hare.Geometry.Vector(Math.Cos(pitch), Math.Sin(pitch), 0);
-                Vector upazi = new Hare.Geometry.Vector(0, 0, 1) - Hare.Geometry.Hare_math.Dot(new Hare.Geometry.Vector(0, 0, 1), fwdazi) * fwdazi;
+                // Define orthogonal up vector (project global Z onto plane orthogonal to fwd)
+                Hare.Geometry.Vector globalZ = new Hare.Geometry.Vector(0, 0, 1);
+                Hare.Geometry.Vector up = globalZ - Hare.Geometry.Hare_math.Dot(globalZ, fwd) * fwd;
+                up.Normalize();
+
+                // Define right vector as cross product to complete orthonormal basis
+                Hare.Geometry.Vector right = Hare.Geometry.Hare_math.Cross(up, fwd);
+                right.Normalize();
+
+                // Define rotation basis for pitch (azimuth) rotation
+                Hare.Geometry.Vector fwdazi = new Hare.Geometry.Vector(Math.Cos(pitch), Math.Sin(pitch), 0);
+
+                Hare.Geometry.Vector upazi = globalZ - Hare.Geometry.Hare_math.Dot(globalZ, fwdazi) * fwdazi;
                 upazi.Normalize();
-                Vector rightazi = Hare.Geometry.Hare_math.Cross(up, fwdazi);
+
+                Hare.Geometry.Vector rightazi = Hare.Geometry.Hare_math.Cross(upazi, fwdazi);
+                rightazi.Normalize();
 
                 double[][] V_new = new double[V[0].Length][];
 
@@ -4184,31 +4251,79 @@ namespace Pachyderm_Acoustic
                 {
                     double[] Vt = new double[6];
 
+                    // Positive magnitude part (indices 0,2,4)
                     double PM = Math.Sqrt(V[0][i] * V[0][i] + V[2][i] * V[2][i] + V[4][i] * V[4][i]);
                     if (PM > 0)
                     {
-                        Vector PV = new Vector(Math.Abs(V[0][i]), Math.Abs(V[2][i]), Math.Abs(V[4][i]));
+                        Hare.Geometry.Vector PV = new Hare.Geometry.Vector(
+                            Math.Abs(V[0][i]),
+                            Math.Abs(V[2][i]),
+                            Math.Abs(V[4][i])
+                        );
                         PV.Normalize();
-                        Vector PS = new Vector(V[0][i] < 0 ? -1 : 1, V[2][i] < 0 ? -1 : 1, V[4][i] < 0 ? -1 : 1);
-                        PV = new Vector(fwd.dx * PV.dx + fwd.dy * PV.dy + fwd.dz * PV.dz, right.dx * PV.dx + right.dy * PV.dy + right.dz * PV.dz, up.dx * PV.dx + up.dy * PV.dy + up.dz * PV.dz);
-                        PV = new Vector(fwdazi.dx * PV.dx + fwdazi.dy * PV.dy + fwdazi.dz * PV.dz, rightazi.dx * PV.dx + rightazi.dy * PV.dy + rightazi.dz * PV.dz, upazi.dx * PV.dx + upazi.dy * PV.dy + upazi.dz * PV.dz);
+
+                        Hare.Geometry.Vector PS = new Hare.Geometry.Vector(
+                            V[0][i] < 0 ? -1 : 1,
+                            V[2][i] < 0 ? -1 : 1,
+                            V[4][i] < 0 ? -1 : 1
+                        );
+
+                        // Rotate by yaw basis
+                        PV = new Hare.Geometry.Vector(
+                            fwd.dx * PV.dx + fwd.dy * PV.dy + fwd.dz * PV.dz,
+                            right.dx * PV.dx + right.dy * PV.dy + right.dz * PV.dz,
+                            up.dx * PV.dx + up.dy * PV.dy + up.dz * PV.dz
+                        );
+
+                        // Rotate by pitch basis
+                        PV = new Hare.Geometry.Vector(
+                            fwdazi.dx * PV.dx + fwdazi.dy * PV.dy + fwdazi.dz * PV.dz,
+                            rightazi.dx * PV.dx + rightazi.dy * PV.dy + rightazi.dz * PV.dz,
+                            upazi.dx * PV.dx + upazi.dy * PV.dy + upazi.dz * PV.dz
+                        );
+
+                        // Assign positive and negative parts preserving sign and magnitude
                         if (PV.dx > 0) Vt[0] += PV.dx * PM * PS.dx; else Vt[1] += PV.dx * PM * PS.dx;
                         if (PV.dy > 0) Vt[2] += PV.dy * PM * PS.dy; else Vt[3] += PV.dy * PM * PS.dy;
                         if (PV.dz > 0) Vt[4] += PV.dz * PM * PS.dz; else Vt[5] += PV.dz * PM * PS.dz;
                     }
 
+                    // Negative magnitude part (indices 1,3,5)
                     double NM = Math.Sqrt(V[1][i] * V[1][i] + V[3][i] * V[3][i] + V[5][i] * V[5][i]);
                     if (NM > 0)
                     {
-                        Vector NV = new Vector(Math.Abs(V[1][i]), Math.Abs(V[3][i]), Math.Abs(V[5][i]));
+                        Hare.Geometry.Vector NV = new Hare.Geometry.Vector(
+                            Math.Abs(V[1][i]),
+                            Math.Abs(V[3][i]),
+                            Math.Abs(V[5][i])
+                        );
                         NV.Normalize();
-                        Vector NS = new Vector(V[1][i] < 9 ? -1 : 1, V[3][i] < 0 ? -1 : 1, V[5][i] < 0 ? -1 : 1);
-                        NV = new Vector(fwd.dx * NV.dx + fwd.dy * NV.dy + fwd.dz * NV.dz, right.dx * NV.dx + right.dy * NV.dy + right.dz * NV.dz, up.dx * NV.dx + up.dy * NV.dy + up.dz * NV.dz);
-                        NV = new Vector(fwdazi.dx * NV.dx + fwdazi.dy * NV.dy + fwdazi.dz * NV.dz, rightazi.dx * NV.dx + rightazi.dy * NV.dy + rightazi.dz * NV.dz, upazi.dx * NV.dx + upazi.dy * NV.dy + upazi.dz * NV.dz);
+
+                        Hare.Geometry.Vector NS = new Hare.Geometry.Vector(
+                            V[1][i] < 0 ? -1 : 1,
+                            V[3][i] < 0 ? -1 : 1,
+                            V[5][i] < 0 ? -1 : 1
+                        );
+
+                        // Rotate by yaw basis
+                        NV = new Hare.Geometry.Vector(
+                            fwd.dx * NV.dx + fwd.dy * NV.dy + fwd.dz * NV.dz,
+                            right.dx * NV.dx + right.dy * NV.dy + right.dz * NV.dz,
+                            up.dx * NV.dx + up.dy * NV.dy + up.dz * NV.dz
+                        );
+
+                        // Rotate by pitch basis
+                        NV = new Hare.Geometry.Vector(
+                            fwdazi.dx * NV.dx + fwdazi.dy * NV.dy + fwdazi.dz * NV.dz,
+                            rightazi.dx * NV.dx + rightazi.dy * NV.dy + rightazi.dz * NV.dz,
+                            upazi.dx * NV.dx + upazi.dy * NV.dy + upazi.dz * NV.dz
+                        );
+
                         if (NV.dx > 0) Vt[1] += NV.dx * NM * NS.dx; else Vt[0] += NV.dx * NM * NS.dx;
                         if (NV.dy > 0) Vt[3] += NV.dy * NM * NS.dy; else Vt[2] += NV.dy * NM * NS.dy;
                         if (NV.dz > 0) Vt[5] += NV.dz * NM * NS.dz; else Vt[4] += NV.dz * NM * NS.dz;
                     }
+
                     V_new[i] = Vt;
                 }
 
@@ -4239,6 +4354,23 @@ namespace Pachyderm_Acoustic
                 double[] r2 = new double[3] { right.dx, right.dy, right.dz };
 
                 return (new Hare.Geometry.Vector(r1[0] * V.dx + r1[1] * V.dy + r1[2] * V.dz, r2[0] * V.dx + r2[1] * V.dy + r2[2] * V.dz, r3[0] * V.dx + r3[1] * V.dy + r3[2] * V.dz));
+            }
+
+            public static Hare.Geometry.Vector SphericalToCartesian(double azimuthDeg, double altitudeDeg, bool degrees = true)
+            {
+                if (degrees)
+                {
+                    azimuthDeg *= Math.PI / 180.0;
+                    altitudeDeg *= Math.PI / 180.0;
+                }
+
+                double x = Math.Cos(altitudeDeg) * Math.Cos(azimuthDeg);
+                double y = Math.Cos(altitudeDeg) * Math.Sin(azimuthDeg);
+                double z = Math.Sin(altitudeDeg);
+
+                Hare.Geometry.Vector v = new Hare.Geometry.Vector(x, y, z);
+                v.Normalize();
+                return v;
             }
 
             public static double Polygon_Closest_Distance(Hare.Geometry.Point p, Hare.Geometry.Point a, Hare.Geometry.Point b, Hare.Geometry.Point c)
@@ -4843,12 +4975,358 @@ namespace Pachyderm_Acoustic
             }
         }
 
-        public class StandardConstructions
+        public static class StandardConstructions
         {
-            public static double[] WelshTraffic = new double[] { -32, -16, -4, -3, -10, -13, -17, -17 };
-            /// FHWA traffic coefficients. [Vehicle Type i][Pavement Type p][Full Throttle][A	B	C	D1	D2	E1	E2	F1	F2	G1	G2	H1	H2	I1	I2	J1	J2]
-            public static double[][][][] FHWATraffic10 = [
-                new double[][][]{new double[][]{new double[]{41.740807,1.148546, 67,-7516.580054,-9.7623,16460.1,11.65932,-14823.9,-1.233347,7009.474786,-4.327918,-1835.189815,2.579086,252.418543,-0.573822,-14.268316,0.045682},
+            public static class Musical_Instruments
+            {
+                public class InstrumentKDefinition
+                {
+                    public string CanonicalName;
+                    public double K;
+                    public bool IsProxy;
+                    public string SourceNote;
+                    public string ProxyOf;
+                }
+
+                private static Dictionary<string, InstrumentKDefinition> _InstrumentKTable = null;
+
+                /// <summary>
+                /// Returns a normalized lookup table of instrument names -> k definitions.
+                /// Keys are normalized (lowercase, no spaces, hyphens, underscores, or periods).
+                /// </summary>
+                public static Dictionary<string, InstrumentKDefinition> Instrument_K_Table()
+                {
+                    if (_InstrumentKTable != null) return _InstrumentKTable;
+
+                    var T = new Dictionary<string, InstrumentKDefinition>(StringComparer.OrdinalIgnoreCase);
+
+                    // Rindel public NS-style examples
+                    AddInstrument(T, "Violin", 0.8, false, "Rindel public example");
+                    AddAlias(T, "violin", "Violin");
+                    AddAlias(T, "vln", "Violin");
+                    AddAlias(T, "vl", "Violin");
+                    AddAlias(T, "fiddle", "Violin");
+
+                    AddInstrument(T, "Viola", 0.5, false, "Rindel public example");
+                    AddAlias(T, "viola", "Viola");
+                    AddAlias(T, "va", "Viola");
+
+                    AddInstrument(T, "Cello", 1.0, false, "Rindel public example");
+                    AddAlias(T, "cello", "Cello");
+                    AddAlias(T, "violoncello", "Cello");
+                    AddAlias(T, "vc", "Cello");
+
+                    AddInstrument(T, "Double Bass", 1.6, false, "Rindel public example");
+                    AddAlias(T, "doublebass", "Double Bass");
+                    AddAlias(T, "double-bass", "Double Bass");
+                    AddAlias(T, "double_bass", "Double Bass");
+                    AddAlias(T, "contrabass", "Double Bass");
+                    AddAlias(T, "stringbass", "Double Bass");
+                    AddAlias(T, "bass", "Double Bass");
+                    AddAlias(T, "db", "Double Bass");
+
+                    AddInstrument(T, "Flute", 1.3, false, "Rindel public example");
+                    AddAlias(T, "flute", "Flute");
+                    AddAlias(T, "transverseflute", "Flute");
+                    AddAlias(T, "concertflute", "Flute");
+
+                    AddInstrument(T, "Clarinet", 2.0, false, "Rindel public example");
+                    AddAlias(T, "clarinet", "Clarinet");
+                    AddAlias(T, "bbclarinet", "Clarinet");
+                    AddAlias(T, "bflatclarinet", "Clarinet");
+                    AddAlias(T, "sopranoclarinet", "Clarinet");
+
+                    AddInstrument(T, "Saxophone", 6.3, false, "Rindel public example");
+                    AddAlias(T, "saxophone", "Saxophone");
+                    AddAlias(T, "sax", "Saxophone");
+                    AddAlias(T, "altsax", "Saxophone");
+                    AddAlias(T, "altosax", "Saxophone");
+                    AddAlias(T, "tenorsax", "Saxophone");
+                    AddAlias(T, "baritonesax", "Saxophone");
+                    AddAlias(T, "barisax", "Saxophone");
+                    AddAlias(T, "sopranosax", "Saxophone");
+
+                    AddInstrument(T, "Trumpet", 12.6, false, "Rindel public example");
+                    AddAlias(T, "trumpet", "Trumpet");
+                    AddAlias(T, "bbtrumpet", "Trumpet");
+                    AddAlias(T, "bflattrumpet", "Trumpet");
+                    AddAlias(T, "c trumpet", "Trumpet");
+                    AddAlias(T, "ctrumpet", "Trumpet");
+
+                    AddInstrument(T, "Trombone", 25.1, false, "Rindel public example");
+                    AddAlias(T, "trombone", "Trombone");
+                    AddAlias(T, "tenortrombone", "Trombone");
+                    AddAlias(T, "basstrombone", "Trombone");
+                    AddAlias(T, "altotrombone", "Trombone");
+
+                    // Meyer orchestra-forte additions
+                    AddInstrument(T, "Oboe", 2.0, false, "Meyer orchestra-forte table");
+                    AddAlias(T, "oboe", "Oboe");
+
+                    AddInstrument(T, "Bassoon", 2.0, false, "Meyer orchestra-forte table");
+                    AddAlias(T, "bassoon", "Bassoon");
+                    AddAlias(T, "basson", "Bassoon");
+
+                    AddInstrument(T, "French Horn", 16.0, false, "Meyer orchestra-forte table");
+                    AddAlias(T, "frenchhorn", "French Horn");
+                    AddAlias(T, "horn", "French Horn");
+                    AddAlias(T, "fhorn", "French Horn");
+
+                    AddInstrument(T, "Tuba", 25.0, false, "Meyer orchestra-forte table");
+                    AddAlias(T, "tuba", "Tuba");
+
+                    // ------------------------------------------------------------------
+                    // PROXIES
+                    // ------------------------------------------------------------------
+
+                    // Flute family proxies
+                    AddProxy(T, "Piccolo", 1.3, "Flute", "Flute-family proxy");
+                    AddAlias(T, "piccolo", "Piccolo");
+
+                    AddProxy(T, "Alto Flute", 1.3, "Flute", "Flute-family proxy");
+                    AddAlias(T, "altoflute", "Alto Flute");
+
+                    AddProxy(T, "Bass Flute", 1.3, "Flute", "Flute-family proxy");
+                    AddAlias(T, "bassflute", "Bass Flute");
+
+                    // Oboe family proxies
+                    AddProxy(T, "English Horn", 2.0, "Oboe", "Oboe-family proxy");
+                    AddAlias(T, "englishhorn", "English Horn");
+                    AddAlias(T, "coranglais", "English Horn");
+
+                    AddProxy(T, "Heckelphone", 2.0, "Oboe", "Oboe-family proxy");
+                    AddAlias(T, "heckelphone", "Heckelphone");
+
+                    // Clarinet family proxies
+                    AddProxy(T, "Eb Clarinet", 2.0, "Clarinet", "Clarinet-family proxy");
+                    AddAlias(T, "ebclarinet", "Eb Clarinet");
+                    AddAlias(T, "e-flatclarinet", "Eb Clarinet");
+
+                    AddProxy(T, "Bass Clarinet", 2.0, "Clarinet", "Clarinet-family proxy");
+                    AddAlias(T, "bassclarinet", "Bass Clarinet");
+
+                    AddProxy(T, "Contra Bass Clarinet", 2.0, "Clarinet", "Clarinet-family proxy");
+                    AddAlias(T, "contrabassclarinet", "Contra Bass Clarinet");
+                    AddAlias(T, "contralto clarinet", "Contra Bass Clarinet");
+
+                    // Bassoon family proxies
+                    AddProxy(T, "Contra Bassoon", 2.0, "Bassoon", "Bassoon-family proxy");
+                    AddAlias(T, "contrabassoon", "Contra Bassoon");
+
+                    // Sax family proxies
+                    AddProxy(T, "Alto Saxophone", 6.3, "Saxophone", "Sax-family proxy");
+                    AddAlias(T, "altosaxophone", "Alto Saxophone");
+
+                    AddProxy(T, "Tenor Saxophone", 6.3, "Saxophone", "Sax-family proxy");
+                    AddAlias(T, "tenorsaxophone", "Tenor Saxophone");
+
+                    AddProxy(T, "Baritone Saxophone", 6.3, "Saxophone", "Sax-family proxy");
+                    AddAlias(T, "baritonesaxophone", "Baritone Saxophone");
+
+                    AddProxy(T, "Soprano Saxophone", 6.3, "Saxophone", "Sax-family proxy");
+                    AddAlias(T, "sopranosaxophone", "Soprano Saxophone");
+
+                    // Trumpet family proxies
+                    AddProxy(T, "Cornet", 12.6, "Trumpet", "Trumpet-family proxy");
+                    AddAlias(T, "cornet", "Cornet");
+
+                    AddProxy(T, "Flugelhorn", 12.6, "Trumpet", "Trumpet-family proxy");
+                    AddAlias(T, "flugelhorn", "Flugelhorn");
+
+                    AddProxy(T, "Piccolo Trumpet", 12.6, "Trumpet", "Trumpet-family proxy");
+                    AddAlias(T, "piccolotrumpet", "Piccolo Trumpet");
+
+                    // Horn family proxies
+                    AddProxy(T, "Wagner Tuba", 16.0, "French Horn", "Horn-family proxy");
+                    AddAlias(T, "wagnertuba", "Wagner Tuba");
+
+                    // Low brass proxies
+                    AddProxy(T, "Baritone Horn", 25.1, "Trombone", "Low-brass proxy");
+                    AddAlias(T, "baritonehorn", "Baritone Horn");
+                    AddAlias(T, "baritone", "Baritone Horn");
+
+                    AddProxy(T, "Euphonium", 25.1, "Trombone", "Low-brass proxy");
+                    AddAlias(T, "euphonium", "Euphonium");
+
+                    AddProxy(T, "Sousaphone", 25.0, "Tuba", "Tuba-family proxy");
+                    AddAlias(T, "sousaphone", "Sousaphone");
+
+                    // Strings / plucked proxies where no public k was verified today
+                    AddProxy(T, "Harp", 0.8, "Violin", "Quiet-string proxy");
+                    AddAlias(T, "harp", "Harp");
+
+                    AddProxy(T, "Acoustic Guitar", 0.8, "Violin", "Quiet-string proxy");
+                    AddAlias(T, "acousticguitar", "Acoustic Guitar");
+                    AddAlias(T, "guitar", "Acoustic Guitar");
+
+                    // Voice placeholders intentionally omitted from exact values here.
+
+                    _InstrumentKTable = T;
+                    return _InstrumentKTable;
+                }
+
+                public static double Instrument_K(string instrument)
+                {
+                    InstrumentKDefinition def;
+                    if (TryGetInstrument_K(instrument, out def)) return def.K;
+                    throw new KeyNotFoundException("No k-value found for instrument \"" + instrument + "\".");
+                }
+
+                public static bool TryGetInstrument_K(string instrument, out double k)
+                {
+                    InstrumentKDefinition def;
+                    bool ok = TryGetInstrument_K(instrument, out def);
+                    k = ok ? def.K : 0.0;
+                    return ok;
+                }
+
+                public static bool TryGetInstrument_K(string instrument, out InstrumentKDefinition definition)
+                {
+                    definition = null;
+                    if (string.IsNullOrWhiteSpace(instrument)) return false;
+
+                    string key = NormalizeInstrumentName(instrument);
+                    Dictionary<string, InstrumentKDefinition> T = Instrument_K_Table();
+
+                    if (!T.TryGetValue(key, out definition)) return false;
+                    return true;
+                }
+
+                public static double Ensemble_K(string[] instruments, int[] counts)
+                {
+                    if (instruments == null) throw new ArgumentNullException(nameof(instruments));
+                    if (counts == null) throw new ArgumentNullException(nameof(counts));
+                    if (instruments.Length != counts.Length)
+                        throw new ArgumentException("Instrument and count arrays must have the same length.");
+
+                    double K = 0.0;
+                    for (int i = 0; i < instruments.Length; i++)
+                    {
+                        if (counts[i] < 0) throw new ArgumentException("Instrument counts must be non-negative.");
+                        if (counts[i] == 0) continue;
+                        K += counts[i] * Instrument_K(instruments[i]);
+                    }
+                    return K;
+                }
+
+                public static double Ensemble_K(params (string Instrument, int Count)[] ensemble)
+                {
+                    if (ensemble == null) throw new ArgumentNullException(nameof(ensemble));
+
+                    double K = 0.0;
+                    for (int i = 0; i < ensemble.Length; i++)
+                    {
+                        if (ensemble[i].Count < 0) throw new ArgumentException("Instrument counts must be non-negative.");
+                        if (ensemble[i].Count == 0) continue;
+                        K += ensemble[i].Count * Instrument_K(ensemble[i].Instrument);
+                    }
+                    return K;
+                }
+
+                public static string Instrument_K_Source(string instrument)
+                {
+                    InstrumentKDefinition def;
+                    if (!TryGetInstrument_K(instrument, out def))
+                        throw new KeyNotFoundException("No k-value found for instrument \"" + instrument + "\".");
+
+                    if (def.IsProxy && !string.IsNullOrWhiteSpace(def.ProxyOf))
+                        return def.SourceNote + " (proxy of " + def.ProxyOf + ")";
+
+                    return def.SourceNote;
+                }
+
+                public static double Ensemble_SWL(double K)
+                {
+                    return 90 + (10 * Math.Log10(K));
+                }
+
+                public static double Ensemble_G_High(double SWL)
+                {
+                    return SWL - 116;
+                }
+
+                public static double Ensemble_G_Low(double SWL)
+                {
+                    return SWL - 121;
+                }
+
+                public static bool Instrument_K_IsProxy(string instrument)
+                {
+                    InstrumentKDefinition def;
+                    if (!TryGetInstrument_K(instrument, out def))
+                        throw new KeyNotFoundException("No k-value found for instrument \"" + instrument + "\".");
+
+                    return def.IsProxy;
+                }
+
+                private static void AddInstrument(
+                    Dictionary<string, InstrumentKDefinition> table,
+                    string canonicalName,
+                    double k,
+                    bool isProxy,
+                    string sourceNote)
+                {
+                    string key = NormalizeInstrumentName(canonicalName);
+                    table[key] = new InstrumentKDefinition()
+                    {
+                        CanonicalName = canonicalName,
+                        K = k,
+                        IsProxy = isProxy,
+                        SourceNote = sourceNote,
+                        ProxyOf = null
+                    };
+                }
+
+                private static void AddProxy(
+                    Dictionary<string, InstrumentKDefinition> table,
+                    string canonicalName,
+                    double k,
+                    string proxyOf,
+                    string sourceNote)
+                {
+                    string key = NormalizeInstrumentName(canonicalName);
+                    table[key] = new InstrumentKDefinition()
+                    {
+                        CanonicalName = canonicalName,
+                        K = k,
+                        IsProxy = true,
+                        SourceNote = sourceNote,
+                        ProxyOf = proxyOf
+                    };
+                }
+
+                private static void AddAlias(
+                    Dictionary<string, InstrumentKDefinition> table,
+                    string alias,
+                    string canonicalName)
+                {
+                    string aliasKey = NormalizeInstrumentName(alias);
+                    string canonicalKey = NormalizeInstrumentName(canonicalName);
+
+                    if (!table.ContainsKey(canonicalKey))
+                        throw new Exception("Canonical instrument must be added before its aliases: " + canonicalName);
+
+                    table[aliasKey] = table[canonicalKey];
+                }
+
+                private static string NormalizeInstrumentName(string instrument)
+                {
+                    string s = instrument.Trim().ToLowerInvariant();
+                    s = s.Replace(" ", "");
+                    s = s.Replace("-", "");
+                    s = s.Replace("_", "");
+                    s = s.Replace(".", "");
+                    return s;
+                }
+            }
+
+            public static class Vehicle_Noise
+            {
+
+                public static double[] WelshTraffic = new double[] { -32, -16, -4, -3, -10, -13, -17, -17 };
+                /// FHWA traffic coefficients. [Vehicle Type i][Pavement Type p][Full Throttle][A	B	C	D1	D2	E1	E2	F1	F2	G1	G2	H1	H2	I1	I2	J1	J2]
+                public static double[][][][] FHWATraffic10 = [
+                    new double[][][]{new double[][]{new double[]{41.740807,1.148546, 67,-7516.580054,-9.7623,16460.1,11.65932,-14823.9,-1.233347,7009.474786,-4.327918,-1835.189815,2.579086,252.418543,-0.573822,-14.268316,0.045682},
                 new double[]{41.740807,1.148546,50.128316,-7516.580054,-9.7623,16460.1,11.65932,-14823.9,-1.23334,7009.474786,-4.327918,-1835.189815,2.579086,252.418543,-0.573822,-14.268316,0.045682}},
                 new double[][]{new double[]{41.740807,0.494698,67,-7313.985627,-19.697019,16009.5,34.363901,-14414.4,-22.462943,6814.317463,6.093141,-1783.723974,-0.252834,245.299562,-0.170266,-13.86487,0.022131},
                 new double[]{41.740807,0.494698,50.128316,-7313.985627,-19.697019,16009.5,34.363901,-14414.4,-22.462943,6814.317463,6.093141,-1783.723974,-0.252834,245.299562,-0.170266,-13.86487,0.022131}},
@@ -4889,95 +5367,95 @@ namespace Pachyderm_Acoustic
                 new double[][]{new double[]{41.022542,10.013879,67,7546.65902,-8.870177,-17396,7.899209,16181.8,2.526152,-7828.632535,-5.314462,2085.468458,2.344913,-290.816544,-0.435913,16.614043,0.03005},
                 new double[]{41.022542,10.013879,56,7546.65902,-8.870177,-17396,7.899209,16181.8,2.526152,-7828.632535,-5.314462,2085.468458,2.344913,-290.816544,-0.435913,16.614043,0.03005}}}];
 
-            public enum Pavement
-            {
-                Average_DGAC_PCC = 0,
-                DGAC_Asphalt = 1,
-                PCC_Concrete = 2,
-                OGAC_OpenGradedAsphalt = 3
-            }
-
-            public static double[] FHWA_Welsh_SoundPower(double SPLW)
-            {
-                double[] SWL = new double[8];
-                for (int oct = 0; oct < 8; oct++) SWL[oct] = SPLW + WelshTraffic[oct];
-                return SWL;
-            }
-
-            public static double[] FHWA_TNM10_SoundPower(double speed_kph, int pavement, int automobile, int med_truck, int heavy_truck, int buses, int motorcycles, bool full_throttle)
-            {
-                ///Described at:
-                ///http://www.fhwa.dot.gov/environment/noise/traffic_noise_model/old_versions/tnm_version_10/tech_manual/tnm03.cfm#tnma2
-
-                double s = speed_kph;
-                //int i = 0;
-
-                int t = (full_throttle) ? 1 : 0;
-                double root2 = Math.Sqrt(2);
-                double vtot = 0;
-                double[] Es = new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-                double[] Veh = new double[5] { automobile, med_truck, heavy_truck, buses, motorcycles };
-
-                for (int v = 0; v < 5; v++)
+                public enum Pavement
                 {
-                    double A = FHWATraffic10[v][pavement][t][0];
-                    double B = FHWATraffic10[v][pavement][t][1];
-                    double C = FHWATraffic10[v][pavement][t][2];
-                    double D1 = FHWATraffic10[v][pavement][t][3];
-                    double D2 = FHWATraffic10[v][pavement][t][4];
-                    double E1 = FHWATraffic10[v][pavement][t][5];
-                    double E2 = FHWATraffic10[v][pavement][t][6];
-                    double F1 = FHWATraffic10[v][pavement][t][7];
-                    double F2 = FHWATraffic10[v][pavement][t][8];
-                    double G1 = FHWATraffic10[v][pavement][t][9];
-                    double G2 = FHWATraffic10[v][pavement][t][10];
-                    double H1 = FHWATraffic10[v][pavement][t][11];
-                    double H2 = FHWATraffic10[v][pavement][t][12];
-                    double I1 = FHWATraffic10[v][pavement][t][13];
-                    double I2 = FHWATraffic10[v][pavement][t][14];
-                    double J1 = FHWATraffic10[v][pavement][t][15];
-                    double J2 = FHWATraffic10[v][pavement][t][16];
+                    Average_DGAC_PCC = 0,
+                    DGAC_Asphalt = 1,
+                    PCC_Concrete = 2,
+                    OGAC_OpenGradedAsphalt = 3
+                }
+
+                public static double[] FHWA_Welsh_SoundPower(double SPLW)
+                {
+                    double[] SWL = new double[8];
+                    for (int oct = 0; oct < 8; oct++) SWL[oct] = SPLW + WelshTraffic[oct];
+                    return SWL;
+                }
+
+                public static double[] FHWA_TNM10_SoundPower(double speed_kph, int pavement, int automobile, int med_truck, int heavy_truck, int buses, int motorcycles, bool full_throttle)
+                {
+                    ///Described at:
+                    ///http://www.fhwa.dot.gov/environment/noise/traffic_noise_model/old_versions/tnm_version_10/tech_manual/tnm03.cfm#tnma2
+
+                    double s = speed_kph;
+                    //int i = 0;
+
+                    int t = (full_throttle) ? 1 : 0;
+                    double root2 = Math.Sqrt(2);
+                    double vtot = 0;
+                    double[] Es = new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
+
+                    double[] Veh = new double[5] { automobile, med_truck, heavy_truck, buses, motorcycles };
+
+                    for (int v = 0; v < 5; v++)
+                    {
+                        double A = FHWATraffic10[v][pavement][t][0];
+                        double B = FHWATraffic10[v][pavement][t][1];
+                        double C = FHWATraffic10[v][pavement][t][2];
+                        double D1 = FHWATraffic10[v][pavement][t][3];
+                        double D2 = FHWATraffic10[v][pavement][t][4];
+                        double E1 = FHWATraffic10[v][pavement][t][5];
+                        double E2 = FHWATraffic10[v][pavement][t][6];
+                        double F1 = FHWATraffic10[v][pavement][t][7];
+                        double F2 = FHWATraffic10[v][pavement][t][8];
+                        double G1 = FHWATraffic10[v][pavement][t][9];
+                        double G2 = FHWATraffic10[v][pavement][t][10];
+                        double H1 = FHWATraffic10[v][pavement][t][11];
+                        double H2 = FHWATraffic10[v][pavement][t][12];
+                        double I1 = FHWATraffic10[v][pavement][t][13];
+                        double I2 = FHWATraffic10[v][pavement][t][14];
+                        double J1 = FHWATraffic10[v][pavement][t][15];
+                        double J2 = FHWATraffic10[v][pavement][t][16];
 
 
-                    vtot += automobile + med_truck + heavy_truck + buses + motorcycles;
+                        vtot += automobile + med_truck + heavy_truck + buses + motorcycles;
+
+                        for (int oct = 0; oct < 8; oct++)
+                        {
+                            double f = 62.5 * Math.Pow(2, oct);
+                            double[] freq = new double[3] { f / root2, f, f * root2 };
+
+                            for (int oct3 = 0; oct3 < 3; oct3++)
+                            {
+                                double Ea = Math.Pow(0.6214 * s, A / 10) * Math.Pow(10, B / 10) + Math.Pow(10, C / 10);
+                                double logf = Math.Log10(freq[oct3]);
+                                double Ls = 10 * Math.Log10(Ea) + (D1 + 0.6214 * D2 * s) + (E1 + 0.6214 * E2 * s) * logf
+                                    + (F1 + 0.6214 * F2 * s) * logf * logf + (G1 + 0.6214 * G2 * s) * logf * logf * logf
+                                    + (H1 + 0.6214 * H2 * s) * logf * logf * logf * logf + (I1 + 0.6214 * I2 * s) * logf * logf * logf * logf * logf
+                                    + (J1 + 0.6214 * J2 * s) * logf * logf * logf * logf * logf * logf;
+                                Es[oct] += 0.0476 * Math.Pow(10, Ls / 10) * Veh[v] / s;
+                            }
+                        }
+                    }
+
+                    double[] Awt = new double[8] { -26, -16, -9, -3, 0, 1.2, 1, -1 };
+                    double dmod = 10 * Math.Log10(1 / (Utilities.Numerics.PiX2 * 15));
+                    double[] SWL = new double[8];
 
                     for (int oct = 0; oct < 8; oct++)
                     {
-                        double f = 62.5 * Math.Pow(2, oct);
-                        double[] freq = new double[3] { f / root2, f, f * root2 };
-
-                        for (int oct3 = 0; oct3 < 3; oct3++)
-                        {
-                            double Ea = Math.Pow(0.6214 * s, A / 10) * Math.Pow(10, B / 10) + Math.Pow(10, C / 10);
-                            double logf = Math.Log10(freq[oct3]);
-                            double Ls = 10 * Math.Log10(Ea) + (D1 + 0.6214 * D2 * s) + (E1 + 0.6214 * E2 * s) * logf
-                                + (F1 + 0.6214 * F2 * s) * logf * logf + (G1 + 0.6214 * G2 * s) * logf * logf * logf
-                                + (H1 + 0.6214 * H2 * s) * logf * logf * logf * logf + (I1 + 0.6214 * I2 * s) * logf * logf * logf * logf * logf
-                                + (J1 + 0.6214 * J2 * s) * logf * logf * logf * logf * logf * logf;
-                            Es[oct] += 0.0476 * Math.Pow(10, Ls / 10) * Veh[v] / s;
-                        }
+                        SWL[oct] = 10 * Math.Log10(Es[oct]) - Awt[oct] - dmod;//
                     }
+                    return SWL;
                 }
 
-                double[] Awt = new double[8] { -26, -16, -9, -3, 0, 1.2, 1, -1 };
-                double dmod = 10 * Math.Log10(1 / (Utilities.Numerics.PiX2 * 15));
-                double[] SWL = new double[8];
-
-                for (int oct = 0; oct < 8; oct++)
+                /// <summary>
+                /// TNM 3.0 Vehicle A-Level Emission Coefficients
+                /// VehicleALevels[vehicle][surface][throttle][parameter]
+                /// Parameters: A (logSlope), B (referenceLevel), C (minimumLevel)
+                /// </summary>
+                public static double[,,,] TNM30_VehicleALevels = new double[,,,]
                 {
-                    SWL[oct] = 10 * Math.Log10(Es[oct]) - Awt[oct] - dmod;//
-                }
-                return SWL;
-            }
-
-            /// <summary>
-            /// TNM 3.0 Vehicle A-Level Emission Coefficients
-            /// VehicleALevels[vehicle][surface][throttle][parameter]
-            /// Parameters: A (logSlope), B (referenceLevel), C (minimumLevel)
-            /// </summary>
-            public static double[,,,] TNM30_VehicleALevels = new double[,,,]
-            {
             // Automobile
             {
                 { { 41.74087,  1.148546, 50.128316 }, { 41.74087,  1.148546, 67.000000 } }, // average: normal, full
@@ -5013,16 +5491,16 @@ namespace Pachyderm_Acoustic
                 { { 41.022542, 10.013879, 56.086099 }, { 41.022542, 10.013879, 67.000000 } }, // open graded asphalt
                 { { 41.022542, 10.013879, 56.086099 }, { 41.022542, 10.013879, 67.000000 } }  // portland concrete
             }
-            };
+                };
 
-            /// <summary>
-            /// TNM 3.0 Vehicle Spectral Coefficients
-            /// VehicleSpectra[vehicle][surface][throttle][coefficient][speed_parameter]
-            /// Coefficients: D, E, F, G, H, I, J (7 coefficients)
-            /// Speed parameters: _1 (constant), _2 (speed multiplier)
-            /// </summary>
-            public static double[,,,,] TNM30_VehicleSpectra = new double[,,,,]
-            {
+                /// <summary>
+                /// TNM 3.0 Vehicle Spectral Coefficients
+                /// VehicleSpectra[vehicle][surface][throttle][coefficient][speed_parameter]
+                /// Coefficients: D, E, F, G, H, I, J (7 coefficients)
+                /// Speed parameters: _1 (constant), _2 (speed multiplier)
+                /// </summary>
+                public static double[,,,,] TNM30_VehicleSpectra = new double[,,,,]
+                {
             // Automobile
             {
                 // average surface
@@ -5298,99 +5776,99 @@ namespace Pachyderm_Acoustic
                     }
                 }
             }
-            };
+                };
 
-            /// <summary>
-            /// FHWA Traffic Noise Model 3.0 implementation with actual TNM 3.0 coefficients
-            /// Based on complete TNM 3.0 VehicleFlow emission algorithms
-            /// </summary>
-            /// <param name="speed_kph">Vehicle speed in kilometers per hour</param>
-            /// <param name="pavement">Pavement type index (0=Average, 1=DGAC, 2=OGAC, 3=PCC)</param>
-            /// <param name="automobile">Number of automobiles per hour</param>
-            /// <param name="med_truck">Number of medium trucks per hour</param>
-            /// <param name="heavy_truck">Number of heavy trucks per hour</param>
-            /// <param name="buses">Number of buses per hour</param>
-            /// <param name="motorcycles">Number of motorcycles per hour</param>
-            /// <param name="full_throttle">Full throttle operation flag</param>
-            /// <returns>Sound power levels by octave band</returns>
-            public static double[] FHWA_TNM30_SoundPower(double speed_kph, int pavement, int automobile, int med_truck, int heavy_truck, int buses, int motorcycles, bool full_throttle)
-            {
-                double speed_mph = speed_kph * 0.6214;
-                double[] vehicleCounts = new double[5] { automobile, med_truck, heavy_truck, buses, motorcycles };
-                double[] Es = new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-                // TNM 3.0 frequency bands (mapping to 8 octave bands)
-                double[] freqBands = new double[8] { 63, 125, 250, 500, 1000, 2000, 4000, 8000 };
-
-                // TNM 3.0 factor for speed-flow relationship
-                double tnm30_factor = 0.0296; // REMELtoLEQfactor_mph from TNM 3.0
-
-                int throttleIndex = full_throttle ? 1 : 0;
-
-                for (int v = 0; v < 5; v++)
+                /// <summary>
+                /// FHWA Traffic Noise Model 3.0 implementation with actual TNM 3.0 coefficients
+                /// Based on complete TNM 3.0 VehicleFlow emission algorithms
+                /// </summary>
+                /// <param name="speed_kph">Vehicle speed in kilometers per hour</param>
+                /// <param name="pavement">Pavement type index (0=Average, 1=DGAC, 2=OGAC, 3=PCC)</param>
+                /// <param name="automobile">Number of automobiles per hour</param>
+                /// <param name="med_truck">Number of medium trucks per hour</param>
+                /// <param name="heavy_truck">Number of heavy trucks per hour</param>
+                /// <param name="buses">Number of buses per hour</param>
+                /// <param name="motorcycles">Number of motorcycles per hour</param>
+                /// <param name="full_throttle">Full throttle operation flag</param>
+                /// <returns>Sound power levels by octave band</returns>
+                public static double[] FHWA_TNM30_SoundPower(double speed_kph, int pavement, int automobile, int med_truck, int heavy_truck, int buses, int motorcycles, bool full_throttle)
                 {
-                    if (vehicleCounts[v] > 0)
+                    double speed_mph = speed_kph * 0.6214;
+                    double[] vehicleCounts = new double[5] { automobile, med_truck, heavy_truck, buses, motorcycles };
+                    double[] Es = new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
+
+                    // TNM 3.0 frequency bands (mapping to 8 octave bands)
+                    double[] freqBands = new double[8] { 63, 125, 250, 500, 1000, 2000, 4000, 8000 };
+
+                    // TNM 3.0 factor for speed-flow relationship
+                    double tnm30_factor = 0.0296; // REMELtoLEQfactor_mph from TNM 3.0
+
+                    int throttleIndex = full_throttle ? 1 : 0;
+
+                    for (int v = 0; v < 5; v++)
                     {
-                        // TNM 3.0 A-Level emission energy calculation
-                        double A = TNM30_VehicleALevels[v, pavement, throttleIndex, 0]; // logSlope
-                        double B = TNM30_VehicleALevels[v, pavement, throttleIndex, 1]; // referenceLevel
-                        double C = TNM30_VehicleALevels[v, pavement, throttleIndex, 2]; // minimumLevel
-
-                        // TNM 3.0 emission energy formula: 10^(C/10) + speed^(A/10) * 10^(B/10)
-                        double emissionEnergy = Math.Pow(10, C / 10.0) + Math.Pow(speed_mph, A / 10.0) * Math.Pow(10, B / 10.0);
-                        double ALevel = 10.0 * Math.Log10(emissionEnergy);
-
-                        for (int oct = 0; oct < 8; oct++)
+                        if (vehicleCounts[v] > 0)
                         {
-                            // TNM 3.0 spectral terms calculation using polynomial expansion
-                            double logfreq = Math.Log10(freqBands[oct]);
-                            double spectralLevel = 0.0;
-                            double powerTerm = 1.0;
+                            // TNM 3.0 A-Level emission energy calculation
+                            double A = TNM30_VehicleALevels[v, pavement, throttleIndex, 0]; // logSlope
+                            double B = TNM30_VehicleALevels[v, pavement, throttleIndex, 1]; // referenceLevel
+                            double C = TNM30_VehicleALevels[v, pavement, throttleIndex, 2]; // minimumLevel
 
-                            // Apply 7 polynomial coefficients (D through J)
-                            for (int coeff = 0; coeff < 7; coeff++)
+                            // TNM 3.0 emission energy formula: 10^(C/10) + speed^(A/10) * 10^(B/10)
+                            double emissionEnergy = Math.Pow(10, C / 10.0) + Math.Pow(speed_mph, A / 10.0) * Math.Pow(10, B / 10.0);
+                            double ALevel = 10.0 * Math.Log10(emissionEnergy);
+
+                            for (int oct = 0; oct < 8; oct++)
                             {
-                                double coef_1 = TNM30_VehicleSpectra[v, pavement, throttleIndex, coeff, 0];
-                                double coef_2 = TNM30_VehicleSpectra[v, pavement, throttleIndex, coeff, 1];
-                                double coefficient = coef_1 + speed_mph * coef_2;
-                                spectralLevel += coefficient * powerTerm;
-                                powerTerm *= logfreq;
+                                // TNM 3.0 spectral terms calculation using polynomial expansion
+                                double logfreq = Math.Log10(freqBands[oct]);
+                                double spectralLevel = 0.0;
+                                double powerTerm = 1.0;
+
+                                // Apply 7 polynomial coefficients (D through J)
+                                for (int coeff = 0; coeff < 7; coeff++)
+                                {
+                                    double coef_1 = TNM30_VehicleSpectra[v, pavement, throttleIndex, coeff, 0];
+                                    double coef_2 = TNM30_VehicleSpectra[v, pavement, throttleIndex, coeff, 1];
+                                    double coefficient = coef_1 + speed_mph * coef_2;
+                                    spectralLevel += coefficient * powerTerm;
+                                    powerTerm *= logfreq;
+                                }
+
+                                double L_emis = ALevel + spectralLevel;
+                                double volumeFactor = tnm30_factor * (vehicleCounts[v] / speed_mph);
+
+                                Es[oct] += volumeFactor * Math.Pow(10, L_emis / 10.0);
                             }
-
-                            double L_emis = ALevel + spectralLevel;
-                            double volumeFactor = tnm30_factor * (vehicleCounts[v] / speed_mph);
-
-                            Es[oct] += volumeFactor * Math.Pow(10, L_emis / 10.0);
                         }
                     }
+
+                    // Apply distance correction and convert to sound power level
+                    double distanceCorrection = 10 * Math.Log10(1 / (Utilities.Numerics.PiX2 * 15)); // 15m reference distance
+                    double[] SWL = new double[8];
+
+                    for (int oct = 0; oct < 8; oct++)
+                    {
+                        if (Es[oct] > 0)
+                        {
+                            SWL[oct] = 10 * Math.Log10(Es[oct]) - distanceCorrection;
+                        }
+                        else
+                        {
+                            SWL[oct] = -999; // No emission for this band
+                        }
+                    }
+
+                    return SWL;
                 }
 
-                // Apply distance correction and convert to sound power level
-                double distanceCorrection = 10 * Math.Log10(1 / (Utilities.Numerics.PiX2 * 15)); // 15m reference distance
-                double[] SWL = new double[8];
-
-                for (int oct = 0; oct < 8; oct++)
+                /// <summary>
+                /// TNM 3.0 Vehicle Height Split Coefficients
+                /// VehicleHeightSplits[vehicle][throttle][coefficient]
+                /// Coefficients: L, M, N, P, Q (5 coefficients for subsource split calculation)
+                /// </summary>
+                public static double[,,] TNM30_VehicleHeightSplits = new double[,,]
                 {
-                    if (Es[oct] > 0)
-                    {
-                        SWL[oct] = 10 * Math.Log10(Es[oct]) - distanceCorrection;
-                    }
-                    else
-                    {
-                        SWL[oct] = -999; // No emission for this band
-                    }
-                }
-
-                return SWL;
-            }
-
-            /// <summary>
-            /// TNM 3.0 Vehicle Height Split Coefficients
-            /// VehicleHeightSplits[vehicle][throttle][coefficient]
-            /// Coefficients: L, M, N, P, Q (5 coefficients for subsource split calculation)
-            /// </summary>
-            public static double[,,] TNM30_VehicleHeightSplits = new double[,,]
-            {
             // Automobile
             {
                 { 0.373239, 0.976378, -13.195596, 39.491299, -2.583128 }, // normal throttle
@@ -5416,332 +5894,332 @@ namespace Pachyderm_Acoustic
                 { 0.391352, 0.978407, -19.278172, 60.404841, -0.614295 }, // normal throttle
                 { 0.391352, 0.978407, -19.278172, 60.404841, -0.614295 }  // full throttle
             }
-            };
+                };
 
-            /// <summary>
-            /// TNM 3.0 Subsource Height Multipliers
-            /// SubsourceMultipliers[height][frequency]
-            /// Heights: 0=Tire, 1=Engine, 2=Stack
-            /// </summary>
-            public static double[,] TNM30_SubsourceMultipliers = new double[,]
-            {
+                /// <summary>
+                /// TNM 3.0 Subsource Height Multipliers
+                /// SubsourceMultipliers[height][frequency]
+                /// Heights: 0=Tire, 1=Engine, 2=Stack
+                /// </summary>
+                public static double[,] TNM30_SubsourceMultipliers = new double[,]
+                {
             // Tire height multipliers (0.1m)
             { 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.20 },
             // Engine height multipliers (1.5m) 
             { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 },
             // Stack height multipliers (variable by frequency for heavy trucks only)
             { 0.5, 0.5, 0.5, 0.7, 1.0, 0.7, 0.5, 0.5 }
-            };
+                };
 
-            /// <summary>
-            /// TNM 3.0 subsource heights in meters
-            /// </summary>
-            public static double[] TNM30_SubsourceHeights = new double[] { 0.1, 1.5, 1.0 }; // tire, engine, stack (default)
+                /// <summary>
+                /// TNM 3.0 subsource heights in meters
+                /// </summary>
+                public static double[] TNM30_SubsourceHeights = new double[] { 0.1, 1.5, 1.0 }; // tire, engine, stack (default)
 
-            /// <summary>
-            /// Calculate TNM 3.0 subsource split ratio for frequency-dependent height distribution
-            /// Based on TNM 3.0 SubsourceSplit function using polynomial coefficients
-            /// </summary>
-            /// <param name="frequency">Frequency in Hz</param>
-            /// <param name="vehicleType">Vehicle type index (0-4)</param>
-            /// <param name="throttle">Throttle position (0=normal, 1=full)</param>
-            /// <returns>Split ratio for tire vs. engine/stack</returns>
-            private static double CalculateSubsourceSplit(double frequency, int vehicleType, int throttle)
-            {
-                double L = TNM30_VehicleHeightSplits[vehicleType, throttle, 0];
-                double M = TNM30_VehicleHeightSplits[vehicleType, throttle, 1];
-                double N = TNM30_VehicleHeightSplits[vehicleType, throttle, 2];
-                double P = TNM30_VehicleHeightSplits[vehicleType, throttle, 3];
-                double Q = TNM30_VehicleHeightSplits[vehicleType, throttle, 4];
-
-                // TNM 3.0 subsource split equation: EQ.6 p.26
-                double temp = (N * Math.Log10(frequency)) + P;
-                temp = Math.Exp(temp) + 1.0;
-                temp = Math.Pow(temp, Q);
-                double ratio = L + ((1.0 - L - M) * temp);
-
-                return Math.Max(0.0, Math.Min(1.0, ratio)); // Clamp between 0 and 1
-            }
-
-            /// <summary>
-            /// Get stack height based on frequency for heavy trucks (TNM 3.0 approach)
-            /// </summary>
-            /// <param name="frequency">Frequency in Hz</param>
-            /// <returns>Stack height in meters</returns>
-            private static double GetStackHeight(double frequency)
-            {
-                if (frequency >= 630 && frequency < 1600) return 0.7;
-                else if (frequency >= 1600) return 0.5;
-                else return 1.0; // Default height for low frequencies
-            }
-
-            /// <summary>
-            /// FHWA TNM 3.0 Sound Power calculation with multi-height subsource output
-            /// Returns a 2D array where [height][octave] gives the sound power spectrum
-            /// Height indices: 0=Tire (0.1m), 1=Engine (1.5m), 2=Stack (variable height, heavy trucks only)
-            /// </summary>
-            /// <param name="speed_kph">Vehicle speed in kilometers per hour</param>
-            /// <param name="pavement">Pavement type index (0=Average, 1=DGAC, 2=OGAC, 3=PCC)</param>
-            /// <param name="automobile">Number of automobiles per hour</param>
-            /// <param name="med_truck">Number of medium trucks per hour</param>
-            /// <param name="heavy_truck">Number of heavy trucks per hour</param>
-            /// <param name="buses">Number of buses per hour</param>
-            /// <param name="motorcycles">Number of motorcycles per hour</param>
-            /// <param name="full_throttle">Full throttle operation flag</param>
-            /// <returns>2D array of sound power levels: [height_index][octave_band]</returns>
-            public static double[][] FHWA_TNM30_SoundPower_MultiHeight(double speed_kph, int pavement, int automobile, int med_truck, int heavy_truck, int buses, int motorcycles, bool full_throttle)
-            {
-                double speed_mph = speed_kph * 0.6214;
-                double[] vehicleCounts = new double[5] { automobile, med_truck, heavy_truck, buses, motorcycles };
-
-                // Energy arrays for each height: [height][octave]
-                double[][] Es = new double[3][];
-                for (int h = 0; h < 3; h++) Es[h] = new double[8];
-
-                // TNM 3.0 frequency bands
-                double[] freqBands = new double[8] { 63, 125, 250, 500, 1000, 2000, 4000, 8000 };
-
-                // TNM 3.0 factor for speed-flow relationship
-                double tnm30_factor = 0.0296;
-
-                int throttleIndex = full_throttle ? 1 : 0;
-
-                for (int v = 0; v < 5; v++)
+                /// <summary>
+                /// Calculate TNM 3.0 subsource split ratio for frequency-dependent height distribution
+                /// Based on TNM 3.0 SubsourceSplit function using polynomial coefficients
+                /// </summary>
+                /// <param name="frequency">Frequency in Hz</param>
+                /// <param name="vehicleType">Vehicle type index (0-4)</param>
+                /// <param name="throttle">Throttle position (0=normal, 1=full)</param>
+                /// <returns>Split ratio for tire vs. engine/stack</returns>
+                private static double CalculateSubsourceSplit(double frequency, int vehicleType, int throttle)
                 {
-                    if (vehicleCounts[v] > 0)
+                    double L = TNM30_VehicleHeightSplits[vehicleType, throttle, 0];
+                    double M = TNM30_VehicleHeightSplits[vehicleType, throttle, 1];
+                    double N = TNM30_VehicleHeightSplits[vehicleType, throttle, 2];
+                    double P = TNM30_VehicleHeightSplits[vehicleType, throttle, 3];
+                    double Q = TNM30_VehicleHeightSplits[vehicleType, throttle, 4];
+
+                    // TNM 3.0 subsource split equation: EQ.6 p.26
+                    double temp = (N * Math.Log10(frequency)) + P;
+                    temp = Math.Exp(temp) + 1.0;
+                    temp = Math.Pow(temp, Q);
+                    double ratio = L + ((1.0 - L - M) * temp);
+
+                    return Math.Max(0.0, Math.Min(1.0, ratio)); // Clamp between 0 and 1
+                }
+
+                /// <summary>
+                /// Get stack height based on frequency for heavy trucks (TNM 3.0 approach)
+                /// </summary>
+                /// <param name="frequency">Frequency in Hz</param>
+                /// <returns>Stack height in meters</returns>
+                private static double GetStackHeight(double frequency)
+                {
+                    if (frequency >= 630 && frequency < 1600) return 0.7;
+                    else if (frequency >= 1600) return 0.5;
+                    else return 1.0; // Default height for low frequencies
+                }
+
+                /// <summary>
+                /// FHWA TNM 3.0 Sound Power calculation with multi-height subsource output
+                /// Returns a 2D array where [height][octave] gives the sound power spectrum
+                /// Height indices: 0=Tire (0.1m), 1=Engine (1.5m), 2=Stack (variable height, heavy trucks only)
+                /// </summary>
+                /// <param name="speed_kph">Vehicle speed in kilometers per hour</param>
+                /// <param name="pavement">Pavement type index (0=Average, 1=DGAC, 2=OGAC, 3=PCC)</param>
+                /// <param name="automobile">Number of automobiles per hour</param>
+                /// <param name="med_truck">Number of medium trucks per hour</param>
+                /// <param name="heavy_truck">Number of heavy trucks per hour</param>
+                /// <param name="buses">Number of buses per hour</param>
+                /// <param name="motorcycles">Number of motorcycles per hour</param>
+                /// <param name="full_throttle">Full throttle operation flag</param>
+                /// <returns>2D array of sound power levels: [height_index][octave_band]</returns>
+                public static double[][] FHWA_TNM30_SoundPower_MultiHeight(double speed_kph, int pavement, int automobile, int med_truck, int heavy_truck, int buses, int motorcycles, bool full_throttle)
+                {
+                    double speed_mph = speed_kph * 0.6214;
+                    double[] vehicleCounts = new double[5] { automobile, med_truck, heavy_truck, buses, motorcycles };
+
+                    // Energy arrays for each height: [height][octave]
+                    double[][] Es = new double[3][];
+                    for (int h = 0; h < 3; h++) Es[h] = new double[8];
+
+                    // TNM 3.0 frequency bands
+                    double[] freqBands = new double[8] { 63, 125, 250, 500, 1000, 2000, 4000, 8000 };
+
+                    // TNM 3.0 factor for speed-flow relationship
+                    double tnm30_factor = 0.0296;
+
+                    int throttleIndex = full_throttle ? 1 : 0;
+
+                    for (int v = 0; v < 5; v++)
                     {
-                        // TNM 3.0 A-Level emission energy calculation
-                        double A = TNM30_VehicleALevels[v, pavement, throttleIndex, 0];
-                        double B = TNM30_VehicleALevels[v, pavement, throttleIndex, 1];
-                        double C = TNM30_VehicleALevels[v, pavement, throttleIndex, 2];
+                        if (vehicleCounts[v] > 0)
+                        {
+                            // TNM 3.0 A-Level emission energy calculation
+                            double A = TNM30_VehicleALevels[v, pavement, throttleIndex, 0];
+                            double B = TNM30_VehicleALevels[v, pavement, throttleIndex, 1];
+                            double C = TNM30_VehicleALevels[v, pavement, throttleIndex, 2];
 
-                        double emissionEnergy = Math.Pow(10, C / 10.0) + Math.Pow(speed_mph, A / 10.0) * Math.Pow(10, B / 10.0);
-                        double ALevel = 10.0 * Math.Log10(emissionEnergy);
+                            double emissionEnergy = Math.Pow(10, C / 10.0) + Math.Pow(speed_mph, A / 10.0) * Math.Pow(10, B / 10.0);
+                            double ALevel = 10.0 * Math.Log10(emissionEnergy);
 
+                            for (int oct = 0; oct < 8; oct++)
+                            {
+                                // TNM 3.0 spectral terms calculation
+                                double logfreq = Math.Log10(freqBands[oct]);
+                                double spectralLevel = 0.0;
+                                double powerTerm = 1.0;
+
+                                for (int coeff = 0; coeff < 7; coeff++)
+                                {
+                                    double coef_1 = TNM30_VehicleSpectra[v, pavement, throttleIndex, coeff, 0];
+                                    double coef_2 = TNM30_VehicleSpectra[v, pavement, throttleIndex, coeff, 1];
+                                    double coefficient = coef_1 + speed_mph * coef_2;
+                                    spectralLevel += coefficient * powerTerm;
+                                    powerTerm *= logfreq;
+                                }
+
+                                double L_emis = ALevel + spectralLevel;
+                                double volumeFactor = tnm30_factor * (vehicleCounts[v] / speed_mph);
+                                double totalEmission = volumeFactor * Math.Pow(10, L_emis / 10.0);
+
+                                // Calculate subsource split ratios
+                                double tireSplit = CalculateSubsourceSplit(freqBands[oct], v, throttleIndex);
+                                double engineStackSplit = 1.0 - tireSplit;
+
+                                // Apply height distribution
+                                Es[0][oct] += totalEmission * tireSplit * TNM30_SubsourceMultipliers[0, oct]; // Tire height
+
+                                if (v == 2) // Heavy truck - has stack emission
+                                {
+                                    // Split engine/stack energy (approximately 50/50 for heavy trucks)
+                                    double engineSplit = 0.5;
+                                    double stackSplit = 0.5;
+
+                                    Es[1][oct] += totalEmission * engineStackSplit * engineSplit * TNM30_SubsourceMultipliers[1, oct]; // Engine height
+                                    Es[2][oct] += totalEmission * engineStackSplit * stackSplit * TNM30_SubsourceMultipliers[2, oct]; // Stack height
+                                }
+                                else
+                                {
+                                    // No stack for other vehicle types - all upper energy goes to engine height
+                                    Es[1][oct] += totalEmission * engineStackSplit * TNM30_SubsourceMultipliers[1, oct]; // Engine height
+                                    Es[2][oct] += 0; // No stack emission for non-heavy trucks
+                                }
+                            }
+                        }
+                    }
+
+                    // Convert to sound power levels with distance correction
+                    double distanceCorrection = 10 * Math.Log10(1 / (Utilities.Numerics.PiX2 * 15)); // 15m reference distance
+                    double[][] SWL = new double[3][];
+
+                    for (int h = 0; h < 3; h++)
+                    {
+                        SWL[h] = new double[8];
                         for (int oct = 0; oct < 8; oct++)
                         {
-                            // TNM 3.0 spectral terms calculation
-                            double logfreq = Math.Log10(freqBands[oct]);
-                            double spectralLevel = 0.0;
-                            double powerTerm = 1.0;
-
-                            for (int coeff = 0; coeff < 7; coeff++)
+                            if (Es[h][oct] > 0)
                             {
-                                double coef_1 = TNM30_VehicleSpectra[v, pavement, throttleIndex, coeff, 0];
-                                double coef_2 = TNM30_VehicleSpectra[v, pavement, throttleIndex, coeff, 1];
-                                double coefficient = coef_1 + speed_mph * coef_2;
-                                spectralLevel += coefficient * powerTerm;
-                                powerTerm *= logfreq;
-                            }
-
-                            double L_emis = ALevel + spectralLevel;
-                            double volumeFactor = tnm30_factor * (vehicleCounts[v] / speed_mph);
-                            double totalEmission = volumeFactor * Math.Pow(10, L_emis / 10.0);
-
-                            // Calculate subsource split ratios
-                            double tireSplit = CalculateSubsourceSplit(freqBands[oct], v, throttleIndex);
-                            double engineStackSplit = 1.0 - tireSplit;
-
-                            // Apply height distribution
-                            Es[0][oct] += totalEmission * tireSplit * TNM30_SubsourceMultipliers[0, oct]; // Tire height
-
-                            if (v == 2) // Heavy truck - has stack emission
-                            {
-                                // Split engine/stack energy (approximately 50/50 for heavy trucks)
-                                double engineSplit = 0.5;
-                                double stackSplit = 0.5;
-
-                                Es[1][oct] += totalEmission * engineStackSplit * engineSplit * TNM30_SubsourceMultipliers[1, oct]; // Engine height
-                                Es[2][oct] += totalEmission * engineStackSplit * stackSplit * TNM30_SubsourceMultipliers[2, oct]; // Stack height
+                                SWL[h][oct] = 10 * Math.Log10(Es[h][oct]) - distanceCorrection;
                             }
                             else
                             {
-                                // No stack for other vehicle types - all upper energy goes to engine height
-                                Es[1][oct] += totalEmission * engineStackSplit * TNM30_SubsourceMultipliers[1, oct]; // Engine height
-                                Es[2][oct] += 0; // No stack emission for non-heavy trucks
+                                SWL[h][oct] = -999; // No emission for this height/band combination
                             }
                         }
                     }
+
+                    return SWL;
                 }
 
-                // Convert to sound power levels with distance correction
-                double distanceCorrection = 10 * Math.Log10(1 / (Utilities.Numerics.PiX2 * 15)); // 15m reference distance
-                double[][] SWL = new double[3][];
-
-                for (int h = 0; h < 3; h++)
+                /// <summary>
+                /// Enhanced FHWA method with multi-height subsource output and TNM version selection
+                /// </summary>
+                /// <param name="version">TNM version (1.0, 2.5, 3.0)</param>
+                /// <param name="speed_kph">Vehicle speed in kilometers per hour</param>
+                /// <param name="pavement">Pavement type index</param>
+                /// <param name="automobile">Number of automobiles per hour</param>
+                /// <param name="med_truck">Number of medium trucks per hour</param>
+                /// <param name="heavy_truck">Number of heavy trucks per hour</param>
+                /// <param name="buses">Number of buses per hour</param>
+                /// <param name="motorcycles">Number of motorcycles per hour</param>
+                /// <param name="full_throttle">Full throttle operation flag</param>
+                /// <returns>2D array of sound power levels: [height_index][octave_band] for TNM 3.0, single array for earlier versions</returns>
+                public static double[][] FHWA_TNM_SoundPower_MultiHeight(double version, double speed_kph, int pavement, int automobile, int med_truck, int heavy_truck, int buses, int motorcycles, bool full_throttle)
                 {
-                    SWL[h] = new double[8];
-                    for (int oct = 0; oct < 8; oct++)
+                    if (version >= 3.0)
                     {
-                        if (Es[h][oct] > 0)
-                        {
-                            SWL[h][oct] = 10 * Math.Log10(Es[h][oct]) - distanceCorrection;
-                        }
-                        else
-                        {
-                            SWL[h][oct] = -999; // No emission for this height/band combination
-                        }
+                        return FHWA_TNM30_SoundPower_MultiHeight(speed_kph, pavement, automobile, med_truck, heavy_truck, buses, motorcycles, full_throttle);
+                    }
+                    else
+                    {
+                        // For earlier TNM versions, return single combined spectrum in array format for compatibility
+                        double[] combinedSWL = (version >= 2.5) ?
+                            FHWA_TNM10_SoundPower(speed_kph, pavement, automobile, med_truck, heavy_truck, buses, motorcycles, full_throttle) :
+                            FHWA_TNM10_SoundPower(speed_kph, pavement, automobile, med_truck, heavy_truck, buses, motorcycles, full_throttle);
+
+                        return new double[][] { combinedSWL }; // Single height for backwards compatibility
                     }
                 }
 
-                return SWL;
-            }
-
-            /// <summary>
-            /// Enhanced FHWA method with multi-height subsource output and TNM version selection
-            /// </summary>
-            /// <param name="version">TNM version (1.0, 2.5, 3.0)</param>
-            /// <param name="speed_kph">Vehicle speed in kilometers per hour</param>
-            /// <param name="pavement">Pavement type index</param>
-            /// <param name="automobile">Number of automobiles per hour</param>
-            /// <param name="med_truck">Number of medium trucks per hour</param>
-            /// <param name="heavy_truck">Number of heavy trucks per hour</param>
-            /// <param name="buses">Number of buses per hour</param>
-            /// <param name="motorcycles">Number of motorcycles per hour</param>
-            /// <param name="full_throttle">Full throttle operation flag</param>
-            /// <returns>2D array of sound power levels: [height_index][octave_band] for TNM 3.0, single array for earlier versions</returns>
-            public static double[][] FHWA_TNM_SoundPower_MultiHeight(double version, double speed_kph, int pavement, int automobile, int med_truck, int heavy_truck, int buses, int motorcycles, bool full_throttle)
-            {
-                if (version >= 3.0)
+                /// <summary>
+                /// Get subsource heights for TNM 3.0 calculations
+                /// </summary>
+                /// <param name="frequency">Frequency in Hz (for stack height calculation)</param>
+                /// <returns>Array of heights: [tire, engine, stack]</returns>
+                public static double[] GetTNM30_SubsourceHeights(double frequency = 1000)
                 {
-                    return FHWA_TNM30_SoundPower_MultiHeight(speed_kph, pavement, automobile, med_truck, heavy_truck, buses, motorcycles, full_throttle);
-                }
-                else
-                {
-                    // For earlier TNM versions, return single combined spectrum in array format for compatibility
-                    double[] combinedSWL = (version >= 2.5) ?
-                        FHWA_TNM10_SoundPower(speed_kph, pavement, automobile, med_truck, heavy_truck, buses, motorcycles, full_throttle) :
-                        FHWA_TNM10_SoundPower(speed_kph, pavement, automobile, med_truck, heavy_truck, buses, motorcycles, full_throttle);
-
-                    return new double[][] { combinedSWL }; // Single height for backwards compatibility
-                }
-            }
-
-            /// <summary>
-            /// Get subsource heights for TNM 3.0 calculations
-            /// </summary>
-            /// <param name="frequency">Frequency in Hz (for stack height calculation)</param>
-            /// <returns>Array of heights: [tire, engine, stack]</returns>
-            public static double[] GetTNM30_SubsourceHeights(double frequency = 1000)
-            {
-                return new double[]
-                {
+                    return new double[]
+                    {
                 0.1,  // Tire height (constant)
                 1.5,  // Engine height (constant)
                 GetStackHeight(frequency)  // Stack height (frequency dependent)
-                };
-            }
+                    };
+                }
 
-            /// <summary>
-            /// Enhanced traffic noise calculation with multi-height output
-            /// </summary>
-            /// <param name="speed_kph">Speed in km/h</param>
-            /// <param name="pavement">Pavement type</param>
-            /// <param name="traffic">Traffic composition array [auto, med_truck, heavy_truck, bus, motorcycle]</param>
-            /// <param name="full_throttle">Full throttle conditions</param>
-            /// <param name="tnm_version">TNM version to use</param>
-            /// <returns>2D array of sound power levels by height and octave band</returns>
-            public static double[][] Enhanced_FHWA_SoundPower_MultiHeight(double speed_kph, Pavement pavement, int[] traffic, bool full_throttle = false, double tnm_version = 3.0)
-            {
-                if (traffic.Length < 5) throw new ArgumentException("Traffic array must contain 5 vehicle types");
-
-                return FHWA_TNM_SoundPower_MultiHeight(tnm_version, speed_kph, (int)pavement,
-                    traffic[0], traffic[1], traffic[2], traffic[3], traffic[4], full_throttle);
-            }
-            /// <summary>
-            /// Aircraft Noise Modeling Implementation
-            /// Based on international aviation noise standards (ICAO Annex 16, ECAC Doc 29, FAA Order 1050.1F)
-            /// 
-            /// NOTE: This is NOT the UK Civil Aviation Authority's ANCON tool.
-            /// This is a generic aircraft noise modeling implementation for academic and research purposes.
-            /// 
-            /// REFERENCES:
-            /// - ICAO Annex 16, Volume I: Environmental Protection - Aircraft Noise (Amendment 13, 2023)
-            /// - ECAC Doc 29: Report on Standard Method of Computing Noise Contours (4th Edition, 2016)
-            /// - FAA Order 1050.1F: Environmental Impacts: Policies and Procedures (2015)
-            /// </summary>
-
-            public enum Aircraft_Noise_Runway_Use { Takeoff = 0, Landing = 1, Both = 2 }
-
-            /// <summary>
-            /// Aircraft Category Classifications per ICAO Annex 16
-            /// 
-            /// REFERENCE: ICAO Annex 16, Volume I, Chapter 1, Section 1.2
-            /// - Light: MTOW ≤ 8,618 kg (19,000 lbs)  
-            /// - Medium: 8,618 kg < MTOW ≤ 136,000 kg (300,000 lbs)
-            /// - Heavy: 136,000 kg < MTOW ≤ 300,000 kg (661,000 lbs)  
-            /// - Super Heavy: MTOW > 300,000 kg (661,000 lbs)
-            /// </summary>
-            public enum Aircraft_Category
-            {
-                Light = 0,
-                Medium = 1,
-                Heavy = 2,
-                SuperHeavy = 3
-            }
-
-            /// <summary>
-            /// Engine Technology Classifications per ICAO Doc 9501
-            /// 
-            /// REFERENCE: ICAO Doc 9501, Volume II, Section 2.3.2
-            /// Engine noise characteristics and emission profiles by propulsion type
-            /// </summary>
-            public enum Engine_Type
-            {
-                Turboprop = 0,  // Propeller-driven, lower noise at low frequencies
-                Turbojet = 1,   // Pure jet, high-frequency emphasis  
-                Turbofan = 2,   // Fan-assisted, modern commercial standard
-                Electric = 3    // Electric propulsion, emerging technology
-            }
-
-            /// <summary>
-            /// Flight Phase Operational Characteristics per FAA Order 1050.1F
-            /// 
-            /// REFERENCE: FAA Order 1050.1F, Chapter 11, Table 11-1
-            /// Operational parameters affecting noise emission patterns
-            /// </summary>
-            public enum Flight_Phase
-            {
-                Takeoff = 0,   // High thrust, climbing flight path
-                Climb = 1,     // Reduced thrust, continued ascent  
-                Cruise = 2,    // Nominal thrust, level flight
-                Approach = 3,  // Variable thrust, descending flight path
-                Landing = 4    // Low thrust, final approach configuration
-            }
-
-            /// <summary>
-            /// Enhanced Aircraft Noise Source Power Calculation
-            /// Based on ICAO Annex 16, ECAC Doc 29, and FAA Order 1050.1F standards
-            /// 
-            /// TECHNICAL REFERENCES:
-            /// - ICAO Annex 16, Volume I: Environmental Protection - Aircraft Noise (Amendment 13, 2023)
-            /// - ECAC Doc 29: Report on Standard Method of Computing Noise Contours (4th Edition, 2016)
-            /// - FAA Order 1050.1F: Environmental Impacts: Policies and Procedures (2015)
-            /// 
-            /// NOTE: This replaces the legacy hardcoded ANCON approach with physics-based modeling
-            /// </summary>
-            /// <param name="aircraft_type">Aircraft category per ICAO classification</param>
-            /// <param name="engine_type">Engine technology type</param>
-            /// <param name="flight_phase">Current flight operational phase</param>
-            /// <param name="reference_noise_level">Reference noise level in dB(A)</param>
-            /// <param name="aircraft_speed_kts">Aircraft speed in knots</param>
-            /// <param name="altitude_ft">Aircraft altitude in feet</param>
-            /// <param name="temperature_c">Air temperature in Celsius</param>
-            /// <param name="humidity_percent">Relative humidity percentage</param>
-            /// <returns>Sound power levels by octave band (63 Hz to 8 kHz)</returns>
-            public static double[] Enhanced_Aircraft_SoundPower(
-                Aircraft_Category aircraft_type,
-                Engine_Type engine_type,
-                Flight_Phase flight_phase,
-                double reference_noise_level,
-                double aircraft_speed_kts,
-                double altitude_ft,
-                double temperature_c = 15.0,
-                double humidity_percent = 70.0)
-            {
-                // ICAO Annex 16 spectral classifications by aircraft mass and engine technology
-                double[,,,] spectra = new double[4, 4, 5, 8]
+                /// <summary>
+                /// Enhanced traffic noise calculation with multi-height output
+                /// </summary>
+                /// <param name="speed_kph">Speed in km/h</param>
+                /// <param name="pavement">Pavement type</param>
+                /// <param name="traffic">Traffic composition array [auto, med_truck, heavy_truck, bus, motorcycle]</param>
+                /// <param name="full_throttle">Full throttle conditions</param>
+                /// <param name="tnm_version">TNM version to use</param>
+                /// <returns>2D array of sound power levels by height and octave band</returns>
+                public static double[][] Enhanced_FHWA_SoundPower_MultiHeight(double speed_kph, Pavement pavement, int[] traffic, bool full_throttle = false, double tnm_version = 3.0)
                 {
+                    if (traffic.Length < 5) throw new ArgumentException("Traffic array must contain 5 vehicle types");
+
+                    return FHWA_TNM_SoundPower_MultiHeight(tnm_version, speed_kph, (int)pavement,
+                        traffic[0], traffic[1], traffic[2], traffic[3], traffic[4], full_throttle);
+                }
+                /// <summary>
+                /// Aircraft Noise Modeling Implementation
+                /// Based on international aviation noise standards (ICAO Annex 16, ECAC Doc 29, FAA Order 1050.1F)
+                /// 
+                /// NOTE: This is NOT the UK Civil Aviation Authority's ANCON tool.
+                /// This is a generic aircraft noise modeling implementation for academic and research purposes.
+                /// 
+                /// REFERENCES:
+                /// - ICAO Annex 16, Volume I: Environmental Protection - Aircraft Noise (Amendment 13, 2023)
+                /// - ECAC Doc 29: Report on Standard Method of Computing Noise Contours (4th Edition, 2016)
+                /// - FAA Order 1050.1F: Environmental Impacts: Policies and Procedures (2015)
+                /// </summary>
+
+                public enum Aircraft_Noise_Runway_Use { Takeoff = 0, Landing = 1, Both = 2 }
+
+                /// <summary>
+                /// Aircraft Category Classifications per ICAO Annex 16
+                /// 
+                /// REFERENCE: ICAO Annex 16, Volume I, Chapter 1, Section 1.2
+                /// - Light: MTOW ≤ 8,618 kg (19,000 lbs)  
+                /// - Medium: 8,618 kg < MTOW ≤ 136,000 kg (300,000 lbs)
+                /// - Heavy: 136,000 kg < MTOW ≤ 300,000 kg (661,000 lbs)  
+                /// - Super Heavy: MTOW > 300,000 kg (661,000 lbs)
+                /// </summary>
+                public enum Aircraft_Category
+                {
+                    Light = 0,
+                    Medium = 1,
+                    Heavy = 2,
+                    SuperHeavy = 3
+                }
+
+                /// <summary>
+                /// Engine Technology Classifications per ICAO Doc 9501
+                /// 
+                /// REFERENCE: ICAO Doc 9501, Volume II, Section 2.3.2
+                /// Engine noise characteristics and emission profiles by propulsion type
+                /// </summary>
+                public enum Engine_Type
+                {
+                    Turboprop = 0,  // Propeller-driven, lower noise at low frequencies
+                    Turbojet = 1,   // Pure jet, high-frequency emphasis  
+                    Turbofan = 2,   // Fan-assisted, modern commercial standard
+                    Electric = 3    // Electric propulsion, emerging technology
+                }
+
+                /// <summary>
+                /// Flight Phase Operational Characteristics per FAA Order 1050.1F
+                /// 
+                /// REFERENCE: FAA Order 1050.1F, Chapter 11, Table 11-1
+                /// Operational parameters affecting noise emission patterns
+                /// </summary>
+                public enum Flight_Phase
+                {
+                    Takeoff = 0,   // High thrust, climbing flight path
+                    Climb = 1,     // Reduced thrust, continued ascent  
+                    Cruise = 2,    // Nominal thrust, level flight
+                    Approach = 3,  // Variable thrust, descending flight path
+                    Landing = 4    // Low thrust, final approach configuration
+                }
+
+                /// <summary>
+                /// Enhanced Aircraft Noise Source Power Calculation
+                /// Based on ICAO Annex 16, ECAC Doc 29, and FAA Order 1050.1F standards
+                /// 
+                /// TECHNICAL REFERENCES:
+                /// - ICAO Annex 16, Volume I: Environmental Protection - Aircraft Noise (Amendment 13, 2023)
+                /// - ECAC Doc 29: Report on Standard Method of Computing Noise Contours (4th Edition, 2016)
+                /// - FAA Order 1050.1F: Environmental Impacts: Policies and Procedures (2015)
+                /// 
+                /// NOTE: This replaces the legacy hardcoded ANCON approach with physics-based modeling
+                /// </summary>
+                /// <param name="aircraft_type">Aircraft category per ICAO classification</param>
+                /// <param name="engine_type">Engine technology type</param>
+                /// <param name="flight_phase">Current flight operational phase</param>
+                /// <param name="reference_noise_level">Reference noise level in dB(A)</param>
+                /// <param name="aircraft_speed_kts">Aircraft speed in knots</param>
+                /// <param name="altitude_ft">Aircraft altitude in feet</param>
+                /// <param name="temperature_c">Air temperature in Celsius</param>
+                /// <param name="humidity_percent">Relative humidity percentage</param>
+                /// <returns>Sound power levels by octave band (63 Hz to 8 kHz)</returns>
+                public static double[] Enhanced_Aircraft_SoundPower(
+                    Aircraft_Category aircraft_type,
+                    Engine_Type engine_type,
+                    Flight_Phase flight_phase,
+                    double reference_noise_level,
+                    double aircraft_speed_kts,
+                    double altitude_ft,
+                    double temperature_c = 15.0,
+                    double humidity_percent = 70.0)
+                {
+                    // ICAO Annex 16 spectral classifications by aircraft mass and engine technology
+                    double[,,,] spectra = new double[4, 4, 5, 8]
+                    {
                     // Light Aircraft (MTOW < 8,618 kg) - ICAO Doc 9501, Table 7.4-1
                     {
                         // Turboprop
@@ -5882,81 +6360,81 @@ namespace Pachyderm_Acoustic
                             { 5.0, 6.0, 5.0, 2.0, -1.0, -6.0, -13.0, -18.0 }
                         }
                     }
-                };
+                    };
 
-                // Apply physics-based corrections
-                double speed_factor = Math.Log10(Math.Max(aircraft_speed_kts / 100.0, 0.5)); // Speed effect
-                double altitude_factor = Math.Exp(-altitude_ft / 10000.0); // Altitude effect on engine efficiency
+                    // Apply physics-based corrections
+                    double speed_factor = Math.Log10(Math.Max(aircraft_speed_kts / 100.0, 0.5)); // Speed effect
+                    double altitude_factor = Math.Exp(-altitude_ft / 10000.0); // Altitude effect on engine efficiency
 
-                double[] SWL = new double[8];
-                for (int oct = 0; oct < 8; oct++)
+                    double[] SWL = new double[8];
+                    for (int oct = 0; oct < 8; oct++)
+                    {
+                        double spectral_correction = spectra[(int)aircraft_type, (int)engine_type, (int)flight_phase, oct];
+                        double speed_correction = speed_factor * (oct < 4 ? 2.0 : -1.0); // Low freq increases, high freq decreases with speed
+                        double altitude_correction = altitude_factor * 3.0; // Engine efficiency effect
+
+                        SWL[oct] = reference_noise_level + spectral_correction + speed_correction + altitude_correction;
+                    }
+
+                    return SWL;
+                }
+                /// <summary>
+                /// Rail Vehicle Classifications per ISO 3095:2013
+                /// 
+                /// REFERENCE: ISO 3095:2013 - Railway applications - Acoustics - Measurement of noise emitted by railbound vehicles
+                /// Section 4: Classification of rail vehicles and operating conditions
+                /// </summary>
+                public enum Rail_Vehicle_Type
                 {
-                    double spectral_correction = spectra[(int)aircraft_type, (int)engine_type, (int)flight_phase, oct];
-                    double speed_correction = speed_factor * (oct < 4 ? 2.0 : -1.0); // Low freq increases, high freq decreases with speed
-                    double altitude_correction = altitude_factor * 3.0; // Engine efficiency effect
-
-                    SWL[oct] = reference_noise_level + spectral_correction + speed_correction + altitude_correction;
+                    LightRail = 0,      // Trams, streetcars, light rail transit
+                    PassengerTrain = 1, // Commuter and intercity passenger trains  
+                    FreightTrain = 2,   // Freight locomotives and cargo trains
+                    HighSpeedRail = 3,  // High-speed passenger trains (>200 km/h)
+                    Subway = 4          // Underground metro and rapid transit
                 }
 
-                return SWL;
-            }
-            /// <summary>
-            /// Rail Vehicle Classifications per ISO 3095:2013
-            /// 
-            /// REFERENCE: ISO 3095:2013 - Railway applications - Acoustics - Measurement of noise emitted by railbound vehicles
-            /// Section 4: Classification of rail vehicles and operating conditions
-            /// </summary>
-            public enum Rail_Vehicle_Type
-            {
-                LightRail = 0,      // Trams, streetcars, light rail transit
-                PassengerTrain = 1, // Commuter and intercity passenger trains  
-                FreightTrain = 2,   // Freight locomotives and cargo trains
-                HighSpeedRail = 3,  // High-speed passenger trains (>200 km/h)
-                Subway = 4          // Underground metro and rapid transit
-            }
-
-            /// <summary>
-            /// Track Type Classifications per FTA Transit Noise Guidelines
-            /// 
-            /// REFERENCE: FTA Report No. 0123 - Transit Noise and Vibration Impact Assessment Manual (2018)
-            /// Chapter 4: Noise and Vibration Sources - Rail Transit Systems
-            /// </summary>
-            public enum Track_Type
-            {
-                ContinuousWelded = 0,   // Modern continuously welded rail
-                JointedRail = 1,        // Traditional jointed rail with gaps
-                EmbeddedRail = 2,       // Rail embedded in street surface
-                ElevatedStructure = 3,  // Rail on bridges or elevated structures
-                SpecialTrackwork = 4    // Switches, crossings, turnouts
-            }
-
-            /// <summary>
-            /// Enhanced Rail Noise Source Power Calculation per ISO 3095:2013 and FTA Guidelines
-            /// 
-            /// TECHNICAL REFERENCES:
-            /// - ISO 3095:2013: Railway applications - Acoustics - Measurement of noise emitted by railbound vehicles
-            /// - FTA Report No. 0123: Transit Noise and Vibration Impact Assessment Manual (2018)
-            /// - EN 3095:2013: Railway applications - Acoustics - Rail system noise measurement
-            /// - FRA Railroad Noise Emission Standards (49 CFR Part 210)
-            /// 
-            /// METHODOLOGY:
-            /// - Base noise levels from ISO 3095 vehicle classifications
-            /// - Speed corrections per logarithmic relationship (typically 30-40 log(V))
-            /// - Track condition adjustments per FTA guidance
-            /// - Train length and consist corrections for distributed sources
-            /// - Horn/whistle penalties for warning systems
-            /// </summary>
-            public static double[] ISO3095_Rail_SoundPower(
-                Rail_Vehicle_Type vehicle_type,
-                Track_Type track_type,
-                double speed_kph,
-                double length_m,
-                int num_cars,
-                bool horn_operation)
-            {
-                // ISO 3095 base spectral characteristics by vehicle type at reference speed (50 km/h)
-                double[,] base_spectra = new double[5, 8]
+                /// <summary>
+                /// Track Type Classifications per FTA Transit Noise Guidelines
+                /// 
+                /// REFERENCE: FTA Report No. 0123 - Transit Noise and Vibration Impact Assessment Manual (2018)
+                /// Chapter 4: Noise and Vibration Sources - Rail Transit Systems
+                /// </summary>
+                public enum Track_Type
                 {
+                    ContinuousWelded = 0,   // Modern continuously welded rail
+                    JointedRail = 1,        // Traditional jointed rail with gaps
+                    EmbeddedRail = 2,       // Rail embedded in street surface
+                    ElevatedStructure = 3,  // Rail on bridges or elevated structures
+                    SpecialTrackwork = 4    // Switches, crossings, turnouts
+                }
+
+                /// <summary>
+                /// Enhanced Rail Noise Source Power Calculation per ISO 3095:2013 and FTA Guidelines
+                /// 
+                /// TECHNICAL REFERENCES:
+                /// - ISO 3095:2013: Railway applications - Acoustics - Measurement of noise emitted by railbound vehicles
+                /// - FTA Report No. 0123: Transit Noise and Vibration Impact Assessment Manual (2018)
+                /// - EN 3095:2013: Railway applications - Acoustics - Rail system noise measurement
+                /// - FRA Railroad Noise Emission Standards (49 CFR Part 210)
+                /// 
+                /// METHODOLOGY:
+                /// - Base noise levels from ISO 3095 vehicle classifications
+                /// - Speed corrections per logarithmic relationship (typically 30-40 log(V))
+                /// - Track condition adjustments per FTA guidance
+                /// - Train length and consist corrections for distributed sources
+                /// - Horn/whistle penalties for warning systems
+                /// </summary>
+                public static double[] ISO3095_Rail_SoundPower(
+                    Rail_Vehicle_Type vehicle_type,
+                    Track_Type track_type,
+                    double speed_kph,
+                    double length_m,
+                    int num_cars,
+                    bool horn_operation)
+                {
+                    // ISO 3095 base spectral characteristics by vehicle type at reference speed (50 km/h)
+                    double[,] base_spectra = new double[5, 8]
+                    {
         // Light Rail (Trams/Streetcars) - ISO 3095 Table A.1
         { 85, 82, 79, 78, 75, 72, 68, 65 },
         
@@ -5971,42 +6449,43 @@ namespace Pachyderm_Acoustic
         
         // Subway/Metro - ISO 3095 Table A.5
         { 86, 83, 81, 80, 77, 74, 70, 67 }
-                };
+                    };
 
-                // Track type corrections per FTA guidelines
-                double[] track_corrections = new double[5] { 0, +3, +2, +4, +6 }; // dB adjustment
+                    // Track type corrections per FTA guidelines
+                    double[] track_corrections = new double[5] { 0, +3, +2, +4, +6 }; // dB adjustment
 
-                // Speed correction factors by frequency (typically 30-40 log10(V/Vref))
-                double[] speed_factors = { 30, 32, 35, 38, 40, 38, 35, 30 }; // dB per decade
+                    // Speed correction factors by frequency (typically 30-40 log10(V/Vref))
+                    double[] speed_factors = { 30, 32, 35, 38, 40, 38, 35, 30 }; // dB per decade
 
-                double[] SWL = new double[8];
-                double speed_ref = 50.0; // Reference speed in km/h per ISO 3095
+                    double[] SWL = new double[8];
+                    double speed_ref = 50.0; // Reference speed in km/h per ISO 3095
 
-                for (int oct = 0; oct < 8; oct++)
-                {
-                    // Base noise level for vehicle type
-                    double base_level = base_spectra[(int)vehicle_type, oct];
+                    for (int oct = 0; oct < 8; oct++)
+                    {
+                        // Base noise level for vehicle type
+                        double base_level = base_spectra[(int)vehicle_type, oct];
 
-                    // Speed correction per ISO 3095 methodology
-                    double speed_correction = speed_factors[oct] * Math.Log10(Math.Max(speed_kph, 10.0) / speed_ref);
+                        // Speed correction per ISO 3095 methodology
+                        double speed_correction = speed_factors[oct] * Math.Log10(Math.Max(speed_kph, 10.0) / speed_ref);
 
-                    // Track condition adjustment
-                    double track_correction = track_corrections[(int)track_type];
+                        // Track condition adjustment
+                        double track_correction = track_corrections[(int)track_type];
 
-                    // Train length correction (distributed source)
-                    double length_correction = 10.0 * Math.Log10(Math.Max(length_m, 20.0) / 100.0);
+                        // Train length correction (distributed source)
+                        double length_correction = 10.0 * Math.Log10(Math.Max(length_m, 20.0) / 100.0);
 
-                    // Multiple unit correction for consists
-                    double consist_correction = 10.0 * Math.Log10(Math.Max(num_cars, 1));
+                        // Multiple unit correction for consists
+                        double consist_correction = 10.0 * Math.Log10(Math.Max(num_cars, 1));
 
-                    // Horn/whistle penalty (mainly affects mid-frequencies)
-                    double horn_penalty = horn_operation && oct >= 2 && oct <= 5 ? 5.0 : 0.0;
+                        // Horn/whistle penalty (mainly affects mid-frequencies)
+                        double horn_penalty = horn_operation && oct >= 2 && oct <= 5 ? 5.0 : 0.0;
 
-                    SWL[oct] = base_level + speed_correction + track_correction +
-                               length_correction + consist_correction + horn_penalty;
+                        SWL[oct] = base_level + speed_correction + track_correction +
+                                   length_correction + consist_correction + horn_penalty;
+                    }
+
+                    return SWL;
                 }
-
-                return SWL;
             }
         }
     }

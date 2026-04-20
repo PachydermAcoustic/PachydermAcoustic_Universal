@@ -1951,6 +1951,7 @@ namespace Pachyderm_Acoustic
                 for (int t = 0; t <= 7; t++)
                 {
                     PathEnergy[t] *= (1 - AbsorptionData[t]) * (1 - ScatteringData[t]) * (1 - TransmissionData[t]);
+                    if (PathEnergy[t] == 0) PathEnergy[t] = 1E-22;  
                 }
             }
 

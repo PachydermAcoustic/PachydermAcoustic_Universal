@@ -22,6 +22,8 @@ using Hare.Geometry;
 using Pachyderm_Acoustic.Environment;
 using Pachyderm_Acoustic.Utilities;
 using System.Linq;
+using MathNet.Numerics;
+using System.Collections.ObjectModel;
 
 namespace Pachyderm_Acoustic
 {
@@ -199,32 +201,117 @@ namespace Pachyderm_Acoustic
             VoxelDims_Inv = new Hare.Geometry.Point(1 / VoxelDims.x, 1 / VoxelDims.y, 1 / VoxelDims.z);
             BoxDims_Inv = new Hare.Geometry.Point(1 / BoxDims.dx, 1 / BoxDims.dy, 1 / BoxDims.dz);
 
-            for (int x = 0; x < VoxelCtX; x++)
+            // 1. Initialize the grid (Parallel over Voxels)
+            // This is fast and contention-free because each index is unique.
+            int totalXY = VoxelCtX * VoxelCtY;
+            System.Threading.Tasks.Parallel.For(0, totalXY, idx =>
             {
-                for (int y = 0; y < VoxelCtY; y++)
+                int x = idx / VoxelCtY;
+                int y = idx % VoxelCtY;
+
+                for (int z = 0; z < VoxelCtZ; z++)
                 {
-                    for (int z = 0; z < VoxelCtZ; z++)
+                    Voxel_Inv[x, y, z] = new List<int>();
+
+                    // Calculate bounds for the voxel
+                    double minX = (x * VoxelDims.x) + OBox.Min_PT.x;
+                    double minY = (y * VoxelDims.y) + OBox.Min_PT.y;
+                    double minZ = (z * VoxelDims.z) + OBox.Min_PT.z;
+                    double maxX = ((x + 1) * VoxelDims.x) + OBox.Min_PT.x;
+                    double maxY = ((y + 1) * VoxelDims.y) + OBox.Min_PT.y;
+                    double maxZ = ((z + 1) * VoxelDims.z) + OBox.Min_PT.z;
+
+                    Voxels[x, y, z] = new AABB(new Point(minX, minY, minZ), new Point(maxX, maxY, maxZ));
+                }
+            });
+
+            // 2. Populate the grid (Parallel over Receivers)
+            // Instead of checking every receiver for every voxel, we calculate exactly 
+            // which voxels each receiver touches.
+            System.Threading.Tasks.Parallel.For(0, Rec_List.Length, i =>
+            {
+                var rec = Rec_List[i];
+                var origin = rec.Origin;
+                double r = rec.Radius;
+                double r2 = rec.Radius2;
+
+                // Calculate voxel index range ensuring we cover the full sphere radius
+                int minX = (int)Math.Floor((origin.x - r - OBox.Min_PT.x) * VoxelDims_Inv.x);
+                int maxX = (int)Math.Floor((origin.x + r - OBox.Min_PT.x) * VoxelDims_Inv.x);
+                int minY = (int)Math.Floor((origin.y - r - OBox.Min_PT.y) * VoxelDims_Inv.y);
+                int maxY = (int)Math.Floor((origin.y + r - OBox.Min_PT.y) * VoxelDims_Inv.y);
+                int minZ = (int)Math.Floor((origin.z - r - OBox.Min_PT.z) * VoxelDims_Inv.z);
+                int maxZ = (int)Math.Floor((origin.z + r - OBox.Min_PT.z) * VoxelDims_Inv.z);
+
+                // Clamp to grid boundaries
+                minX = Math.Max(0, minX); maxX = Math.Min(VoxelCtX - 1, maxX);
+                minY = Math.Max(0, minY); maxY = Math.Min(VoxelCtY - 1, maxY);
+                minZ = Math.Max(0, minZ); maxZ = Math.Min(VoxelCtZ - 1, maxZ);
+
+                // Iterate only the relevant neighborhood
+                for (int x = minX; x <= maxX; x++)
+                {
+                    for (int y = minY; y <= maxY; y++)
                     {
-                        Voxel_Inv[x, y, z] = new List<int>();
-                        Hare.Geometry.Point voxelmin = new Hare.Geometry.Point(x * VoxelDims.x, y * VoxelDims.y, z * VoxelDims.z);
-                        Hare.Geometry.Point voxelmax = new Hare.Geometry.Point((x + 1) * VoxelDims.x, (y + 1) * VoxelDims.y, (z + 1) * VoxelDims.z);
-                        AABB Box = new AABB(voxelmin + OBox.Min_PT, voxelmax + OBox.Min_PT);
-                        Voxels[x, y, z] = Box;
-                        for (int i = 0; i < Rec_List.Length; i++)
+                        for (int z = minZ; z <= maxZ; z++)
                         {
-                            //Check for intersection between voxel x,y,z with Receiver i...
-                            Hare.Geometry.Point PT = Box.ClosestPt(Rec_List[i].Origin);
-                            double PTx = PT.x - Rec_List[i].Origin.x;
-                            double PTy = PT.y - Rec_List[i].Origin.y;
-                            double PTz = PT.z - Rec_List[i].Origin.z;
-                            if ((PTx * PTx + PTy * PTy + PTz * PTz) < Rec_List[i].Radius2)
+                            // Precise sphere-AABB intersection test optimized (no allocations)
+                            var box = Voxels[x, y, z];
+                            double dx = Math.Max(box.Min_PT.x - origin.x, Math.Max(0, origin.x - box.Max_PT.x));
+                            double dy = Math.Max(box.Min_PT.y - origin.y, Math.Max(0, origin.y - box.Max_PT.y));
+                            double dz = Math.Max(box.Min_PT.z - origin.z, Math.Max(0, origin.z - box.Max_PT.z));
+
+                            if (dx * dx + dy * dy + dz * dz < r2)
                             {
-                                Voxel_Inv[x, y, z].Add(i);
+                                // Lock is required here, but contention is low because
+                                // receivers are typically spread out across the grid.
+                                lock (Voxel_Inv[x, y, z])
+                                {
+                                    Voxel_Inv[x, y, z].Add(i);
+                                }
                             }
                         }
                     }
                 }
-            }
+            });
+
+            //int totalXY = VoxelCtX * VoxelCtY;
+            //System.Threading.Tasks.Parallel.For(0, totalXY, idx =>
+            //{
+            //    int x = idx / VoxelCtY;
+            //    int y = idx % VoxelCtY;
+
+            //    for (int z = 0; z < VoxelCtZ; z++)
+            //    {
+            //        Voxel_Inv[x, y, z] = new List<int>();
+            //        Hare.Geometry.Point voxelmin = new Hare.Geometry.Point(x * VoxelDims.x, y * VoxelDims.y, z * VoxelDims.z);
+            //        Hare.Geometry.Point voxelmax = new Hare.Geometry.Point((x + 1) * VoxelDims.x, (y + 1) * VoxelDims.y, (z + 1) * VoxelDims.z);
+
+            //        double minX = voxelmin.x + OBox.Min_PT.x;
+            //        double minY = voxelmin.y + OBox.Min_PT.y;
+            //        double minZ = voxelmin.z + OBox.Min_PT.z;
+            //        double maxX = voxelmax.x + OBox.Min_PT.x;
+            //        double maxY = voxelmax.y + OBox.Min_PT.y;
+            //        double maxZ = voxelmax.z + OBox.Min_PT.z;
+
+            //        Voxels[x, y, z] = new AABB(new Point(minX, minY, minZ), new Point(maxX, maxY, maxZ));
+
+            //        for (int i = 0; i < Rec_List.Length; i++)
+            //        {
+            //            var origin = Rec_List[i].Origin;
+            //            double ox = origin.x, oy = origin.y, oz = origin.z;
+
+            //            double dx = Math.Max(minX - ox, Math.Max(0, ox - maxX));
+            //            double dy = Math.Max(minY - oy, Math.Max(0, oy - maxY));
+            //            double dz = Math.Max(minZ - oz, Math.Max(0, oz - maxZ));
+
+            //            if (dx * dx + dy * dy + dz * dz < Rec_List[i].Radius2)
+            //            {
+            //                Voxel_Inv[x, y, z].Add(i);
+            //            }
+            //        }
+            //    }
+            //});
         }
 
         /// <summary>
@@ -320,10 +407,17 @@ namespace Pachyderm_Acoustic
         /// <param name="Octave">The octave band to plot...</param>
         /// <param name="SrcID">The IDs of the sources.</param>
         /// <erturns>On Mesh with color assignments matching the input parameters and output variables.</returns>
-        public static double[] Get_SPL_Map(PachMapReceiver[] Rec_List, double[] T_Bounds, int Octave, List<int> SrcID, bool Coherent_Superposition, bool ZeroAtDirect)
+        public static double[] Get_SPL_Map(PachMapReceiver[] Rec_List, double[] T_Bounds, int Octave, List<int> SrcID, bool Coherent_Superposition, bool ZeroAtDirect, double[] mod = null)
         {
             //T in ms.
             //Calculate SPL values...
+
+            mod = new double[SrcID.Max() + 1];
+
+            for(int i = 0; i < mod.Length; i++)
+            {
+                mod[i] = Math.Pow(10, mod[i] / 10);
+            }
 
             double[] SPL_Values = new double[Rec_List[0].Rec_List.Length];
             Topology MM = Rec_List[0].MapMesh();
@@ -338,6 +432,7 @@ namespace Pachyderm_Acoustic
                     double E_Sum = 0;
                     int T_Max = (int)Math.Floor((T_Bounds.Max()) * 44.1);
                     int T_Min = (int)Math.Floor((T_Bounds.Min()) * 44.1);
+
 
                     int zero = 0;
                     if (ZeroAtDirect)
@@ -356,6 +451,7 @@ namespace Pachyderm_Acoustic
                         double[] P;
                         Rec_List[S_ID].GetFilter(i, out P);
                         P = Audio.Pach_SP.Filter2Signal(P, Rec_List[S_ID].SWL, Rec_List[S_ID].SampleRate, 0);
+                        mod[S_ID] = AcousticalMath.Pressure_Intensity(mod[S_ID]);
 
                         int arrival = (int)Math.Floor((Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate * 44.1) - zero;
 
@@ -364,7 +460,7 @@ namespace Pachyderm_Acoustic
                             int t = j + arrival;
                             if (t >= hist.Length) break;
 
-                            hist[t] += P[j];
+                            hist[t] += P[j] * mod[S_ID];
                         }
                     }
 
@@ -416,12 +512,17 @@ namespace Pachyderm_Acoustic
                     foreach (int S_ID in SrcID)
                     {
                         temp = Rec_List[S_ID].GetEnergyHistogram(Octave, Rec_List[S_ID].delay_ms, i);
+                        mod[S_ID] = AcousticalMath.Pressure_Intensity(mod[S_ID]);
                         int arrival = (int)((Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate) - zero;
                         for (int j = 0; j < temp.Length; j++)
                         {
                             int t = j + arrival;
+                            if (hist.Length == 1) 
+                            {
+                                hist[0] += temp[j] * mod[S_ID];
+                            }
                             if (t >= hist.Length) break;
-                            hist[t] += temp[j];
+                            hist[t] += temp[j] * mod[S_ID];
                         }
                     }
 
@@ -434,7 +535,178 @@ namespace Pachyderm_Acoustic
                     SPL_Values[i] = AcousticalMath.SPL_Intensity(E_Sum);
                 }
             }
+
             return SPL_Values;
+        }
+
+        public static List<List<Hare.Geometry.Point>> BuildContours(PachMapReceiver[] recList, double[] scalarValues, double[] levels)
+        {
+            if (recList == null || recList.Length == 0 || scalarValues == null || scalarValues.Length == 0 || levels == null || levels.Length == 0)
+            {
+                return new List<List<Hare.Geometry.Point>>();
+            }
+
+            PachMapReceiver first = recList[0];
+            var topo = first.MapMesh();
+            bool recVertex = first.Rec_Vertex;
+
+            double[] vertexValues = new double[topo.Vertex_Count];
+            if (recVertex)
+            {
+                if (scalarValues.Length != topo.Vertex_Count) return new List<List<Hare.Geometry.Point>>();
+                Array.Copy(scalarValues, vertexValues, scalarValues.Length);
+            }
+            else
+            {
+                double[] sum = new double[topo.Vertex_Count];
+                int[] count = new int[topo.Vertex_Count];
+                for (int fi = 0; fi < topo.Polys.Count; fi++)
+                {
+                    double val = scalarValues[fi];
+                    int vct = topo.Polys[fi].VertextCT;
+                    for (int k = 0; k < vct; k++)
+                    {
+                        int vi = topo.Polys[fi].Points[k].index;
+                        sum[vi] += val;
+                        count[vi]++;
+                    }
+                }
+                for (int i = 0; i < topo.Vertex_Count; i++)
+                {
+                    vertexValues[i] = count[i] > 0 ? sum[i] / count[i] : 0;
+                }
+            }
+
+            List<(int a, int b, int c)> tris = new List<(int a, int b, int c)>(topo.Polys.Count * 2);
+            for (int fi = 0; fi < topo.Polys.Count; fi++)
+            {
+                var poly = topo.Polys[fi];
+                if (poly.VertextCT == 3)
+                {
+                    tris.Add((poly.Points[0].index, poly.Points[1].index, poly.Points[2].index));
+                }
+                else if (poly.VertextCT == 4)
+                {
+                    tris.Add((poly.Points[0].index, poly.Points[1].index, poly.Points[2].index));
+                    tris.Add((poly.Points[0].index, poly.Points[2].index, poly.Points[3].index));
+                }
+            }
+
+            var allContours = new List<List<Hare.Geometry.Point>>();
+            foreach (double level in levels)
+            {
+                List<(Hare.Geometry.Point a, Hare.Geometry.Point b)> segs = new List<(Hare.Geometry.Point a, Hare.Geometry.Point b)>();
+
+                foreach (var tri in tris)
+                {
+                    int ia = tri.a; int ib = tri.b; int ic = tri.c;
+                    double sa = vertexValues[ia];
+                    double sb = vertexValues[ib];
+                    double sc = vertexValues[ic];
+
+                    Hare.Geometry.Point pa = topo[ia];
+                    Hare.Geometry.Point pb = topo[ib];
+                    Hare.Geometry.Point pc = topo[ic];
+
+                    Hare.Geometry.Point[] hits = new Hare.Geometry.Point[3];
+                   int h = 0;
+
+                    void addHit(Hare.Geometry.Point p) { hits[h++] = p; }
+
+                    bool Cross(double s0, double s1, double iso, out double t)
+                    {
+                        double d0 = s0 - iso;
+                        double d1 = s1 - iso;
+                        if (d0 == 0 && d1 == 0) { t = 0; return false; }
+                        if (d0 * d1 > 0) { t = 0; return false; }
+                        t = d0 / (d0 - d1);
+                        return true;
+                    }
+
+                    if (Cross(sa, sb, level, out double t01)) addHit(Interp(pa, pb, t01));
+                    if (Cross(sb, sc, level, out double t12)) addHit(Interp(pb, pc, t12));
+                    if (Cross(sc, sa, level, out double t20)) addHit(Interp(pc, pa, t20));
+
+                    if (h == 2)
+                    {
+                        segs.Add((hits[0], hits[1]));
+                    }
+                }
+
+                List<List<Hare.Geometry.Point>> polylines = StitchSegments(segs, 1e-6);
+                allContours.AddRange(polylines);
+            }
+
+            return allContours;
+        }
+
+        private static Hare.Geometry.Point Interp(Hare.Geometry.Point a, Hare.Geometry.Point b, double t)
+        {
+            return new Hare.Geometry.Point(
+                a.x + (b.x - a.x) * t,
+                a.y + (b.y - a.y) * t,
+                a.z + (b.z - a.z) * t);
+        }
+
+        private static List<List<Hare.Geometry.Point>> StitchSegments(List<(Hare.Geometry.Point a, Hare.Geometry.Point b)> segs, double tol)
+        {
+            List<List<Hare.Geometry.Point>> result = new List<List<Hare.Geometry.Point>>();
+            if (segs == null || segs.Count == 0) return result;
+
+            double tol2 = tol * tol;
+            var remaining = new List<(Hare.Geometry.Point a, Hare.Geometry.Point b)>(segs);
+
+            bool Same(Hare.Geometry.Point p, Hare.Geometry.Point q) =>
+                Hare.Geometry.Hare_math.Dot(p.x - q.x, p.y - q.y, p.z - q.z, p.x - q.x, p.y - q.y, p.z - q.z) <= tol2;
+
+            while (remaining.Count > 0)
+            {
+                var seg = remaining[remaining.Count - 1];
+                remaining.RemoveAt(remaining.Count - 1);
+
+                List<Hare.Geometry.Point> poly = new List<Hare.Geometry.Point> { seg.a, seg.b };
+
+                bool extended;
+                do
+                {
+                    extended = false;
+                    for (int i = remaining.Count - 1; i >= 0; i--)
+                    {
+                        var s = remaining[i];
+                        Hare.Geometry.Point head = poly[poly.Count - 1];
+                        Hare.Geometry.Point tail = poly[0];
+
+                        if (Same(s.a, head))
+                        {
+                            poly.Add(s.b);
+                            remaining.RemoveAt(i);
+                            extended = true;
+                        }
+                        else if (Same(s.b, head))
+                        {
+                            poly.Add(s.a);
+                            remaining.RemoveAt(i);
+                            extended = true;
+                        }
+                        else if (Same(s.a, tail))
+                        {
+                            poly.Insert(0, s.b);
+                            remaining.RemoveAt(i);
+                            extended = true;
+                        }
+                        else if (Same(s.b, tail))
+                        {
+                            poly.Insert(0, s.a);
+                            remaining.RemoveAt(i);
+                            extended = true;
+                        }
+                    }
+                } while (extended);
+
+                result.Add(poly);
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -446,8 +718,15 @@ namespace Pachyderm_Acoustic
         /// <param name="Octave">The octave band to plot...</param>
         /// <param name="SrcID">The IDs of the sources.</param>
         /// <returns>On Mesh with color assignments matching the input parameters and output variables.</returns>
-        public static double[] Get_SPLA_Map(PachMapReceiver[] Rec_List, double[] T_Bounds, List<int> SrcID, bool Coherent_Superposition)
+        public static double[] Get_SPLA_Map(PachMapReceiver[] Rec_List, double[] T_Bounds, List<int> SrcID, bool Coherent_Superposition, double[] mod = null)
         {
+            if (mod == null) { mod = new double[SrcID.Count]; }
+
+            for (int i = 0; i < mod.Length; i++)
+            {
+                mod[i] = Math.Pow(10, mod[i] / 10);
+            }
+
             //T in ms.
             //Calculate SPL values...
             int T_Max = (int)Math.Min(Rec_List[SrcID[0]].SampleCT, Math.Floor((T_Bounds.Max())));
@@ -469,12 +748,14 @@ namespace Pachyderm_Acoustic
 
                         int arrival = (int)Math.Floor((Rec_List[S_ID].Rec_List[i] as Map_Receiver).Direct_Time * Rec_List[0].SampleRate * 44.1);
 
+                        mod[S_ID] = AcousticalMath.Pressure_Intensity(mod[S_ID]);
+
                         for (int j = 0; j < P.Length; j++)
                         {
                             int t = j + arrival;
                             if (t >= hist.Length) break;
 
-                            hist[t] += P[j];
+                            hist[t] += P[j] * mod[S_ID];
                         }
                     }
 
@@ -501,7 +782,7 @@ namespace Pachyderm_Acoustic
                             {
                                 E_oct_Sum += hist[t];
                             }
-                            E_Sum += E_oct_Sum * AFactors[oct];
+                            E_Sum += E_oct_Sum * AFactors[oct] * mod[S_ID];
                         }
                     }
 

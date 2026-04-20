@@ -155,7 +155,7 @@ namespace Pachyderm_Acoustic
                     Power[h] = new double[8];
                 }
 
-                double PowerMod = length / (double)Samples.Length;
+                double PowerMod = length / (double)Samples[0].Length;
 
                 for(int h = 0; h < num_heights; h++)
                 {
@@ -207,7 +207,7 @@ namespace Pachyderm_Acoustic
             /// Railway-specific constructor with automatic ground finding (single height at rail level)
             /// </summary>
             public LineSource(Hare.Geometry.Point[] samples, double length,
-                Utilities.StandardConstructions.Rail_Vehicle_Type vehicle_type, Utilities.StandardConstructions.Track_Type track_type,
+                Utilities.StandardConstructions.Vehicle_Noise.Rail_Vehicle_Type vehicle_type, Utilities.StandardConstructions.Vehicle_Noise.Track_Type track_type,
                 double speed_kph, double train_length_m, int num_cars, bool horn_operation,
                 Scene room_model, string Code, int el_m, int SrcID, bool Third_Octave)
                 : this(samples, length, SourceType.Railway, room_model, Code, el_m, SrcID, Third_Octave, false) // No multi-height for rail
@@ -328,9 +328,9 @@ namespace Pachyderm_Acoustic
             /// <param name="SrcID"></param>
             /// <param name="Third_Octave"></param>
             public LineSource(Hare.Geometry.Point[] samples, double length,
-                Utilities.StandardConstructions.Aircraft_Category aircraft_category,
-                Utilities.StandardConstructions.Engine_Type engine_type,
-                Utilities.StandardConstructions.Flight_Phase flight_phase,
+                Utilities.StandardConstructions.Vehicle_Noise.Aircraft_Category aircraft_category,
+                Utilities.StandardConstructions.Vehicle_Noise.Engine_Type engine_type,
+                Utilities.StandardConstructions.Vehicle_Noise.Flight_Phase flight_phase,
                 double speed_kts, double path_angle_deg, string Code, int el_m, int SrcID, bool Third_Octave)
             : base(new double[8] { 60, 49, 41, 35, 31, 28, 26, 24 }, new Point(0, 0, 0), SrcID, Third_Octave)
             {
@@ -479,9 +479,9 @@ namespace Pachyderm_Acoustic
             /// </summary>
             public class Aircraft : Directionality
             {
-                private Utilities.StandardConstructions.Aircraft_Category aircraft_category;
-                private Utilities.StandardConstructions.Engine_Type engine_type;
-                private Utilities.StandardConstructions.Flight_Phase flight_phase;
+                private Utilities.StandardConstructions.Vehicle_Noise.Aircraft_Category aircraft_category;
+                private Utilities.StandardConstructions.Vehicle_Noise.Engine_Type engine_type;
+                private Utilities.StandardConstructions.Vehicle_Noise.Flight_Phase flight_phase;
                 private double aircraft_speed_ms; // m/s
                 private double flight_path_angle_rad; // radians from horizontal
                 private Vector flight_direction; // normalized flight direction vector
@@ -496,9 +496,9 @@ namespace Pachyderm_Acoustic
                 /// <param name="path_angle_deg">Flight path angle in degrees (positive = climbing)</param>
                 /// <param name="heading_vector">Normalized flight direction vector</param>
                 public Aircraft(
-                    Utilities.StandardConstructions.Aircraft_Category category,
-                    Utilities.StandardConstructions.Engine_Type engine,
-                    Utilities.StandardConstructions.Flight_Phase phase,
+                    Utilities.StandardConstructions.Vehicle_Noise.Aircraft_Category category,
+                    Utilities.StandardConstructions.Vehicle_Noise.Engine_Type engine,
+                    Utilities.StandardConstructions.Vehicle_Noise.Flight_Phase phase,
                     double speed_kts,
                     double path_angle_deg,
                     Vector heading_vector)
@@ -634,13 +634,13 @@ namespace Pachyderm_Acoustic
                 {
                     switch (flight_phase)
                     {
-                        case Utilities.StandardConstructions.Flight_Phase.Takeoff:
+                        case Utilities.StandardConstructions.Vehicle_Noise.Flight_Phase.Takeoff:
                             return -15.0 * Math.PI / 180.0; // 15° below horizontal
-                        case Utilities.StandardConstructions.Flight_Phase.Climb:
+                        case Utilities.StandardConstructions.Vehicle_Noise.Flight_Phase.Climb:
                             return -10.0 * Math.PI / 180.0; // 10° below horizontal
-                        case Utilities.StandardConstructions.Flight_Phase.Approach:
+                        case Utilities.StandardConstructions.Vehicle_Noise.Flight_Phase.Approach:
                             return -20.0 * Math.PI / 180.0; // 20° below horizontal
-                        case Utilities.StandardConstructions.Flight_Phase.Landing:
+                        case Utilities.StandardConstructions.Vehicle_Noise.Flight_Phase.Landing:
                             return -25.0 * Math.PI / 180.0; // 25° below horizontal
                         default:
                             return 0.0; // Horizontal for cruise
@@ -654,12 +654,12 @@ namespace Pachyderm_Acoustic
                 {
                     switch (aircraft_category)
                     {
-                        case Utilities.StandardConstructions.Aircraft_Category.Light:
+                        case Utilities.StandardConstructions.Vehicle_Noise.Aircraft_Category.Light:
                             return 30.0 * Math.PI / 180.0; // 30° spread
-                        case Utilities.StandardConstructions.Aircraft_Category.Medium:
+                        case Utilities.StandardConstructions.Vehicle_Noise.Aircraft_Category.Medium:
                             return 25.0 * Math.PI / 180.0; // 25° spread
-                        case Utilities.StandardConstructions.Aircraft_Category.Heavy:
-                        case Utilities.StandardConstructions.Aircraft_Category.SuperHeavy:
+                        case Utilities.StandardConstructions.Vehicle_Noise.Aircraft_Category.Heavy:
+                        case Utilities.StandardConstructions.Vehicle_Noise.Aircraft_Category.SuperHeavy:
                             return 20.0 * Math.PI / 180.0; // 20° spread (more directional)
                         default:
                             return 25.0 * Math.PI / 180.0;

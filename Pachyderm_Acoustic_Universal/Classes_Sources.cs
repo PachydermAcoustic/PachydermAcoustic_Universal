@@ -67,10 +67,10 @@ namespace Pachyderm_Acoustic
                     {
                         //...an interpolation algorithm for octave to third octave 
                         double[] freq = new double[9] {16, 63, 125, 250, 500, 1000, 2000, 4000, 8000 };
-                        power_In_db = power_In_db.Reverse().ToArray();
+                        power_In_db.Reverse();
                         Array.Resize(ref power_In_db, 9);
                         power_In_db[8] = double.Epsilon;
-                        power_In_db = power_In_db.Reverse().ToArray();
+                        power_In_db.Reverse();
                         MathNet.Numerics.Interpolation.CubicSpline powerspline = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaInplace(freq, power_In_db);
                         SourcePower = new double[24];
                         for (int oct = 1; oct < 9; oct++)
@@ -436,6 +436,8 @@ namespace Pachyderm_Acoustic
                 /////////////
             }
 
+
+
             /// <summary>
             /// Provides a ray from the source. (Stochastic only)
             /// </summary>
@@ -445,8 +447,10 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public override BroadRay Directions(int thread, ref Random random)
             {
-                if (Balloon == null) Balloon = new Voxel_Grid(_S.Balloons(new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }), 1);
-
+                lock (balloonlock)
+                {
+                    if (Balloon == null) Balloon = new Voxel_Grid(_S.Balloons(new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }), 1);
+                }
                 X_Event X = new X_Event();
 
                 double[] RayPower = new double[8];
@@ -474,6 +478,8 @@ namespace Pachyderm_Acoustic
                 return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, RayPower, 0, Source_ID());
             }
 
+            object balloonlock = new object();
+
             /// <summary>
             /// Deterministic Source Power
             /// </summary>
@@ -483,8 +489,10 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public override double[] DirPower(int thread, int random, Vector DIR)
             {
-                if (Balloon == null) Balloon = new Voxel_Grid(_S.Balloons(new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }), 1);
-
+                lock (balloonlock)
+                {
+                    if (Balloon == null) Balloon = new Voxel_Grid(_S.Balloons(new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }), 1);
+                }
                 X_Event X = new X_Event();
                 double[] RayPower = new double[8];
                 for (int oct = 0; oct < 8; oct++)

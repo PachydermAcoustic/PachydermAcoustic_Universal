@@ -179,309 +179,354 @@ namespace Pachyderm_Acoustic
 
                 /// <summary>
                 /// Fits IIR filter coefficients to match a given frequency response
-                /// </summary>
-                public static (double[] b, double[] a) FitIIRToFrequencyResponse(double[] frequencies, Complex[] desiredResponse, int numeratorOrder, int denominatorOrder, double fs = 44100)
+                public static (double[] b, double[] a) FitIIRToFrequencyResponse(double[] frequencies, Complex[] desiredResponse, int numeratorOrder, int denominatorOrder, double fs)
                 {
-                    // Calculate weights to emphasize lower frequencies
+                    if (frequencies == null || desiredResponse == null)
+                        throw new ArgumentNullException();
+                    if (frequencies.Length != desiredResponse.Length)
+                        throw new ArgumentException("frequencies and desiredResponse must have same length");
+                    if (frequencies.Length < 4)
+                        throw new ArgumentException("Need at least a few frequency points");
+
+                    // Weights: emphasize low-ish frequencies but avoid DC singularities and runaway dominance
                     double[] weights = new double[frequencies.Length];
-                    for (int i = 0; i < frequencies.Length; i++) weights[i] = 1.0 / Math.Sqrt(frequencies[i]);
-                    
-                    // Prepare matrices for least squares solution
-                    var A = Matrix<double>.Build.Dense(frequencies.Length * 2, numeratorOrder + denominatorOrder + 1);
-                    var b = MathNet.Numerics.LinearAlgebra.Vector<double>.Build.Dense(frequencies.Length * 2);
-                    
                     for (int i = 0; i < frequencies.Length; i++)
                     {
-                        double w = 2 * Math.PI * frequencies[i] / fs;
-                        double weight = weights[i];
-                        
-                        // Real part equations
-                        for (int j = 0; j <= numeratorOrder; j++) A[i, j] = weight * Math.Cos(-j * w);
-                        for (int j = 0; j <= denominatorOrder - 1; j++)
-                        {
-                            A[i, numeratorOrder + 1 + j] = -weight * desiredResponse[i].Real * Math.Cos(-(j + 1) * w)
-                                                         + weight * desiredResponse[i].Imaginary * Math.Sin(-(j + 1) * w);
-                        }
-                        b[i] = weight * desiredResponse[i].Real;
-                        
-                        // Imaginary part equations
-                        for (int j = 0; j <= numeratorOrder; j++) A[i + frequencies.Length, j] = weight * Math.Sin(-j * w);
-                        for (int j = 0; j <= denominatorOrder - 1; j++)
-                        {
-                            A[i + frequencies.Length, numeratorOrder + 1 + j] = -weight * desiredResponse[i].Real * Math.Sin(-(j + 1) * w)
-                                                                              - weight * desiredResponse[i].Imaginary * Math.Cos(-(j + 1) * w);
-                        }
-                        b[i + frequencies.Length] = weight * desiredResponse[i].Imaginary;
+                        double f = Math.Max(frequencies[i], 20.0); // avoid DC blow-up
+                        double w = 1.0 / Math.Sqrt(f);
+                        weights[i] = Math.Min(w, 0.25);            // cap
                     }
-                    
-                    // Solve the linear system using QR decomposition
-                    var qr = A.QR();
-                    var x = qr.Solve(b);
-                    
-                    // Extract the coefficients
+
+                    int rows = frequencies.Length * 2;
+                    int cols = numeratorOrder + denominatorOrder + 1;
+
+                    var A = Matrix<double>.Build.Dense(rows, cols);
+                    var rhs = MathNet.Numerics.LinearAlgebra.Vector<double>.Build.Dense(rows);
+
+                    for (int i = 0; i < frequencies.Length; i++)
+                    {
+                        double omega = 2.0 * Math.PI * frequencies[i] / fs;
+                        double weight = weights[i];
+
+                        double Dr = desiredResponse[i].Real;
+                        double Di = desiredResponse[i].Imaginary;
+
+                        // Real equation row
+                        for (int j = 0; j <= numeratorOrder; j++)
+                            A[i, j] = weight * Math.Cos(-j * omega);
+
+                        for (int j = 0; j <= denominatorOrder - 1; j++)
+                        {
+                            double c = Math.Cos(-(j + 1) * omega);
+                            double s = Math.Sin(-(j + 1) * omega);
+                            A[i, numeratorOrder + 1 + j] = -weight * Dr * c + weight * Di * s;
+                        }
+
+                        rhs[i] = weight * Dr;
+
+                        // Imag equation row
+                        int ii = i + frequencies.Length;
+                        for (int j = 0; j <= numeratorOrder; j++)
+                            A[ii, j] = weight * Math.Sin(-j * omega);
+
+                        for (int j = 0; j <= denominatorOrder - 1; j++)
+                        {
+                            double c = Math.Cos(-(j + 1) * omega);
+                            double s = Math.Sin(-(j + 1) * omega);
+                            A[ii, numeratorOrder + 1 + j] = -weight * Dr * s - weight * Di * c;
+                        }
+
+                        rhs[ii] = weight * Di;
+                    }
+
+                    var x = A.QR().Solve(rhs);
+
                     double[] numerator = new double[numeratorOrder + 1];
                     double[] denominator = new double[denominatorOrder + 1];
-                    
-                    for (int i = 0; i <= numeratorOrder; i++) numerator[i] = x[i];
-                    
-                    denominator[0] = 1.0; // a0 = 1 by convention
-                    for (int i = 1; i <= denominatorOrder; i++) denominator[i] = x[numeratorOrder + i];
-                    
-                    // Ensure filter stability
+
+                    for (int i = 0; i <= numeratorOrder; i++)
+                        numerator[i] = x[i];
+
+                    denominator[0] = 1.0;
+                    int k = numeratorOrder + 1;
+                    for (int i = 1; i <= denominatorOrder; i++)
+                        denominator[i] = x[k++];
+
                     EnsureStability(ref denominator);
-                    
+
                     return (numerator, denominator);
                 }
 
+
                 /// <summary>
-                /// Ensures filter stability by reflecting poles outside the unit circle
+                /// Ensures filter stability by reflecting poles outside the unit circle.
+                /// Uses a self-contained QR eigenvalue solver to avoid MathNet root-finding failures.
                 /// </summary>
                 public static void EnsureStability(ref double[] a)
                 {
-                    try
+                    if (a == null || a.Length < 2) return;
+
+                    // Check for NaN or Infinity in coefficients
+                    for (int i = 0; i < a.Length; i++)
                     {
-                        // Check for NaN or Infinity in coefficients
-                        if (a.Any(coeff => double.IsNaN(coeff) || double.IsInfinity(coeff)))
+                        if (double.IsNaN(a[i]) || double.IsInfinity(a[i]))
                         {
-                            ApplyConservativeStabilization(ref a);
+                            for (int j = 0; j < a.Length; j++)
+                                a[j] = (j == 0) ? 1.0 : 0.0; 
                             return;
                         }
-                        
-                        // Create polynomial from denominator coefficients (ascending order)
-                        double[] reversedCoeffs = a.Reverse().ToArray();
-                        var poly = new MathNet.Numerics.Polynomial(reversedCoeffs);
-                        
-                        // Find the roots with error handling
-                        Complex[] roots;
-                        try
+                    }
+
+                    int n = a.Length - 1; // polynomial order
+                    if (n < 1) return;
+
+                    // Normalize so a[0] = 1
+                    if (Math.Abs(a[0]) < 1e-15)
+                    {
+                        for (int i = 0; i < a.Length; i++)
+                            a[i] = (i == 0) ? 1.0 : 0.0;
+                        return;
+                    }
+                    double inv_a0 = 1.0 / a[0];
+                    for (int i = 0; i < a.Length; i++) a[i] *= inv_a0;
+
+                    // Build companion matrix for z^n + a[1]*z^(n-1) + ... + a[n] = 0
+                    double[,] companion = new double[n, n];
+                    for (int i = 0; i < n - 1; i++)
+                        companion[i, i + 1] = 1.0;
+                    for (int i = 0; i < n; i++)
+                        companion[n - 1, i] = -a[n - i];
+
+                    Complex[] poles = EigenvaluesHessenbergQR(companion, n);
+                    if (poles == null)
+                    {
+                        for (int i = 0; i < a.Length; i++)
+                            a[i] = (i == 0) ? 1.0 : 0.0;
+                        return;
+                    }
+
+                    // Check for invalid poles
+                    for (int i = 0; i < poles.Length; i++)
+                    {
+                        if (double.IsNaN(poles[i].Real) || double.IsNaN(poles[i].Imaginary) ||
+                            double.IsInfinity(poles[i].Real) || double.IsInfinity(poles[i].Imaginary))
                         {
-                            roots = poly.Roots();
-                            
-                            // Check for invalid roots
-                            if (roots.Any(r => double.IsNaN(r.Real) || double.IsNaN(r.Imaginary) ||
-                                             double.IsInfinity(r.Real) || double.IsInfinity(r.Imaginary)))
-                            {
-                                roots = FindRootsCompanionMatrix(reversedCoeffs);
-                                
-                                if (roots.Any(r => double.IsNaN(r.Real) || double.IsNaN(r.Imaginary) ||
-                                               double.IsInfinity(r.Real) || double.IsInfinity(r.Imaginary)))
-                                {
-                                    ApplyConservativeStabilization(ref a);
-                                    return;
-                                }
-                            }
-                        }
-                        catch
-                        {
-                            try
-                            {
-                                roots = FindRootsCompanionMatrix(reversedCoeffs);
-                                
-                                if (roots.Any(r => double.IsNaN(r.Real) || double.IsNaN(r.Imaginary) ||
-                                               double.IsInfinity(r.Real) || double.IsInfinity(r.Imaginary)))
-                                {
-                                    ApplyConservativeStabilization(ref a);
-                                    return;
-                                }
-                            }
-                            catch
-                            {
-                                ApplyConservativeStabilization(ref a);
-                                return;
-                            }
-                        }
-                        
-                        // Reflect any poles outside unit circle
-                        bool modified = false;
-                        for (int i = 0; i < roots.Length; i++)
-                        {
-                            if (roots[i].Magnitude > 1.0)
-                            {
-                                roots[i] = roots[i] / (roots[i].Magnitude * roots[i].Magnitude);
-                                modified = true;
-                            }
-                        }
-                        
-                        // Reconstruct the polynomial if needed
-                        if (modified)
-                        {
-                            try
-                            {
-                                double[] newCoeffs = ReconstructPolynomialFromRoots(roots, a.Length);
-                                
-                                if (newCoeffs.Any(c => double.IsNaN(c) || double.IsInfinity(c)))
-                                {
-                                    ApplyConservativeStabilization(ref a);
-                                    return;
-                                }
-                                
-                                Array.Copy(newCoeffs, a, a.Length);
-                            }
-                            catch
-                            {
-                                // If reconstruction fails, use a conservative approach
-                                ApplyConservativeStabilization(ref a);
-                            }
+                            for (int j = 0; j < a.Length; j++)
+                                a[j] = (j == 0) ? 1.0 : 0.0; return;
                         }
                     }
-                    catch
-                    {
-                        // Catch any unexpected exceptions and use the conservative approach
-                        ApplyConservativeStabilization(ref a);
-                    }
-                }
 
-                /// <summary>
-                /// Applies conservative scaling to ensure filter stability
-                /// </summary>
-                public static void ApplyConservativeStabilization(ref double[] a)
-                {
-                    double[] stableCoeffs = new double[a.Length];
-                    stableCoeffs[0] = 1.0;
-                    
-                    // Scale coefficients with diminishing power to move poles toward origin
-                    for (int i = 1; i < a.Length; i++)
+                    // Reflect any poles outside the unit circle
+                    bool modified = false;
+                    for (int i = 0; i < poles.Length; i++)
                     {
-                        stableCoeffs[i] = a[i] * Math.Pow(0.85, i);
-                    }
-                    
-                    Array.Copy(stableCoeffs, a, a.Length);
-                }
-
-                /// <summary>
-                /// Reconstructs polynomial coefficients from roots
-                /// </summary>
-                public static double[] ReconstructPolynomialFromRoots(Complex[] roots, int coeffLength)
-                {
-                    try
-                    {
-                        // Group roots into real roots and complex conjugate pairs
-                        List<Complex> realRoots = new List<Complex>();
-                        List<Tuple<Complex, Complex>> complexPairs = new List<Tuple<Complex, Complex>>();
-                        
-                        for (int i = 0; i < roots.Length; i++)
+                        if (poles[i].Magnitude > 1.0)
                         {
-                            Complex root = roots[i];
+                            modified = true;
+                            poles[i] = 1.0 / Complex.Conjugate(poles[i]);
+                        }
+                    }
 
-                            // If this is a real root (or very close to real)
-                            if (Math.Abs(root.Imaginary) < 1e-10)
+                    if (!modified) return;
+
+                    // Reconstruct a(z) from stabilized poles, pairing conjugates
+                    bool[] used = new bool[poles.Length];
+                    double[] result = new double[] { 1.0 };
+
+                    for (int i = 0; i < poles.Length; i++)
+                    {
+                        if (used[i]) continue;
+                        used[i] = true;
+
+                        if (Math.Abs(poles[i].Imaginary) > 1e-10)
+                        {
+                            // Find conjugate partner
+                            int conj = -1;
+                            for (int j = i + 1; j < poles.Length; j++)
                             {
-                                realRoots.Add(new Complex(root.Real, 0));
+                                if (!used[j] &&
+                                    Math.Abs(poles[j].Real - poles[i].Real) < 1e-10 &&
+                                    Math.Abs(poles[j].Imaginary + poles[i].Imaginary) < 1e-10)
+                                {
+                                    conj = j;
+                                    break;
+                                }
+                            }
+
+                            if (conj >= 0)
+                            {
+                                used[conj] = true;
+                                double mag2 = poles[i].Real * poles[i].Real + poles[i].Imaginary * poles[i].Imaginary;
+                                result = ConvolvePolynomials(result, new double[] { 1.0, -2.0 * poles[i].Real, mag2 });
                             }
                             else
                             {
-                                // Look for the conjugate pair
-                                bool foundConjugate = false;
-                                for (int j = i + 1; j < roots.Length; j++)
-                                {
-                                    if (Math.Abs(roots[j].Real - root.Real) < 1e-10 &&
-                                        Math.Abs(roots[j].Imaginary + root.Imaginary) < 1e-10)
-                                    {
-                                        complexPairs.Add(Tuple.Create(root, roots[j]));
-                                        foundConjugate = true;
-                                        i = j;
-                                        break;
-                                    }
-                                }
-                                
-                                if (!foundConjugate) realRoots.Add(new Complex(root.Real, 0));
+                                // Orphan complex pole — treat as real
+                                result = ConvolvePolynomials(result, new double[] { 1.0, -poles[i].Real });
                             }
                         }
-                        
-                        // Build polynomial from roots
-                        var resultPoly = new MathNet.Numerics.Polynomial(new double[] { 1.0 });
-                        
-                        // Add real root factors: (x - a)
-                        foreach (Complex root in realRoots)
+                        else
                         {
-                            var linearFactor = new MathNet.Numerics.Polynomial(new double[] { -root.Real, 1.0 });
-                            resultPoly = resultPoly * linearFactor;
+                            result = ConvolvePolynomials(result, new double[] { 1.0, -poles[i].Real });
                         }
-                        
-                        // Add complex conjugate pair factors: (x² - 2ax + a² + b²)
-                        foreach (var pair in complexPairs)
-                        {
-                            Complex root = pair.Item1;
-                            double a = root.Real;
-                            double b = root.Imaginary;
-                            var quadraticFactor = new MathNet.Numerics.Polynomial(new double[] { a * a + b * b, -2 * a, 1.0 });
-                            resultPoly = resultPoly * quadraticFactor;
-                        }
-
-                        // Get the coefficients (ascending order in MathNet)
-                        double[] resultCoeffs = resultPoly.Coefficients.ToArray();
-
-                        // Ensure the resulting polynomial has the right length and convert to descending order
-                        double[] finalCoeffs = new double[coeffLength];
-                        int copyLength = Math.Min(resultCoeffs.Length, coeffLength);
-
-                        // Normalize by the leading coefficient to ensure a[0] = 1
-                        double scale = resultCoeffs[resultCoeffs.Length - 1];
-                        if (Math.Abs(scale) < 1e-10) scale = 1.0; // Avoid division by zero
-
-                        for (int i = 0; i < copyLength; i++)
-                        {
-                            // Convert from ascending to descending power order and normalize
-                            finalCoeffs[i] = resultCoeffs[resultCoeffs.Length - 1 - i] / scale;
-                        }
-
-                        return finalCoeffs;
                     }
-                    catch (Exception ex)
+
+                    // Validate result
+                    for (int i = 0; i < result.Length; i++)
                     {
-                        // If anything goes wrong, fall back to a safe default
-                        double[] defaultCoeffs = new double[coeffLength];
-                        defaultCoeffs[0] = 1.0;
-                        for (int i = 1; i < coeffLength; i++)
+                        if (double.IsNaN(result[i]) || double.IsInfinity(result[i]))
                         {
-                            defaultCoeffs[i] = 0.5 * Math.Pow(0.85, i); // Safe values that will create a stable filter
+                            for (int j = 0; j < a.Length; j++)
+                                a[j] = (j == 0) ? 1.0 : 0.0; return;
                         }
-                        return defaultCoeffs;
                     }
+
+                    // Copy back
+                    for (int i = 0; i < a.Length; i++)
+                        a[i] = (i < result.Length) ? result[i] : 0.0;
+                }
+
+                private static double[] ConvolvePolynomials(double[] p, double[] q)
+                {
+                    double[] r = new double[p.Length + q.Length - 1];
+                    for (int i = 0; i < p.Length; i++)
+                        for (int j = 0; j < q.Length; j++)
+                            r[i + j] += p[i] * q[j];
+                    return r;
                 }
 
                 /// <summary>
-                /// Finds polynomial roots using the companion matrix method
+                /// QR iteration on a real matrix to find eigenvalues (poles).
+                /// Reduces to upper Hessenberg form first, then iterates with Wilkinson shift.
+                /// Self-contained — no MathNet dependency.
                 /// </summary>
-                public static Complex[] FindRootsCompanionMatrix(double[] coeffs)
+                private static Complex[] EigenvaluesHessenbergQR(double[,] M, int n)
                 {
-                    int n = coeffs.Length - 1;
-                    if (n <= 0) return new Complex[0];
-                    
-                    // Normalize coefficients
-                    double leadingCoeff = coeffs[n];
-                    double[] normalizedCoeffs = new double[coeffs.Length];
-                    for (int i = 0; i < coeffs.Length; i++) normalizedCoeffs[i] = coeffs[i] / leadingCoeff;
-                    
-                    // Create companion matrix
-                    var companion = Matrix<double>.Build.Dense(n, n);
-                    
-                    // Fill matrix
-                    for (int i = 0; i < n; i++)
+                    double[,] H = (double[,])M.Clone();
+
+                    // Reduce to upper Hessenberg via Householder
+                    for (int k = 0; k < n - 2; k++)
                     {
-                        if (i < n - 1) companion[i + 1, i] = 1.0;
-                        companion[i, n - 1] = -normalizedCoeffs[n - i - 1];
-                    }
-                    
-                    try
-                    {
-                        // Find eigenvalues
-                        var evd = companion.Evd(Symmetricity.Asymmetric);
-                        return evd.EigenValues.ToArray();
-                    }
-                    catch
-                    {
-                        // Create stable artificial roots if eigenvalue calculation fails
-                        Complex[] artificialRoots = new Complex[n];
+                        double norm = 0;
+                        for (int i = k + 1; i < n; i++) norm += H[i, k] * H[i, k];
+                        norm = Math.Sqrt(norm);
+                        if (norm < 1e-15) continue;
+
+                        double sign = (H[k + 1, k] >= 0) ? 1.0 : -1.0;
+                        double[] v = new double[n];
+                        v[k + 1] = H[k + 1, k] + sign * norm;
+                        for (int i = k + 2; i < n; i++) v[i] = H[i, k];
+
+                        double vv = 0;
+                        for (int i = k + 1; i < n; i++) vv += v[i] * v[i];
+                        if (vv < 1e-30) continue;
+                        double scale = 2.0 / vv;
+
+                        for (int j = k; j < n; j++)
+                        {
+                            double dot = 0;
+                            for (int i = k + 1; i < n; i++) dot += v[i] * H[i, j];
+                            dot *= scale;
+                            for (int i = k + 1; i < n; i++) H[i, j] -= dot * v[i];
+                        }
                         for (int i = 0; i < n; i++)
                         {
-                            double angle = 2 * Math.PI * i / n;
-                            // Create roots with magnitudes between 0.7 and 0.9 to ensure stability
-                            double magnitude = 0.7 + 0.2 * (i % 3) / 2.0;
-                            artificialRoots[i] = new Complex(magnitude * Math.Cos(angle), magnitude * Math.Sin(angle));
+                            double dot = 0;
+                            for (int j = k + 1; j < n; j++) dot += H[i, j] * v[j];
+                            dot *= scale;
+                            for (int j = k + 1; j < n; j++) H[i, j] -= dot * v[j];
                         }
-                        return artificialRoots;
                     }
+
+                    // QR iteration with Wilkinson shift
+                    var eigenvalues = new Complex[n];
+                    int nn = n;
+                    int maxIter = 200 * n;
+                    int iter = 0;
+
+                    while (nn > 0 && iter < maxIter)
+                    {
+                        iter++;
+
+                        if (nn == 1)
+                        {
+                            eigenvalues[nn - 1] = H[nn - 1, nn - 1];
+                            nn--;
+                            continue;
+                        }
+
+                        double tol = 1e-14 * (Math.Abs(H[nn - 2, nn - 2]) + Math.Abs(H[nn - 1, nn - 1]));
+                        if (tol < 1e-30) tol = 1e-30;
+
+                        if (Math.Abs(H[nn - 1, nn - 2]) < tol)
+                        {
+                            eigenvalues[nn - 1] = H[nn - 1, nn - 1];
+                            nn--;
+                            continue;
+                        }
+
+                        // 2×2 block deflation
+                        if (nn == 2 || (nn >= 3 && Math.Abs(H[nn - 2, nn - 3]) <
+                            1e-14 * (Math.Abs(H[nn - 3, nn - 3]) + Math.Abs(H[nn - 2, nn - 2]))))
+                        {
+                            double a11 = H[nn - 2, nn - 2], a12 = H[nn - 2, nn - 1];
+                            double a21 = H[nn - 1, nn - 2], a22 = H[nn - 1, nn - 1];
+                            double tr = a11 + a22;
+                            double det = a11 * a22 - a12 * a21;
+                            double disc = tr * tr - 4 * det;
+                            if (disc >= 0)
+                            {
+                                double sqd = Math.Sqrt(disc);
+                                eigenvalues[nn - 1] = (tr + sqd) / 2;
+                                eigenvalues[nn - 2] = (tr - sqd) / 2;
+                            }
+                            else
+                            {
+                                double sqd = Math.Sqrt(-disc);
+                                eigenvalues[nn - 1] = new Complex(tr / 2, sqd / 2);
+                                eigenvalues[nn - 2] = new Complex(tr / 2, -sqd / 2);
+                            }
+                            nn -= 2;
+                            continue;
+                        }
+
+                        // Wilkinson shift
+                        double p = H[nn - 2, nn - 2], q = H[nn - 2, nn - 1];
+                        double r = H[nn - 1, nn - 2], ss = H[nn - 1, nn - 1];
+                        double shift = ss;
+                        double dd = (p - ss) / 2.0;
+                        double sqr = dd * dd + q * r;
+                        if (sqr >= 0)
+                        {
+                            double sqrtSqr = Math.Sqrt(sqr);
+                            shift = ss - r * q / (dd + (dd >= 0 ? sqrtSqr : -sqrtSqr));
+                        }
+
+                        // Givens rotations
+                        for (int i = 0; i < nn - 1; i++)
+                        {
+                            double x = (i == 0) ? H[0, 0] - shift : H[i, i - 1];
+                            double z = (i == 0) ? H[1, 0] : H[i + 1, i - 1];
+                            double rr = Math.Sqrt(x * x + z * z);
+                            if (rr < 1e-30) continue;
+                            double cs = x / rr, sn = z / rr;
+
+                            for (int j = Math.Max(0, i - 1); j < nn; j++)
+                            {
+                                double t1 = H[i, j], t2 = H[i + 1, j];
+                                H[i, j] = cs * t1 + sn * t2;
+                                H[i + 1, j] = -sn * t1 + cs * t2;
+                            }
+                            for (int j = 0; j <= Math.Min(i + 2, nn - 1); j++)
+                            {
+                                double t1 = H[j, i], t2 = H[j, i + 1];
+                                H[j, i] = cs * t1 + sn * t2;
+                                H[j, i + 1] = -sn * t1 + cs * t2;
+                            }
+                        }
+                    }
+
+                    return (iter >= maxIter) ? null : eigenvalues;
                 }
 
                 public static double CompareFunctions(Complex[] f1, Complex[] f2, int[] sampled)

@@ -20,8 +20,8 @@ using Hare.Geometry;
 using Pachyderm_Acoustic.Environment;
 using Pachyderm_Acoustic.Utilities;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -171,7 +171,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
                 check = (rayCountIn < 0) ? new Convergence_Check[2] { T_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, T_id, h_oct, 0, Vis_Feedback), F_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, F_id, h_oct, 1, Vis_Feedback) }
-                : new Convergence_Check[2] { T_id < 0 ? null : new Detailed_Convergence_Check(this.Source, this.Room, receiverIn, T_id, h_oct, 0, Vis_Feedback), F_id < 0 ? null : new Detailed_Convergence_Check(this.Source, this.Room, receiverIn, F_id, h_oct, 1, Vis_Feedback) };
+                : new Convergence_Check[2] { T_id < 0 ? null : new SpecMin_Convergence_Check(this.Source, this.Room, receiverIn, T_id, h_oct, 0, Vis_Feedback), F_id < 0 ? null : new SpecMin_Convergence_Check(this.Source, this.Room, receiverIn, F_id, h_oct, 1, Vis_Feedback) };
             }
             else check = null;
         }
@@ -787,9 +787,9 @@ namespace Pachyderm_Acoustic
             protected int oct;
             public int check_no;
             public I_Conv_Progress _Vis_Feedback;
-            public delegate void PlotHandler(string title, double[] YArray, int ID, Queue<double[]> IR);// double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr, Queue<double[]> IR1 = null, Queue<double[]> IR2 = null);
+            public delegate void PlotHandler(string title, double[] YArray, int ID, Queue<double[]> IR, int MinRays, List<double[]> Add_Functions);// double[] Conv1, double Conv2, double ConvInf, int ID, int count, double corr, Queue<double[]> IR1 = null, Queue<double[]> IR2 = null);
             public event PlotHandler On_Convergence_Check;
-            public double Samplefrequency;
+            public double Samplefrequency; 
 
             public Convergence_Check(Receiver_Bank R, int id, int _oct, int check_id, I_Conv_Progress Vis_Feedback, double[] IR1 = null, double[] IR2 = null)
             {
@@ -805,25 +805,150 @@ namespace Pachyderm_Acoustic
             public abstract bool Check();
         }
 
+        public class SpecMin_Convergence_Check : Convergence_Check
+        {
+            double[] Snapshot;
+            int step;
+            int binct;
+            int RayCT = 0;
+            int count = 0;
+            Queue<double[]> IR = new Queue<double[]>();
+            double[][][] RAD_sim;
+
+            public SpecMin_Convergence_Check(Source S, Scene Sc, Receiver_Bank R, int id, int _oct, int check_id, I_Conv_Progress Vis_Feedback)
+                : base(R, id, _oct, check_id, Vis_Feedback)
+            {
+                step = (R.SampleRate / 20);
+                binct = RunningSim.Length / step;
+                Snapshot = new double[binct];
+                double[] X = new double[binct];
+                double[] Y = new double[binct];
+                RAD_sim = R.Rec_List[id].Reflection_Analysis_Data;
+
+                double T = RunningSim.Length / Samplefrequency;
+
+                for (int i = 0; i < binct; i++)
+                {
+                    X[i] = Math.Max(0.02, (double)i / 20.0);
+                    Y[i] = (double)(i + 1) / 200.0;
+                }
+
+                Vis_Feedback.Set_Targets(X, Y);
+                Vis_Feedback.Update_Targets();
+            }
+
+            public override bool Check()
+            {
+                RayCT += 80;
+                double[] sn = new double[Snapshot.Length];
+                double[] sn_spec = new double[Snapshot.Length];
+                double[] sn_diff = new double[Snapshot.Length];
+                double[] sn_rogue = new double[Snapshot.Length];
+                for (int i = 0; i < Snapshot.Length; i++)
+                {
+                    for (int j = 0; j < step; j++)
+                    {
+                        sn[i] += RunningSim[i * step + j];
+                        sn_spec[i] += RAD_sim[0][oct][i * step + j];
+                        sn_diff[i] += RAD_sim[1][oct][i * step + j];
+                        sn_rogue[i] += RAD_sim[2][oct][i * step + j];
+                    }
+                }
+
+                if (RunningSim != null)
+                {
+                    double[] IR0 = new double[RunningSim.Length];
+                    for (int i = 0; i < IR0.Length; i++)
+                    {
+                        IR0[i] = RunningSim[i] == 0 ? -95 : 5 * Math.Log10(RunningSim[i] * RunningSim[i]);
+                    }
+                    IR.Enqueue(IR0);
+                    if (IR.Count > 5) IR.Dequeue();
+                }
+
+                double[] SI_spec = Pachyderm_Acoustic.Utilities.AcousticalMath.Envelope(RAD_sim[0][oct], Samplefrequency, .001, 0.01);
+                double[] SI_diff = Pachyderm_Acoustic.Utilities.AcousticalMath.Envelope(RAD_sim[1][oct], Samplefrequency, .001, 0.01);
+                double[] SI_rogue = Pachyderm_Acoustic.Utilities.AcousticalMath.Envelope(RAD_sim[2][oct], Samplefrequency, .001, 0.01);
+                double[] SI_Comb = new double[SI_spec.Length];
+                for (int i = 0; i < SI_spec.Length; i++) SI_Comb[i] = SI_diff[i] + SI_rogue[i];
+
+                SI_spec = AcousticalMath.SPL_Intensity_Signal(SI_spec);
+                SI_Comb = AcousticalMath.SPL_Intensity_Signal(SI_Comb);
+                SI_rogue = AcousticalMath.SPL_Intensity_Signal(SI_rogue);
+                SI_diff = AcousticalMath.SPL_Intensity_Signal(SI_diff);
+
+                for (int i = 0; i < SI_spec.Length; i++)
+                {
+                    SI_spec[i] -= 110;
+                    SI_diff[i] -= 110;
+                    SI_rogue[i] -= 110;
+                    SI_Comb[i] -= 110;
+                }
+
+                double inf60diff = sn_diff[0] * 1E-6;
+
+                int stop = sn_spec.Length - 1;
+                while (sn_spec[stop] < inf60diff && stop != 1) stop--;
+
+                double conv = 0;
+                double[] diff = new double[sn.Length];
+
+                for (int i = 0; i < sn.Length; i++)
+                {
+                    if (sn[i] == 0 || Snapshot[i] == 0) continue;
+
+                    double d = Math.Abs(sn[i] - Snapshot[i]) / Snapshot[i];
+                    diff[i] = d;
+
+                    if (i < stop) conv = Math.Max(conv, d);
+                }
+
+                int spec_cross = 0;
+                //Look for point where purely specular part is no longer important...
+                for (int i = SI_spec.Length - 1; i > 0; i--)
+                {
+                    spec_cross = i;
+                    if (SI_spec[i] > SI_Comb[i]+4) break; //Allow tolerance to ensure that reflection is a statistically significant anomaly...
+                }
+
+                //Assuming 1 meter receiver:
+                double n = 343 * spec_cross / SI_spec.Length;
+                int Nmin = Math.Max(5000, (int)Math.Ceiling(4 * n * n)); // /rk^2 - see Cremer, Vorlander, others...This is the current minimum number of rays.
+                Snapshot = sn;
+                if (conv == 0) return false;
+
+                if (conv > 0.1)
+                {
+                    count = 0;
+                }
+                count++;
+
+                if (count > 10 && RayCT > Nmin) return true;
+
+                //Report schroeder ints for various parts, and new minimum number of rays.
+                _Vis_Feedback.Fill("Impulse response Status", diff, base.check_no, IR, Nmin, new List<double[]> { SI_spec, SI_rogue, SI_diff});
+                return false;
+            }
+
+            public override void Update()
+            {
+                if (_Vis_Feedback != null) _Vis_Feedback.Update();
+            }
+        }
+
         public class Detailed_Convergence_Check : Convergence_Check
         {
             double[] Snapshot;
             int step;
             int binct;
             int count = 0;
-            int SampleStart, Sample50, Sample80, SampleInf;
+            //int SampleStart;
             Queue<double[]> IR = new Queue<double[]>();
-
-            double[] diff;
-            double conv;
 
             public Detailed_Convergence_Check(Source S, Scene Sc, Receiver_Bank R, int id, int _oct, int check_id, I_Conv_Progress Vis_Feedback)
                 : base(R, id, _oct, check_id, Vis_Feedback)
             {
-                SampleStart = (int)Math.Floor((S.Origin - R.Origin(id)).Length() / Sc.Sound_speed(R.Origin(id)) * R.SampleRate);
-                Sample50 = (int)Math.Floor(50.0 * R.SampleRate / 1000) + SampleStart;
-                Sample80 = (int)Math.Floor(80.0 * R.SampleRate / 1000) + SampleStart;
-                SampleInf = R.SampleCT;
+                //SampleStart = (int)Math.Floor((S.Origin - R.Origin(id)).Length() / Sc.Sound_speed(R.Origin(id)) * R.SampleRate);
 
                 step = (R.SampleRate / 20);
                 binct = RunningSim.Length / step;
@@ -909,7 +1034,6 @@ namespace Pachyderm_Acoustic
             double snapshot50, snapshot80, snapshotinf;
             int SampleStart, Sample50, Sample80, SampleInf;
             int count = 0;
-            int RayNo = 0;
             double[] Schr_old;
             double conv1, conv2, convinf, T30New, T30Old;//r;
             Queue<double[]> IR = new Queue<double[]>();
@@ -955,7 +1079,6 @@ namespace Pachyderm_Acoustic
 
                 double[] Schr_new = AcousticalMath.Schroeder_Integral(AcousticalMath.Log10Data(RunningSim, -70));
 
-                //r = Schr_old == null ? 0 : MathNet.Numerics.Statistics.Correlation.Spearman(Schr_new, Schr_old);
                 T30New = Math.Round(AcousticalMath.T_X(Schr_new, 30, 44100),2);
 
                 Schr_old = Schr_new;
@@ -1000,7 +1123,7 @@ namespace Pachyderm_Acoustic
     public interface I_Conv_Progress
     {
         void Update();
-        void Fill(string title, double[] YArray, int ID, Queue<double[]> IR_Clear = null);
+        void Fill(string title, double[] YArray, int ID, Queue<double[]> IR_Clear = null, int Ray_Req = 0, List<double[]> Add_Functions = null);
         void Set_Targets(double[] X, double[] Y);
         void Update_Targets();
         CancellationToken CancellationToken { get; }
