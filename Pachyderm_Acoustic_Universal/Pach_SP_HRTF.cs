@@ -501,8 +501,6 @@ namespace Pachyderm_Acoustic
                         true,
                         50.0
                     );
-
-                    settings.ConvertToDTF = false;
                 }
                 else
                 {
@@ -551,11 +549,6 @@ namespace Pachyderm_Acoustic
                             break;
                     }
                 }
-
-                if (settings.ConvertToDTF)
-                {
-                    SystemResponseCompensation.ConvertToDTF(hrirs, threadId, Fs);
-                }
             }
         }
 
@@ -570,8 +563,6 @@ namespace Pachyderm_Acoustic
                 public bool MinPhase;
                 public bool IsCalibrated;
                 public double[] TFReference; // For measurement EQ
-                public bool ConvertToDTF;
-                public bool InputIsDTF;
                 public int FreeFieldIncidence;
             }
 
@@ -819,13 +810,7 @@ namespace Pachyderm_Acoustic
 
             /// <summary>
             /// Equalises the dataset with respect to the diffuse-field average of HRTFs across all incident directions for both ears.
-            /// Weighting proportional to the solid angle associated to each direction has been added as per Jot, Larcher and Warusfel (1995).
-            /// 
-            /// For greater robustness, we could consider using a regularised Kirkeby inverse filter. See: https://github.com/Sinnerboy89/DFE/tree/master
-            /// 
-            /// References:
-            /// M. Mein, "Perception de l'information binaurale liee aux reflexions precoces dans une salle. Application a la simulation de la qualite acoustique", 
-            /// memoire de DEA, Univ. du Maine, Le Mans, Sept. 1993.
+            /// Implemented as per Jot, Larcher and Warusfel (1995).
             /// 
             /// </summary>
             /// <param name="hrirs"></param>
@@ -856,36 +841,8 @@ namespace Pachyderm_Acoustic
                     ? (int)Math.Round(lowFreqHz.Value / fRes)
                     : 0;
 
-                double[] weights;
-                try
-                {
-                    if (Directions != null && Directions.Length == nDirs)
-                    {
-                        // Convert Directions vector to array
-                        double[,] dirArray = new double[nDirs, 3];
-
-                        for (int i = 0; i < nDirs; i++)
-                        {
-                            dirArray[i, 0] = Directions[i].dx;
-                            dirArray[i, 1] = Directions[i].dy;
-                            dirArray[i, 2] = Directions[i].dz;
-                        }
-
-                        // Compute Voronoi tessellation to get solid angle weights
-                        var voronoiResult = SphericalVoronoiProcessor.ComputeFromArray(dirArray);
-                        weights = voronoiResult.Weights;
-                    }
-                    else
-                    {
-                        Console.WriteLine("Warning: Directions array is null or has incorrect length. Using uniform weights for diffuse-field equalisation.");
-                        weights = Enumerable.Repeat(1.0 / nDirs, nDirs).ToArray();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("Warning: Failed to compute Voronoi tessellation for diffuse-field equalisation. Using uniform weights. Exception: " + ex.Message);
-                    weights = Enumerable.Repeat(1.0 / nDirs, nDirs).ToArray();
-                }
+                // For simplicity, we assume uniform weighting across directions here. For non-uniform sampling, weights can be computed based on the solid angle associated with each direction.
+                double[] weights = Enumerable.Repeat(1.0 / nDirs, nDirs).ToArray();
 
                 // Compute FFTs
                 Complex[][][] H = new Complex[nDirs][][];
@@ -1013,111 +970,6 @@ namespace Pachyderm_Acoustic
                     smoothed[f] = (wSum > 0) ? sum / wSum : mag[f];
                 }
                 return smoothed;
-            }
-            /// <summary>
-            /// Converts a set of HRTFs to Directional Transfer Functions (DTFs). Middlebrooks explicitly removes the measurement system response before this step,
-            /// so the user is made to apply some form of system equalisation before calling this function.
-            ///
-            /// References:
-            /// 
-            /// The Institut fur Schallforschung, Osterreichische Akademie der Wissenschaften give an explanation of the HRTF to DTF conversion process on their website, 
-            /// as supporting material for the ARI HRTF database:
-            /// https://www.oeaw.ac.at/isf/outreach/software/hrtf-database/detailed-description
-            /// 
-            /// Middlebrooks, J.C., 1999. Individual differences in external-ear transfer functions reduced by scaling in frequency. 
-            /// The Journal of the Acoustical Society of America, 106(3), pp.1480–1491. https://doi.org/10.1121/1.427176
-            /// 
-            /// </summary>
-            /// <param name="hrirs"></param>
-            /// <param name="threadId"></param>
-            /// <param name="Fs"></param>
-            /// <param name="smoothingOct"></param>
-            public static void ConvertToDTF(double[][][] hrirs, int threadId, int Fs, double? smoothingOct = null)
-            {
-                if (hrirs == null || hrirs.Length == 0) return;
-
-                int nDirs = hrirs.Length;
-                int nEars = hrirs[0].Length;
-                int fftLen = hrirs[0][0].Length;
-                int nFreqs = fftLen / 2 + 1;
-
-                // Compute FFTs
-                Complex[][][] H = new Complex[nDirs][][];
-                for (int dir = 0; dir < nDirs; dir++)
-                {
-                    H[dir] = new Complex[nEars][];
-                    for (int ear = 0; ear < nEars; ear++)
-                        H[dir][ear] = Pach_SP.FFT_General(hrirs[dir][ear], threadId);
-                }
-
-                // Compute average log amplitude spectrum
-                double[][] avgLogMag = new double[nEars][];
-                for (int ear = 0; ear < nEars; ear++)
-                {
-                    avgLogMag[ear] = new double[nFreqs];
-                    for (int f = 0; f < nFreqs; f++)
-                    {
-                        double sumLogMag = 0.0;
-                        for (int dir = 0; dir < nDirs; dir++)
-                        {
-                            // Convert magnitude to log scale
-                            double mag = H[dir][ear][f].Magnitude;
-                            sumLogMag += Math.Log(mag + 1e-12);
-                        }
-                        avgLogMag[ear][f] = sumLogMag / nDirs;
-                    }
-
-                    if (smoothingOct.HasValue)
-                        avgLogMag[ear] = SmoothSpectrumOctave(avgLogMag[ear], Fs, fftLen, smoothingOct.Value);
-                }
-
-                // Convert average log amplitude spectrum to minimum-phase complex spectrum
-                double[][] H_minPhase = new double[nEars][];
-                for (int ear = 0; ear < nEars; ear++)
-                {
-                    H_minPhase[ear] = Pach_SP_HRTF.ComputeMinimumPhaseSignal(avgLogMag[ear], threadId);
-                }
-
-                // Filter HRTFs with inverse CTF to obtain DTFs
-                for (int dir = 0; dir < nDirs; dir++)
-                {
-                    double rmsLeft = Pach_SP_HRTF.ComputeRMS(hrirs[dir][0]);
-                    double rmsRight = Pach_SP_HRTF.ComputeRMS(hrirs[dir][1]);
-
-                    for (int ear = 0; ear < nEars; ear++)
-                    {
-                        Complex[] H_DTF = new Complex[fftLen];
-                        for (int f = 0; f < nFreqs; f++)
-                        {
-                            double epsilon = 1e-12;
-                            H_DTF[f] = H[dir][ear][f] / (new Complex(H_minPhase[ear][f] + epsilon, 0.0));
-                        }
-
-                        // Mirror for negative frequencies
-                        for (int f = nFreqs; f < fftLen; f++)
-                            H_DTF[f] = Complex.Conjugate(H_DTF[fftLen - f]);
-
-                        // Back to time domain
-                        double[] timeDomain = Pach_SP.IFFT_Real_General(H_DTF, threadId);
-
-                        for (int i = 0; i < timeDomain.Length; i++)
-                            timeDomain[i] /= fftLen;
-
-                        hrirs[dir][ear] = timeDomain;
-                    }
-
-                    double newRmsLeft = Pach_SP_HRTF.ComputeRMS(hrirs[dir][0]);
-                    double newRmsRight = Pach_SP_HRTF.ComputeRMS(hrirs[dir][1]);
-
-                    double scale = Math.Sqrt((rmsLeft * rmsLeft + rmsRight * rmsRight) / (newRmsLeft * newRmsLeft + newRmsRight * newRmsRight));
-
-                    // Apply scaling to both ears to preserve overall energy
-                    for (int i = 0; i < hrirs[dir][0].Length; i++)
-                    {
-                        hrirs[dir][0][i] *= scale;
-                        hrirs[dir][1][i] *= scale;
-                    }
-                }
             }
 
             public static int NextPowerOfTwo(int n)
