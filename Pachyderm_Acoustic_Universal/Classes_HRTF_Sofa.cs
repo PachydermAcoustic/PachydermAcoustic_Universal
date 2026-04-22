@@ -659,8 +659,6 @@ namespace Pachyderm_Acoustic
                 Loaded_Filter[4] = Pachyderm_Acoustic.Utilities.IR_Construction.Aurfilter_Directional(Direct, ISData, RTData, CO_Time_ms, targetFs, Rec_ID, Start_at_Zero, 90, 0, true, flat);
                 Loaded_Filter[5] = Pachyderm_Acoustic.Utilities.IR_Construction.Aurfilter_Directional(Direct, ISData, RTData, CO_Time_ms, targetFs, Rec_ID, Start_at_Zero, -90, 0, true, flat);
 
-                bool _sysCompApplied = false;
-
                 if (targetFs != Fs)
                 {
                     if (targetFs == 44100)
@@ -726,11 +724,7 @@ namespace Pachyderm_Acoustic
                     Loaded_HRIR = validHRIRs.ToArray();
                 }
 
-                if (!sysCompSettings.InputIsDTF)
-                {
-                    Pach_SP_HRTF.ApplySystemCompensation(Loaded_HRIR, Directions, Fs, 0, sysCompSettings, auto);
-                }
-
+                Pach_SP_HRTF.ApplySystemCompensation(Loaded_HRIR, Directions, Fs, 0, sysCompSettings, auto);
                 Pach_SP_HRTF.ShiftHRIRPairs(Loaded_HRIR, 0.8);
             }
 
