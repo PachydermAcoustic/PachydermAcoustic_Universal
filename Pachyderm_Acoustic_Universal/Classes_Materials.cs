@@ -45,7 +45,7 @@ namespace Pachyderm_Acoustic
             public abstract double[] Coefficient_A_Broad();
             public abstract System.Numerics.Complex[] Reflection_Spectrum(int sample_frequency, int length, Hare.Geometry.Vector Normal, Hare.Geometry.Vector Dir, int threadid);
             public abstract (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0);
-            public virtual void ForceIIR(double[] a, double[] b, double fs) { }
+            public virtual void ForceIIR(double[] a, double[] b, double fs, double max_freq = 0) { }
         }
 
         public abstract class Scattering
@@ -216,17 +216,19 @@ namespace Pachyderm_Acoustic
             object lock_IIR = new object();
             bool _iirForced = false;
 
-            public override void ForceIIR(double[] a, double[] b, double fs)
+            public override void ForceIIR(double[] a, double[] b, double fs, double max_freq = 0)
             {
                 lock (lock_IIR)
                 {
                     rec_a = a != null ? (double[])a.Clone() : null;
                     rec_b = b != null ? (double[])b.Clone() : null;
                     rec_fs = fs;
+                    if (max_freq > 0) rec_maxfreq = max_freq;
+                    rec_order = 0;
+                    _iirForced = true;
                 }
             }
-            public override (double[] a, double[] b) Estimate_IIR_Coefficients(
-    double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
+            public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
             {
                 int samplect = 4096;
                 int K = (int)Math.Floor(samplect * max_freq / sample_frequency);
@@ -236,10 +238,16 @@ namespace Pachyderm_Acoustic
                 for (int i = 0; i < K; i++)
                     frequencies[i] = i * sample_frequency / samplect; // correct FFT bin mapping
 
+                if (_iirForced && rec_a != null && rec_b != null && Math.Abs(rec_fs - sample_frequency) < 1e-9 && Math.Abs(rec_maxfreq - max_freq) < 1e-9)
+                {
+                    return (rec_a, rec_b);
+                }
+
                 lock (lock_IIR)
                 {
                     // rec_order is used here as the requested pole budget cache key
-                    int requestedPoleBudget = (filter_order > 0) ? Math.Max(1, Math.Min(filter_order, 6)) : 0;
+                    //int requestedPoleBudget = (filter_order > 0) ? Math.Max(1, Math.Min(filter_order, 6) : 0;
+                    int requestedPoleBudget = filter_order;
 
                     if (rec_a != null && rec_b != null &&
                         Math.Abs(rec_fs - sample_frequency) < 1e-9 &&
@@ -254,12 +262,7 @@ namespace Pachyderm_Acoustic
                     rec_order = requestedPoleBudget;
 
                     // Reflection spectrum
-                    Complex[] Rfull = this.Reflection_Spectrum(
-                        (int)sample_frequency,
-                        samplect,
-                        new Hare.Geometry.Vector(0, 0, 1),
-                        new Hare.Geometry.Vector(0, 0, 1),
-                        0);
+                    Complex[] Rfull = this.Reflection_Spectrum((int)sample_frequency, samplect, new Hare.Geometry.Vector(0, 0, 1), new Hare.Geometry.Vector(0, 0, 1), 0);
 
                     Complex[] R = new Complex[K];
                     Array.Copy(Rfull, R, K);
@@ -2541,8 +2544,6 @@ namespace Pachyderm_Acoustic
                 public int ComplexSections;
                 public int ParameterCount;
             }
-
-
 
             private sealed class BottsSample
             {
