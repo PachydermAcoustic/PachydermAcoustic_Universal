@@ -2071,16 +2071,7 @@ namespace Pachyderm_Acoustic
             {
                 public static double[][] ReadtoDouble(string Path, bool Normalize, out int Sample_Frequency, bool tryunsupported = false)
                 {
-                    int[][] data = null; 
-                    Sample_Frequency = 0;
-                    try
-                    {
-                        data = ReadtoInt(Path, out Sample_Frequency, tryunsupported);
-                    }
-                    catch
-                    {
-                        //throw x;
-                    }
+                    int[][] data = ReadtoInt(Path, out Sample_Frequency, tryunsupported);
 
                     double[][] signal = new double[data.Length][];
 
@@ -2090,6 +2081,7 @@ namespace Pachyderm_Acoustic
                         if (Normalize)
                         {   
                             int max = Math.Max(data[c].Max(), Math.Abs(data[c].Min()));
+                            if (max == 0) continue;
                             for (int i = 0; i < data[c].Length; i++)
                             {
                                 signal[c][i] = (double)data[c][i] / max;
@@ -2126,7 +2118,9 @@ namespace Pachyderm_Acoustic
                     {
                         for (int c = 0; c < data.Length; c++)
                         {
-                            double mod = (double)int.MaxValue / data[c].Max();
+                            int max = Math.Max(data[c].Max(), Math.Abs(data[c].Min()));
+                            if (max == 0) continue;
+                            double mod = (double)int.MaxValue / max;
                             for (int i = 0; i < data[c].Length; i++)
                             {
                                 data[c][i] = (int)((double)data[c][i] * mod);
@@ -2139,103 +2133,136 @@ namespace Pachyderm_Acoustic
 
                 public static int[][] ReadtoInt(string Path, out int Sample_Frequency, bool try_unsupported_data = false)
                 {
-                    //Open a stream:
-                    bool RF64 = false;
-                    System.IO.BinaryReader wav = new System.IO.BinaryReader(new System.IO.FileStream(Path, System.IO.FileMode.Open));
-                    //Read the header
-                    string Riffhdr = new string(wav.ReadChars(4));
-                    long filesize = wav.ReadUInt32();
-                    long dataChunkLength;
-                    if (Riffhdr == "RF64")
+                    Sample_Frequency = 0;
+                    using (System.IO.BinaryReader wav = new System.IO.BinaryReader(new System.IO.FileStream(Path, System.IO.FileMode.Open, System.IO.FileAccess.Read)))
                     {
-                        RF64 = true;
-                        if (new string(wav.ReadChars(4)) != "ds64") throw new Exception("RF64 files must have ds64 chunks. This file lacks one.");
-                        int chunklength = wav.ReadInt32();
-                        filesize = wav.ReadInt64();
-                        dataChunkLength = wav.ReadInt64();
-                        long sampleCount = wav.ReadInt64();
-                        wav.ReadBytes(chunklength - 24);
-                    }
-                    else if (Riffhdr != "RIFF") throw new Exception("Wave files other than Riff or RF64 type not supported.");
+                        string riffHeader = new string(wav.ReadChars(4));
+                        long fileSize = wav.ReadUInt32();
+                        long dataChunkLength = -1;
 
-                    long end = Math.Min(filesize + 8, wav.BaseStream.Length);
-                    string wave = new string(wav.ReadChars(4));
-
-                    //Read WAVE header
-                    if (wave != "WAVE") throw new FormatException("WAVE header not present.");
-
-                    List<int> chunklengths = new List<int>();
-
-                    UInt16 FormatTag;
-                    Int16 no_of_channels;
-                    Int32 BytesPerSecond;
-                    Int16 blockAlign;
-                    Int16 bitsPerSample;
-
-                    //Read in Format information
-                    if (new string(wav.ReadChars(4)) == "fmt ")
-                    {
-                        UInt32 fmt_len = wav.ReadUInt32();
-                        if (fmt_len > Int32.MaxValue || fmt_len < 16) throw new Exception("Invalid format chunk...");
-                        FormatTag = wav.ReadUInt16();
-                        no_of_channels = wav.ReadInt16();
-                        Sample_Frequency = wav.ReadInt32();
-                        BytesPerSecond = wav.ReadInt32();
-                        blockAlign = wav.ReadInt16();
-                        bitsPerSample = wav.ReadInt16();
-                        if (fmt_len > 16)
+                        if (riffHeader == "RF64")
                         {
-                            Int16 extraSize = wav.ReadInt16();
-                            if (extraSize != fmt_len - 18)
-                            {
-                                extraSize = (short)(fmt_len - 18);
-                            }
-                            if (extraSize > 0)
-                            {
-                                byte[] additionaldata = new byte[extraSize];
-                                wav.Read(additionaldata, 0, extraSize);
-                            }
+                            if (new string(wav.ReadChars(4)) != "WAVE") throw new FormatException("WAVE header not present.");
+                            if (new string(wav.ReadChars(4)) != "ds64") throw new Exception("RF64 files must have ds64 chunks. This file lacks one.");
+                            int chunkLength = wav.ReadInt32();
+                            fileSize = wav.ReadInt64();
+                            dataChunkLength = wav.ReadInt64();
+                            wav.ReadInt64();
+                            if (chunkLength > 24) wav.ReadBytes(chunkLength - 24);
                         }
-                    }
-                    else
-                    {
-                        throw new Exception("Invalid wave format information...");
-                    }
-
-                    int[][] data = new int[no_of_channels][];
-                    string str = new string(wav.ReadChars(4));
-
-                    //Sometimes a LIST section is included...
-                    if (str == "LIST")
-                    {
-                        UInt32 lst_len = wav.ReadUInt32();
-                        byte[] additionaldata = new byte[lst_len];
-                        wav.Read(additionaldata, 0, (int)lst_len);
-                        str = new string(wav.ReadChars(4));
-                    }
-
-                    //The data chunk should be headed with "data" but occuasionally not. Read in as normal if so. Otherwise, ask the user.
-                    if (str != "data" && !try_unsupported_data)
-                    {
-                        throw new Exception("This wavefile has an unsupported structure, which may lead to misread data. Try anyway?");
-                    }
-                    long bytelength = wav.BaseStream.Length - wav.BaseStream.Position;
-                    UInt32 ch_len = wav.ReadUInt32();
-                    for (int c = 0; c < no_of_channels; c++) data[c] = new int[(bytelength / (bitsPerSample / 8)) / no_of_channels];
-                    int i = 0;
-                    while (wav.BaseStream.Position < end - 8)
-                    {
-                        i++;
-                        for (int c = 0; c < no_of_channels; c++)
+                        else if (riffHeader == "RIFF")
                         {
-                            byte[] temp = new byte[4];
-                            int st = 4 - bitsPerSample / 8;
-                            for (int j = st; j < 4; j++) temp[j] = (byte)wav.BaseStream.ReadByte();
-                            data[c][i] = BitConverter.ToInt32(temp, 0);
+                            if (new string(wav.ReadChars(4)) != "WAVE") throw new FormatException("WAVE header not present.");
                         }
+                        else
+                        {
+                            throw new Exception("Wave files other than Riff or RF64 type not supported.");
+                        }
+
+                        long end = Math.Min(fileSize + 8, wav.BaseStream.Length);
+                        UInt16 formatTag = 0;
+                        Int16 noOfChannels = 0;
+                        Int16 blockAlign = 0;
+                        Int16 bitsPerSample = 0;
+                        long dataStart = -1;
+
+                        while (wav.BaseStream.Position + 8 <= end)
+                        {
+                            string chunkId = new string(wav.ReadChars(4));
+                            UInt32 chunkLength = wav.ReadUInt32();
+                            long nextChunk = wav.BaseStream.Position + chunkLength + (chunkLength % 2);
+
+                            if (chunkId == "fmt ")
+                            {
+                                if (chunkLength < 16) throw new Exception("Invalid format chunk...");
+                                formatTag = wav.ReadUInt16();
+                                noOfChannels = wav.ReadInt16();
+                                Sample_Frequency = wav.ReadInt32();
+                                wav.ReadInt32();
+                                blockAlign = wav.ReadInt16();
+                                bitsPerSample = wav.ReadInt16();
+                            }
+                            else if (chunkId == "data")
+                            {
+                                dataStart = wav.BaseStream.Position;
+                                dataChunkLength = dataChunkLength >= 0 ? dataChunkLength : chunkLength;
+                                break;
+                            }
+
+                            wav.BaseStream.Position = Math.Min(nextChunk, wav.BaseStream.Length);
+                        }
+
+                        if (formatTag == 0 || noOfChannels <= 0 || bitsPerSample <= 0)
+                            throw new Exception("Invalid wave format information...");
+                        if (dataStart < 0)
+                            throw new Exception("Wave data chunk not found.");
+                        if (formatTag != 1 && formatTag != 3)
+                            throw new Exception("Only PCM and IEEE float wave data are supported.");
+
+                        int bytesPerSample = bitsPerSample / 8;
+                        if (bytesPerSample <= 0 || bitsPerSample % 8 != 0)
+                            throw new Exception("Unsupported wave bit depth.");
+
+                        int frameSize = blockAlign > 0 ? blockAlign : bytesPerSample * noOfChannels;
+                        long readableBytes = Math.Min(dataChunkLength, wav.BaseStream.Length - dataStart);
+                        int sampleCount = (int)(readableBytes / frameSize);
+                        int[][] data = new int[noOfChannels][];
+                        for (int c = 0; c < noOfChannels; c++) data[c] = new int[sampleCount];
+
+                        for (int i = 0; i < sampleCount; i++)
+                        {
+                            for (int c = 0; c < noOfChannels; c++)
+                            {
+                                data[c][i] = formatTag == 3
+                                    ? ReadIeeeFloatSampleAsInt(wav, bitsPerSample)
+                                    : ReadPcmSampleAsInt(wav, bitsPerSample);
+                            }
+
+                            int padBytes = frameSize - bytesPerSample * noOfChannels;
+                            if (padBytes > 0) wav.ReadBytes(padBytes);
+                        }
+
+                        return data;
                     }
-                    wav.Close();
-                    return data;
+                }
+
+                private static int ReadPcmSampleAsInt(System.IO.BinaryReader wav, int bitsPerSample)
+                {
+                    switch (bitsPerSample)
+                    {
+                        case 8:
+                            return (wav.ReadByte() - 128) << 24;
+                        case 16:
+                            return wav.ReadInt16() << 16;
+                        case 24:
+                            int sample24 = wav.ReadByte() | (wav.ReadByte() << 8) | (wav.ReadByte() << 16);
+                            if ((sample24 & 0x800000) != 0) sample24 |= unchecked((int)0xFF000000);
+                            return sample24 << 8;
+                        case 32:
+                            return wav.ReadInt32();
+                        default:
+                            throw new Exception("Unsupported PCM wave bit depth.");
+                    }
+                }
+
+                private static int ReadIeeeFloatSampleAsInt(System.IO.BinaryReader wav, int bitsPerSample)
+                {
+                    double sample;
+                    switch (bitsPerSample)
+                    {
+                        case 32:
+                            sample = wav.ReadSingle();
+                            break;
+                        case 64:
+                            sample = wav.ReadDouble();
+                            break;
+                        default:
+                            throw new Exception("Unsupported IEEE float wave bit depth.");
+                    }
+
+                    if (sample > 1.0) sample = 1.0;
+                    if (sample < -1.0) sample = -1.0;
+                    return (int)(sample * int.MaxValue);
                 }
 
                 public static bool Write(float[][] Unit_signal, int sample_frequency, string Path, int bitrate = 32)
@@ -2280,14 +2307,13 @@ namespace Pachyderm_Acoustic
                             {
                                 for (int c = 0; c < Unit_signal.Length; c++)
                                 {
-                                    var value = BitConverter.GetBytes((Int32)(Unit_signal[c][i] * (Math.Pow(2,22)-1)));
-                                    byte[] sig_bts = new byte[4];
-                                    sig_bts[0] = value[0];
-                                    sig_bts[1] = value[1];
-                                    sig_bts[2] = value[2];
-                                    Int32 v = Math.Abs(BitConverter.ToInt32(new byte[4] { value[0], value[1], value[2], 0 }, 0)) / 2;
-                                    clipped = clipped || v > 8388607 * 1.5;
-                                    for (int s = 0; s < 3; s++) wav.Write(sig_bts[s]);
+                                    float sample = Unit_signal[c][i];
+                                    clipped = clipped || Math.Abs(sample) > 1.0f;
+                                    sample = Math.Max(-1.0f, Math.Min(1.0f, sample));
+                                    Int32 v = (Int32)(sample * 8388607.0f);
+                                    wav.Write((byte)(v & 0xFF));
+                                    wav.Write((byte)((v >> 8) & 0xFF));
+                                    wav.Write((byte)((v >> 16) & 0xFF));
                                 }
                             }
                             break;
@@ -2296,8 +2322,10 @@ namespace Pachyderm_Acoustic
                             {
                                 for (int c = 0; c < Unit_signal.Length; c++)
                                 {
-                                    Int16 v = (Int16)(Unit_signal[c][i] * Math.Pow(2, 14));
-                                    clipped = clipped || Math.Abs(v) > Int16.MaxValue * 0.9;
+                                    float sample = Unit_signal[c][i];
+                                    clipped = clipped || Math.Abs(sample) > 1.0f;
+                                    sample = Math.Max(-1.0f, Math.Min(1.0f, sample));
+                                    Int16 v = (Int16)(sample * Int16.MaxValue);
                                     wav.Write(v);
                                 }
                             }
