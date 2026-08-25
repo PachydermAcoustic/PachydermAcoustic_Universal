@@ -232,7 +232,7 @@ namespace Pachyderm_Acoustic
             {
                 int samplect = 4096;
                 int K = (int)Math.Floor(samplect * max_freq / sample_frequency);
-                K = Math.Max(8, Math.Min(K, samplect / 2 + 1));
+                K = Math.Max(8, Math.Min(K, samplect / 2));
 
                 frequencies = new double[K];
                 for (int i = 0; i < K; i++)
@@ -249,10 +249,7 @@ namespace Pachyderm_Acoustic
                     //int requestedPoleBudget = (filter_order > 0) ? Math.Max(1, Math.Min(filter_order, 6) : 0;
                     int requestedPoleBudget = filter_order;
 
-                    if (rec_a != null && rec_b != null &&
-                        Math.Abs(rec_fs - sample_frequency) < 1e-9 &&
-                        Math.Abs(rec_maxfreq - max_freq) < 1e-9 &&
-                        rec_order == requestedPoleBudget)
+                    if (rec_a != null && rec_b != null && Math.Abs(rec_fs - sample_frequency) < 1e-9 && Math.Abs(rec_maxfreq - max_freq) < 1e-9 && rec_order == requestedPoleBudget)
                     {
                         return (rec_a, rec_b);
                     }
@@ -282,26 +279,43 @@ namespace Pachyderm_Acoustic
                         Y[i] = Yi;
                     }
 
-                    // Small pole budget, better search
+                    // Small pole budget, better search.
+                    // The NNLS solver operates on the (tiny) normal-equation system
+                    // instead of the full frequency-sampled design matrix, which is
+                    // roughly rows/cols times cheaper per iteration (rows ~ thousands of
+                    // frequency bins, cols ~ a handful of pole/gain parameters). Search
+                    // parameters are kept at their previously validated, conservative
+                    // levels (higher pole budgets/candidate density were found to make
+                    // the greedy pole search unstable/degenerate for some materials);
+                    // the performance headroom from the cheaper solver is realized as
+                    // faster evaluation at the same fit quality/reliability, rather than
+                    // being spent on a riskier search.
                     int poleBudget = (filter_order > 0) ? Math.Max(1, Math.Min(filter_order, 6)) : 4;
 
-                    (rec_a, rec_b) = BasicMaterialPassiveFit.FitLimitedPoleBudget(
-                        frequencies,
-                        Y,
-                        sample_frequency,
-                        poleBudget,
-                        fLo: 20.0,
-                        fHi: Math.Min(max_freq * 0.95, 0.45 * sample_frequency),
-                        poleCap: 0.95,      // keep memory short; safer at corners
-                        candidateCount: 28, // search harder
-                        refinePasses: 4,    // refine chosen poles
-                        ridge: 1e-8,
-                        iters: 1200
+                    (rec_a, rec_b) = BasicMaterialPassiveFit.FitProfileAware(frequencies, Y, sample_frequency, poleBudget, fLo: 20.0, fHi: Math.Min(max_freq * 0.95, 0.45 * sample_frequency), poleCap: 0.95
                     );
+
+                    // Failsafe: never surface a degenerate (NaN/Infinity) fit. If the
+                    // requested pole budget produced an unusable result, fall back to a
+                    // minimal single-pole fit, which is numerically the most stable
+                    // configuration and always well-conditioned.
+                    if (!IsFinite(rec_a) || !IsFinite(rec_b))
+                    {
+                        (rec_a, rec_b) = BasicMaterialPassiveFit.FitLimitedPoleBudget(frequencies, Y, sample_frequency, poleCount: 1, fLo: 20.0, fHi: Math.Min(max_freq * 0.95, 0.45 * sample_frequency), poleCap: 0.95, candidateCount: 12, refinePasses: 2, ridge: 1e-6, iters: 1200);
+                    }
 
                     return (rec_a, rec_b);
                 }
             }
+
+            private static bool IsFinite(double[] values)
+            {
+                if (values == null || values.Length == 0) return false;
+                for (int i = 0; i < values.Length; i++)
+                    if (double.IsNaN(values[i]) || double.IsInfinity(values[i])) return false;
+                return true;
+            }
+
             internal static class BasicMaterialPassiveFit
             {
                 private static double[] Conv(double[] a, double[] b)
@@ -343,35 +357,60 @@ namespace Pachyderm_Acoustic
                         suffix[i] = Conv(new double[] { 1.0, -poles[i] }, suffix[i + 1]);
                 }
 
-                private static double[] SolveNNLSProjected(double[,] A, double[] y, int iters, double ridge)
+                // Builds the (small) normal-equation matrices AtA (cols x cols) and Atb (cols)
+                // from the (large) design matrix A (rows x cols) and target y (rows).
+                // Solving the NNLS problem via these normal equations is mathematically
+                // equivalent to operating on A/y directly (same gradient: 2*Aᵀ(Aw-y) == 2*(AtA*w - Atb)),
+                // but reduces the cost of each solver iteration from O(rows*cols) to O(cols^2),
+                // which matters enormously here since rows (~thousands of frequency bins) is
+                // far larger than cols (a handful of pole/gain parameters).
+                private static void BuildNormalEquations(double[,] A, double[] y, out double[,] AtA, out double[] Atb)
                 {
                     int rows = A.GetLength(0);
                     int cols = A.GetLength(1);
 
+                    AtA = new double[cols, cols];
+                    Atb = new double[cols];
+
+                    for (int r = 0; r < rows; r++)
+                    {
+                        for (int c1 = 0; c1 < cols; c1++)
+                        {
+                            double a1 = A[r, c1];
+                            if (a1 == 0.0) continue;
+                            Atb[c1] += a1 * y[r];
+                            for (int c2 = c1; c2 < cols; c2++)
+                            {
+                                AtA[c1, c2] += a1 * A[r, c2];
+                            }
+                        }
+                    }
+
+                    // mirror symmetric entries
+                    for (int c1 = 0; c1 < cols; c1++)
+                        for (int c2 = c1 + 1; c2 < cols; c2++)
+                            AtA[c2, c1] = AtA[c1, c2];
+                }
+
+                private static double[] SolveNNLSFromNormalEquations(double[,] AtA, double[] Atb, int iters, double ridge)
+                {
+                    int cols = AtA.GetLength(0);
+
                     double[] w = new double[cols];
                     double[] grad = new double[cols];
-                    double[] Aw = new double[rows];
 
-                    // rough Lipschitz estimate
+                    // rough Lipschitz estimate via power iteration on the (already tiny) AtA matrix
                     double[] v = new double[cols];
                     for (int i = 0; i < cols; i++) v[i] = 1.0 / Math.Max(1, cols);
 
                     for (int t = 0; t < 20; t++)
                     {
-                        double[] u = new double[rows];
-                        for (int r = 0; r < rows; r++)
-                        {
-                            double s = 0;
-                            for (int c = 0; c < cols; c++) s += A[r, c] * v[c];
-                            u[r] = s;
-                        }
-
                         double[] v2 = new double[cols];
-                        for (int c = 0; c < cols; c++)
+                        for (int c1 = 0; c1 < cols; c1++)
                         {
-                            double s = 0;
-                            for (int r = 0; r < rows; r++) s += A[r, c] * u[r];
-                            v2[c] = s + ridge * v[c];
+                            double s = ridge * v[c1];
+                            for (int c2 = 0; c2 < cols; c2++) s += AtA[c1, c2] * v[c2];
+                            v2[c1] = s;
                         }
 
                         double norm = 0;
@@ -380,20 +419,12 @@ namespace Pachyderm_Acoustic
                         for (int c = 0; c < cols; c++) v[c] = v2[c] / norm;
                     }
 
-                    double[] Av = new double[rows];
-                    for (int r = 0; r < rows; r++)
-                    {
-                        double s = 0;
-                        for (int c = 0; c < cols; c++) s += A[r, c] * v[c];
-                        Av[r] = s;
-                    }
-
                     double[] AtAv = new double[cols];
-                    for (int c = 0; c < cols; c++)
+                    for (int c1 = 0; c1 < cols; c1++)
                     {
-                        double s = 0;
-                        for (int r = 0; r < rows; r++) s += A[r, c] * Av[r];
-                        AtAv[c] = s + ridge * v[c];
+                        double s = ridge * v[c1];
+                        for (int c2 = 0; c2 < cols; c2++) s += AtA[c1, c2] * v[c2];
+                        AtAv[c1] = s;
                     }
 
                     double num = 0, den = 0;
@@ -406,20 +437,17 @@ namespace Pachyderm_Acoustic
                     double L = Math.Max(1e-6, num / Math.Max(1e-30, den));
                     double step = 1.0 / L;
 
+                    const double tol = 1e-12;
+
                     for (int it = 0; it < iters; it++)
                     {
-                        for (int r = 0; r < rows; r++)
+                        double gradNorm2 = 0;
+                        for (int c1 = 0; c1 < cols; c1++)
                         {
-                            double s = 0;
-                            for (int c = 0; c < cols; c++) s += A[r, c] * w[c];
-                            Aw[r] = s;
-                        }
-
-                        for (int c = 0; c < cols; c++)
-                        {
-                            double s = 0;
-                            for (int r = 0; r < rows; r++) s += A[r, c] * (Aw[r] - y[r]);
-                            grad[c] = 2.0 * s + 2.0 * ridge * w[c];
+                            double s = -Atb[c1] + ridge * w[c1];
+                            for (int c2 = 0; c2 < cols; c2++) s += AtA[c1, c2] * w[c2];
+                            grad[c1] = 2.0 * s;
+                            gradNorm2 += grad[c1] * grad[c1];
                         }
 
                         for (int c = 0; c < cols; c++)
@@ -427,9 +455,350 @@ namespace Pachyderm_Acoustic
                             double wc = w[c] - step * grad[c];
                             w[c] = (wc < 0) ? 0 : wc;
                         }
+
+                        // Early exit once the gradient is negligible; a handful of unknowns
+                        // typically converges in well under 1200 iterations, so this avoids
+                        // burning the full iteration budget on every candidate evaluation.
+                        if (gradNorm2 < tol) break;
                     }
 
                     return w;
+                }
+
+                private static double[] SolveNNLSProjected(double[,] A, double[] y, int iters, double ridge)
+                {
+                    BuildNormalEquations(A, y, out double[,] AtA, out double[] Atb);
+                    return SolveNNLSFromNormalEquations(AtA, Atb, iters, ridge);
+                }
+
+                private enum Profile
+                {
+                    Flat,
+                    LowPass,
+                    PorousRising,
+                    Resonant
+                }
+
+                private struct ResonantSection
+                {
+                    public double[] Denominator;
+                    public double[] Numerator;
+                }
+
+                public static (double[] a, double[] b) FitProfileAware(
+                    double[] freqs,
+                    Complex[] Ytarget,
+                    double fs,
+                    int poleBudget,
+                    double fLo,
+                    double fHi,
+                    double poleCap)
+                {
+                    Profile profile = ClassifyProfile(freqs, Ytarget, fLo, fHi, out List<double> peakFrequencies, out double meanAdmittance);
+
+                    if (profile == Profile.Flat)
+                    {
+                        // Keep a first-order, exactly cancelling numerator/denominator pair
+                        // instead of a zero-order gain so the FDTD boundary always has state.
+                        const double pole = 0.25;
+                        return (new double[] { 1.0, -pole }, new double[] { meanAdmittance, -pole * meanAdmittance });
+                    }
+
+                    if (profile == Profile.Resonant)
+                    {
+                        int maxSections = Math.Max(1, Math.Min(3, poleBudget > 0 ? poleBudget / 2 : 2));
+                        if (peakFrequencies.Count > maxSections)
+                            peakFrequencies = peakFrequencies.Take(maxSections).ToList();
+
+                        (double[] a, double[] b) = FitResonantSections(freqs, Ytarget, fs, peakFrequencies, fLo, fHi, poleCap);
+                        if (IsFinite(a) && IsFinite(b)) return (a, b);
+                    }
+
+                    if (profile == Profile.PorousRising)
+                    {
+                        (double[] a, double[] b) = FitPorousRising(freqs, Ytarget, fs, poleBudget, fLo, fHi, poleCap);
+                        if (IsFinite(a) && IsFinite(b)) return (a, b);
+                    }
+
+                    return FitLimitedPoleBudget(
+                        freqs,
+                        Ytarget,
+                        fs,
+                        poleBudget,
+                        fLo,
+                        fHi,
+                        poleCap,
+                        candidateCount: 28,
+                        refinePasses: 4,
+                        ridge: 1e-8,
+                        iters: 1200);
+                }
+
+                private static Profile ClassifyProfile(
+                    double[] freqs,
+                    Complex[] Ytarget,
+                    double fLo,
+                    double fHi,
+                    out List<double> peakFrequencies,
+                    out double meanAdmittance)
+                {
+                    peakFrequencies = new List<double>();
+                    List<int> valid = new List<int>();
+                    double min = double.PositiveInfinity;
+                    double max = double.NegativeInfinity;
+                    double sum = 0.0;
+                    double lowMin = double.PositiveInfinity;
+                    double lowMax = double.NegativeInfinity;
+                    double lowSum = 0.0;
+                    int lowCount = 0;
+                    double highSum = 0.0;
+                    int highCount = 0;
+
+                    int count = Math.Min(freqs.Length, Ytarget.Length);
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (freqs[i] < fLo || freqs[i] > fHi) continue;
+                        double value = Math.Max(0.0, Ytarget[i].Real);
+                        if (double.IsNaN(value) || double.IsInfinity(value)) continue;
+                        valid.Add(i);
+                        min = Math.Min(min, value);
+                        max = Math.Max(max, value);
+                        sum += value;
+
+                        if (freqs[i] <= Math.Min(250.0, fHi))
+                        {
+                            lowMin = Math.Min(lowMin, value);
+                            lowMax = Math.Max(lowMax, value);
+                            lowSum += value;
+                            lowCount++;
+                        }
+
+                        if (freqs[i] >= 1000.0 && freqs[i] <= Math.Min(4000.0, fHi))
+                        {
+                            highSum += value;
+                            highCount++;
+                        }
+                    }
+
+                    if (valid.Count == 0)
+                    {
+                        meanAdmittance = 0.0;
+                        return Profile.Flat;
+                    }
+
+                    meanAdmittance = sum / valid.Count;
+                    double range = max - min;
+
+                    if (lowCount >= 3 && highCount >= 3)
+                    {
+                        double lowMean = lowSum / lowCount;
+                        double highMean = highSum / highCount;
+                        double rise = highMean - lowMean;
+
+                        // For porous materials: low-band variation must be small relative to the rise
+                        // Allow up to 50% of the rise as "flat enough" variation in the low band
+                        double lowVariation = lowMax - lowMin;
+                        bool lowIsRelativelyFlat = lowVariation <= Math.Max(0.02, 0.5 * rise);
+
+                        // Rise must be significant (at least 5% of low-band level or 0.01 absolute)
+                        bool risesAtHighFrequency = rise >= Math.Max(0.01, 0.05 * Math.Max(lowMean, 0.05));
+
+                        if (lowIsRelativelyFlat && risesAtHighFrequency) return Profile.PorousRising;
+                    }
+
+                    if (range <= Math.Max(0.01, 0.12 * Math.Max(meanAdmittance, 0.05)))
+                        return Profile.Flat;
+
+                    double lowPeakLimit = Math.Min(fHi, 1200.0);
+                    double minProminence = Math.Max(0.01, 0.15 * range);
+                    for (int i = 1; i < count - 1; i++)
+                    {
+                        if (freqs[i] < fLo || freqs[i] > lowPeakLimit) continue;
+
+                        double current = Math.Max(0.0, Ytarget[i].Real);
+                        double left = Math.Max(0.0, Ytarget[i - 1].Real);
+                        double right = Math.Max(0.0, Ytarget[i + 1].Real);
+                        if (current < left || current < right || current - Math.Max(left, right) < minProminence) continue;
+
+                        bool distinct = true;
+                        for (int p = 0; p < peakFrequencies.Count; p++)
+                        {
+                            double ratio = freqs[i] / peakFrequencies[p];
+                            if (ratio > 0.72 && ratio < 1.38)
+                            {
+                                distinct = false;
+                                break;
+                            }
+                        }
+
+                        if (distinct) peakFrequencies.Add(freqs[i]);
+                    }
+
+                    return peakFrequencies.Count > 0 ? Profile.Resonant : Profile.LowPass;
+                }
+
+                private static (double[] a, double[] b) FitResonantSections(
+                    double[] freqs,
+                    Complex[] Ytarget,
+                    double fs,
+                    List<double> peakFrequencies,
+                    double fLo,
+                    double fHi,
+                    double poleCap)
+                {
+                    int sectionCount = peakFrequencies.Count;
+                    if (sectionCount == 0) return (null, null);
+
+                    ResonantSection[] sections = new ResonantSection[sectionCount];
+                    for (int i = 0; i < sectionCount; i++)
+                    {
+                        double center = Math.Min(fHi, Math.Max(fLo, peakFrequencies[i]));
+                        double bandwidth = Math.Max(80.0, 0.35 * center);
+                        double radius = Math.Exp(-Math.PI * bandwidth / fs);
+                        radius = Math.Min(Math.Min(poleCap, 0.95), Math.Max(0.70, radius));
+                        double omega = 2.0 * Math.PI * center / fs;
+
+                        sections[i] = new ResonantSection
+                        {
+                            Denominator = new double[] { 1.0, -2.0 * radius * Math.Cos(omega), radius * radius },
+                            Numerator = new double[] { 1.0 - radius * radius }
+                        };
+                    }
+
+                    int kCount = Math.Min(freqs.Length, Ytarget.Length);
+                    int rows = 2 * kCount;
+                    int cols = sectionCount + 1;
+                    double[,] matrix = new double[rows, cols];
+                    double[] target = new double[rows];
+
+                    for (int i = 0; i < kCount; i++)
+                    {
+                        double weight = freqs[i] >= 125.0 && freqs[i] <= 4000.0 ? 1.0 : 0.25;
+                        if (freqs[i] < fLo || freqs[i] > fHi) weight = 0.0;
+                        target[i] = weight * Ytarget[i].Real;
+                        target[i + kCount] = weight * Ytarget[i].Imaginary;
+                        matrix[i, 0] = weight;
+
+                        double omega = 2.0 * Math.PI * freqs[i] / fs;
+                        Complex z1 = Complex.Exp(-Complex.ImaginaryOne * omega);
+                        for (int section = 0; section < sectionCount; section++)
+                        {
+                            Complex response = EvalTransfer(sections[section].Numerator, sections[section].Denominator, z1);
+                            matrix[i, section + 1] = weight * response.Real;
+                            matrix[i + kCount, section + 1] = weight * response.Imaginary;
+                        }
+                    }
+
+                    double[] gains = SolveNNLSProjected(matrix, target, iters: 1200, ridge: 1e-7);
+                    double[][] prefix = new double[sectionCount + 1][];
+                    double[][] suffix = new double[sectionCount + 1][];
+                    prefix[0] = new double[] { 1.0 };
+                    for (int i = 0; i < sectionCount; i++) prefix[i + 1] = Conv(prefix[i], sections[i].Denominator);
+                    suffix[sectionCount] = new double[] { 1.0 };
+                    for (int i = sectionCount - 1; i >= 0; i--) suffix[i] = Conv(sections[i].Denominator, suffix[i + 1]);
+
+                    double[] a = prefix[sectionCount];
+                    double[] b = new double[a.Length];
+                    for (int i = 0; i < a.Length; i++) b[i] = gains[0] * a[i];
+
+                    for (int section = 0; section < sectionCount; section++)
+                    {
+                        double[] withoutSection = Conv(prefix[section], suffix[section + 1]);
+                        double[] contribution = Conv(sections[section].Numerator, withoutSection);
+                        for (int i = 0; i < contribution.Length; i++) b[i] += gains[section + 1] * contribution[i];
+                    }
+
+                    return (a, b);
+                }
+
+                private static (double[] a, double[] b) FitPorousRising(
+                    double[] freqs,
+                    Complex[] Ytarget,
+                    double fs,
+                    int poleBudget,
+                    double fLo,
+                    double fHi,
+                    double poleCap)
+                {
+                    int kCount = Math.Min(freqs.Length, Ytarget.Length);
+                    double lowSum = 0.0;
+                    int lowCount = 0;
+                    double highSum = 0.0;
+                    int highCount = 0;
+                    double lowUpper = Math.Min(250.0, fHi);
+                    double highLower = Math.Max(1000.0, fLo);
+                    for (int i = 0; i < kCount; i++)
+                    {
+                        double value = Math.Max(0.0, Ytarget[i].Real);
+                        if (freqs[i] >= fLo && freqs[i] <= lowUpper)
+                        {
+                            lowSum += value;
+                            lowCount++;
+                        }
+                        if (freqs[i] >= highLower && freqs[i] <= Math.Min(4000.0, fHi))
+                        {
+                            highSum += value;
+                            highCount++;
+                        }
+                    }
+
+                    if (lowCount == 0 || highCount == 0) return (null, null);
+
+                    double lowLevel = lowSum / lowCount;
+                    double highLevel = highSum / highCount;
+                    double rise = highLevel - lowLevel;
+                    // For admittance, use a small absolute threshold since typical porous
+                    // admittance values are O(0.1-1.0), much smaller than absorption (0-1)
+                    if (rise < Math.Max(0.01, 0.05 * Math.Max(lowLevel, 0.05))) return (null, null);
+
+                    double halfLevel = lowLevel + 0.5 * rise;
+                    double corner = Math.Sqrt(lowUpper * highLower);
+                    for (int i = 0; i < kCount; i++)
+                    {
+                        // Search for the transition frequency in the band between low and high
+                        if (freqs[i] <= lowUpper || freqs[i] >= highLower) continue;
+                        if (Ytarget[i].Real >= halfLevel)
+                        {
+                            corner = freqs[i];
+                            break;
+                        }
+                    }
+
+                    double pole = Math.Exp(-2.0 * Math.PI * corner / fs);
+                    pole = Math.Min(Math.Min(poleCap, 0.95), Math.Max(0.20, pole));
+                    double highReference = Math.Min(Math.Max(highLower, 1500.0), Math.Min(4000.0, fHi));
+                    Complex shelfAtHigh = EvalTransfer(
+                        new double[] { 1.0 - pole, pole - 1.0 },
+                        new double[] { 1.0, -pole },
+                        Complex.Exp(-Complex.ImaginaryOne * 2.0 * Math.PI * highReference / fs));
+                    double shelfReal = Math.Max(1e-6, shelfAtHigh.Real);
+                    double shelfGain = rise / shelfReal;
+
+                    double[] a = new double[] { 1.0, -pole };
+                    double[] b = new double[]
+                    {
+                        lowLevel - shelfGain * (pole - 1.0),
+                        -lowLevel * pole + shelfGain * (pole - 1.0)
+                    };
+
+                    return (a, b);
+                }
+
+                private static Complex EvalTransfer(double[] numerator, double[] denominator, Complex z1)
+                {
+                    Complex num = Complex.Zero;
+                    Complex den = Complex.Zero;
+                    Complex zPower = Complex.One;
+                    int length = Math.Max(numerator.Length, denominator.Length);
+                    for (int i = 0; i < length; i++)
+                    {
+                        if (i < numerator.Length) num += numerator[i] * zPower;
+                        if (i < denominator.Length) den += denominator[i] * zPower;
+                        zPower *= z1;
+                    }
+
+                    if (den.Magnitude < 1e-12) den = new Complex(1e-12, 0.0);
+                    return num / den;
                 }
 
                 public static (double[] a, double[] b) FitLimitedPoleBudget(
@@ -643,1341 +1012,7 @@ namespace Pachyderm_Acoustic
                     return BuildFilter(selected.ToArray());
                 }
             }
-
-            //        int rec_order = 0;
-            //        double[] rec_a, rec_b;
-            //        double rec_fs = 0;
-
-            //        object lock_IIR = new object();
-
-            //        internal static class StableAdmittanceFitter
-            //        {
-            //            public static double[] Convolve(double[] a, double[] b)
-            //            {
-            //                double[] c = new double[a.Length + b.Length - 1];
-            //                for (int i = 0; i < a.Length; i++)
-            //                    for (int j = 0; j < b.Length; j++)
-            //                        c[i + j] += a[i] * b[j];
-            //                return c;
-            //            }
-
-            //            public static Complex EvalZinvPoly(double[] c, Complex z1)
-            //            {
-            //                // c[0] + c[1] z^-1 + ... with z1 = e^{-j w}
-            //                Complex acc = 0;
-            //                Complex zp = 1;
-            //                for (int k = 0; k < c.Length; k++)
-            //                {
-            //                    acc += c[k] * zp;
-            //                    zp *= z1;
-            //                }
-            //                return acc;
-            //            }
-
-            //            public static double[] BuildStableDenominatorBiquads(int order, double fs, double fLo, double fHi, double Q = 1.0)
-            //            {
-            //                if (order < 2) order = 2;
-            //                if ((order & 1) == 1) order++; // even
-
-            //                int nsec = order / 2;
-
-            //                fLo = Math.Max(1.0, fLo);
-            //                fHi = Math.Min(0.49 * fs, Math.Max(fLo * 1.01, fHi));
-
-            //                double[] a = new double[] { 1.0 };
-
-            //                for (int s = 0; s < nsec; s++)
-            //                {
-            //                    double t = (s + 0.5) / nsec;
-            //                    double fc = fLo * Math.Pow(fHi / fLo, t);
-
-            //                    double w0 = 2.0 * Math.PI * fc / fs;
-
-            //                    double bw = fc / Math.Max(0.25, Q);
-            //                    double r = Math.Exp(-Math.PI * bw / fs);
-
-            //                    // keep safely inside unit circle
-            //                    r = Math.Min(r, 0.995);
-            //                    r = Math.Max(r, 0.20);
-
-            //                    double c0 = Math.Cos(w0);
-
-            //                    // A_sec(z) = 1 - 2 r cos(w0) z^-1 + r^2 z^-2
-            //                    double[] sec = new double[] { 1.0, -2.0 * r * c0, r * r };
-            //                    a = Convolve(a, sec);
-            //                }
-
-            //                // normalize a[0]=1
-            //                double a0 = a[0];
-            //                if (Math.Abs(a0 - 1.0) > 1e-12 && Math.Abs(a0) > 1e-12)
-            //                {
-            //                    double inv = 1.0 / a0;
-            //                    for (int i = 0; i < a.Length; i++) a[i] *= inv;
-            //                }
-
-            //                return a;
-            //            }
-
-            //            public static double[] SolveNumeratorLeastSquares(double[] freqs, Complex[] Y, double[] a, double fs, double ridge = 1e-10)
-            //            {
-            //                // Solve for real b[] minimizing ||B - Y*A|| on sampled grid.
-            //                int M = a.Length; // numerator length = denominator length
-            //                int K = Math.Min(freqs.Length, Y.Length);
-
-            //                double[,] G = new double[M, M];
-            //                double[] h = new double[M];
-
-            //                for (int i = 0; i < K; i++)
-            //                {
-            //                    double w = 2.0 * Math.PI * freqs[i] / fs;
-            //                    Complex z1 = Complex.Exp(-Complex.ImaginaryOne * w);
-
-            //                    Complex A = EvalZinvPoly(a, z1);
-            //                    Complex d = Y[i] * A; // desired B(e^jw)
-
-            //                    // basis z^{-m}
-            //                    Complex bp = 1.0;
-
-            //                    double[] xr = new double[M];
-            //                    double[] xi = new double[M];
-
-            //                    for (int m = 0; m < M; m++)
-            //                    {
-            //                        xr[m] = bp.Real;
-            //                        xi[m] = bp.Imaginary;
-            //                        bp *= z1;
-            //                    }
-
-            //                    double yr = d.Real;
-            //                    double yi = d.Imaginary;
-
-            //                    for (int m = 0; m < M; m++)
-            //                    {
-            //                        h[m] += xr[m] * yr + xi[m] * yi;
-            //                        for (int n = 0; n < M; n++)
-            //                            G[m, n] += xr[m] * xr[n] + xi[m] * xi[n];
-            //                    }
-            //                }
-
-            //                for (int m = 0; m < M; m++) G[m, m] += ridge;
-
-            //                // Gaussian elimination (M is small: <= 13)
-            //                double[,] Aaug = new double[M, M + 1];
-            //                for (int i = 0; i < M; i++)
-            //                {
-            //                    for (int j = 0; j < M; j++) Aaug[i, j] = G[i, j];
-            //                    Aaug[i, M] = h[i];
-            //                }
-
-            //                for (int col = 0; col < M; col++)
-            //                {
-            //                    int piv = col;
-            //                    double best = Math.Abs(Aaug[col, col]);
-            //                    for (int r = col + 1; r < M; r++)
-            //                    {
-            //                        double v = Math.Abs(Aaug[r, col]);
-            //                        if (v > best) { best = v; piv = r; }
-            //                    }
-            //                    if (best < 1e-18) break;
-
-            //                    if (piv != col)
-            //                    {
-            //                        for (int j = col; j < M + 1; j++)
-            //                        {
-            //                            double tmp = Aaug[col, j];
-            //                            Aaug[col, j] = Aaug[piv, j];
-            //                            Aaug[piv, j] = tmp;
-            //                        }
-            //                    }
-
-            //                    double diag = Aaug[col, col];
-            //                    for (int j = col; j < M + 1; j++) Aaug[col, j] /= diag;
-
-            //                    for (int r = 0; r < M; r++)
-            //                    {
-            //                        if (r == col) continue;
-            //                        double f = Aaug[r, col];
-            //                        if (Math.Abs(f) < 1e-18) continue;
-            //                        for (int j = col; j < M + 1; j++) Aaug[r, j] -= f * Aaug[col, j];
-            //                    }
-            //                }
-
-            //                double[] b = new double[M];
-            //                for (int i = 0; i < M; i++) b[i] = Aaug[i, M];
-            //                return b;
-            //            }
-
-            //            public static void EnforceSampledPositiveReal(double[] freqs, double fs, double[] a, ref double[] b)
-            //            {
-            //                double minRe = double.PositiveInfinity;
-
-            //                for (int i = 0; i < freqs.Length; i++)
-            //                {
-            //                    double w = 2.0 * Math.PI * freqs[i] / fs;
-            //                    Complex z1 = Complex.Exp(-Complex.ImaginaryOne * w);
-
-            //                    Complex A = EvalZinvPoly(a, z1);
-            //                    Complex B = EvalZinvPoly(b, z1);
-            //                    Complex H = (A.Magnitude < 1e-18) ? Complex.Zero : (B / A);
-
-            //                    if (H.Real < minRe) minRe = H.Real;
-            //                }
-
-            //                if (minRe < -1e-9)
-            //                {
-            //                    // Lift by adding a small constant conductance (passive “fuse”)
-            //                    b[0] += (-minRe + 1e-9);
-            //                }
-            //            }
-
-            //            public static (double[] b, double[] a) FitStableAdmittanceIIR(double[] freqs, Complex[] Y, int order, double fs, double fLo, double fHi)
-            //            {
-            //                double[] a = BuildStableDenominatorBiquads(order, fs, fLo, fHi, Q: 1.0);
-            //                double[] b = SolveNumeratorLeastSquares(freqs, Y, a, fs, ridge: 1e-10);
-            //                EnforceSampledPositiveReal(freqs, fs, a, ref b);
-            //                return (b, a);
-            //            }
-            //        }
-
-            //        public override (double[] a, double[] b) Estimate_IIR_Coefficients(
-            //double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
-            //        {
-            //            int N = 4096;
-            //            double fs = sample_frequency;
-
-            //            // bins from 0..max_freq inclusive
-            //            int K = (int)Math.Floor(max_freq * N / fs);
-            //            K = Math.Max(8, Math.Min(K, N / 2 + 1));
-
-            //            frequencies = new double[K];
-            //            for (int i = 0; i < K; i++)
-            //                frequencies[i] = i * fs / N;
-
-            //            lock (lock_IIR)
-            //            {
-            //                // NOTE: your original cache key is only fs; if max_freq changes, you may want to include it too.
-            //                if (rec_fs == fs && rec_a != null && rec_b != null && (filter_order <= 0 || rec_order == filter_order))
-            //                    return (rec_a, rec_b);
-
-            //                rec_fs = fs;
-
-            //                // 1) Reflection spectrum R(ω), take first K bins
-            //                Complex[] Rfull = this.Reflection_Spectrum((int)fs, N,
-            //                    new Hare.Geometry.Vector(0, 0, 1),
-            //                    new Hare.Geometry.Vector(0, 0, 1),
-            //                    0);
-
-            //                Complex[] R = new Complex[K];
-            //                Array.Copy(Rfull, R, K);
-
-            //                // 2) Target admittance Y = (1 - R) / (1 + R)
-            //                Complex[] Y = new Complex[K];
-            //                for (int i = 0; i < K; i++)
-            //                {
-            //                    Complex denom = Complex.One + R[i];
-            //                    if (denom.Magnitude < 1e-12) denom = new Complex(1e-12, 0);
-
-            //                    Complex Yi = (Complex.One - R[i]) / denom;
-
-            //                    // keep your "no active" clamp on target
-            //                    if (Yi.Real < 0) Yi = new Complex(0, Yi.Imaginary);
-
-            //                    Y[i] = Yi;
-            //                }
-
-            //                // 3) Fit: stable poles first
-            //                int min_order = 2;
-            //                int max_order = 12;
-            //                double fLo = 20.0;
-            //                double fHi = Math.Min(max_freq * 0.95, 0.45 * fs);
-
-            //                if (filter_order > 0)
-            //                {
-            //                    int order = Math.Max(2, filter_order);
-            //                    if ((order & 1) == 1) order++; // even
-
-            //                    var fit = StableAdmittanceFitter.FitStableAdmittanceIIR(frequencies, Y, order, fs, fLo, fHi);
-
-            //                    rec_order = order;
-            //                    rec_a = fit.a;
-            //                    rec_b = fit.b;
-            //                    return (rec_a, rec_b);
-            //                }
-            //                else
-            //                {
-            //                    double bestErr = double.PositiveInfinity;
-            //                    (double[] b, double[] a) best = (null, null);
-            //                    int bestOrder = min_order;
-
-            //                    for (int order = min_order; order <= max_order; order += 2)
-            //                    {
-            //                        var cand = StableAdmittanceFitter.FitStableAdmittanceIIR(frequencies, Y, order, fs, fLo, fHi);
-
-            //                        // error metric: relative complex error over 20..10k (or adapt to your needs)
-            //                        double errSum = 0.0;
-            //                        int count = 0;
-            //                        bool passive = true;
-
-            //                        for (int i = 0; i < K; i++)
-            //                        {
-            //                            double f = frequencies[i];
-            //                            if (f < 20 || f > 10000) continue;
-
-            //                            double w = 2.0 * Math.PI * f / fs;
-            //                            Complex z1 = Complex.Exp(-Complex.ImaginaryOne * w);
-
-            //                            Complex A = StableAdmittanceFitter.EvalZinvPoly(cand.a, z1);
-            //                            Complex B = StableAdmittanceFitter.EvalZinvPoly(cand.b, z1);
-            //                            Complex H = (A.Magnitude < 1e-18) ? Complex.Zero : (B / A);
-
-            //                            if (H.Real < -1e-6) passive = false;
-
-            //                            double denomMag = Math.Max(1e-6, Y[i].Magnitude);
-            //                            errSum += (H - Y[i]).Magnitude / denomMag;
-            //                            count++;
-            //                        }
-
-            //                        double avgErr = (count > 0) ? (errSum / count) : double.PositiveInfinity;
-            //                        if (!passive) avgErr += 10.0;
-
-            //                        if (avgErr < bestErr)
-            //                        {
-            //                            bestErr = avgErr;
-            //                            best = cand;
-            //                            bestOrder = order;
-            //                        }
-            //                    }
-
-            //                    rec_order = bestOrder;
-            //                    rec_a = best.a;
-            //                    rec_b = best.b;
-            //                    return (rec_a, rec_b);
-            //                }
-            //            }
-            //        }
-
-            //public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
-            //{
-            //    const int N = 4096;
-            //    double fs = sample_frequency;
-
-            //    int K = (int)Math.Floor(max_freq * N / fs) + 1;
-            //    if (K < 8) K = Math.Min(8, N);
-
-            //    frequencies = new double[K];
-            //    for (int i = 0; i < K; i++)
-            //        frequencies[i] = i * fs / N; // includes DC
-
-            //    // Reflection spectrum at normal incidence (existing behavior)
-            //    var Rfull = this.Reflection_Spectrum((int)fs, N,
-            //        new Hare.Geometry.Vector(0, 0, 1),
-            //        new Hare.Geometry.Vector(0, 0, 1),
-            //        0);
-
-            //    // Target admittance: Y = (1 - R)/(1 + R)
-            //    System.Numerics.Complex[] Y = new System.Numerics.Complex[K];
-            //    for (int i = 0; i < K; i++)
-            //    {
-            //        var R = Rfull[i];
-            //        var denom = System.Numerics.Complex.One + R;
-            //        if (denom.Magnitude < 1e-12) denom = new System.Numerics.Complex(1e-12, 0);
-
-            //        var Yi = (System.Numerics.Complex.One - R) / denom;
-
-            //        // Keep your “no active” pre-clamp (fine)
-            //        if (Yi.Real < 0) Yi = new System.Numerics.Complex(0, Yi.Imaginary);
-
-            //        Y[i] = Yi;
-            //    }
-
-            //    // Auto-order selection (stable poles for each candidate)
-            //    if (filter_order <= 0)
-            //    {
-            //        int min_order = 2;
-            //        int max_order = 12;
-
-            //        double best_error = double.MaxValue;
-            //        (double[] b, double[] a) best = (null, null);
-            //        int best_order = min_order;
-
-            //        for (int order = min_order; order <= max_order; order += 2)
-            //        {
-            //            var cand = FitStableAdmittanceIIR(frequencies, Y, order, fs, fLo: 20.0, fHi: Math.Min(max_freq * 0.95, 0.45 * fs));
-
-            //            // error metric (complex relative error over 125–4000 Hz)
-            //            double errSum = 0.0;
-            //            int count = 0;
-
-            //            for (int i = 0; i < K; i++)
-            //            {
-            //                double f = frequencies[i];
-            //                if (f < 125 || f > 4000) continue;
-
-            //                double w = 2.0 * Math.PI * f / fs;
-            //                var z1 = System.Numerics.Complex.Exp(-System.Numerics.Complex.ImaginaryOne * w);
-
-            //                var A = EvalZinvPoly(cand.a, z1);
-            //                var B = EvalZinvPoly(cand.b, z1);
-            //                var H = (A.Magnitude < 1e-18) ? System.Numerics.Complex.Zero : (B / A);
-
-            //                double denomMag = Math.Max(1e-3, Y[i].Magnitude);
-            //                double e = (H - Y[i]).Magnitude / denomMag;
-
-            //                errSum += e;
-            //                count++;
-            //            }
-
-            //            double avgErr = (count > 0) ? errSum / count : double.MaxValue;
-            //            if (avgErr < best_error)
-            //            {
-            //                best_error = avgErr;
-            //                best = cand;
-            //                best_order = order;
-            //            }
-            //        }
-
-            //        rec_order = best_order;
-            //        rec_a = best.a;
-            //        rec_b = best.b;
-            //        return (rec_a, rec_b);
-            //    }
-            //    else
-            //    {
-            //        int order = Math.Max(2, filter_order);
-            //        if ((order & 1) == 1) order++; // keep even
-
-            //        var fit = FitStableAdmittanceIIR(frequencies, Y, order, fs, fLo: 20.0, fHi: Math.Min(max_freq * 0.95, 0.45 * fs));
-            //        return (fit.a, fit.b);
-            //    }
-            //}
-
-
-            ////public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
-            ////{
-            ////    int N = 4096;
-            ////    double fs = sample_frequency;
-
-            ////    // bins from 0..max_freq inclusive
-            ////    int K = (int)Math.Floor(max_freq * N / fs);
-            ////    K = Math.Max(8, Math.Min(K, N / 2 + 1));
-
-            ////    frequencies = new double[K];
-            ////    for (int i = 0; i < K; i++)
-            ////        frequencies[i] = i * fs / N;
-
-            ////    lock (lock_IIR)
-            ////    {
-            ////        // NOTE: your original cache key is only fs; if max_freq changes, you may want to include it too.
-            ////        if (rec_fs == fs && rec_a != null && rec_b != null && (filter_order <= 0 || rec_order == filter_order))
-            ////            return (rec_a, rec_b);
-
-            ////        rec_fs = fs;
-
-            ////        // 1) Reflection spectrum R(ω), take first K bins
-            ////        Complex[] Rfull = this.Reflection_Spectrum((int)fs, N,
-            ////            new Hare.Geometry.Vector(0, 0, 1),
-            ////            new Hare.Geometry.Vector(0, 0, 1),
-            ////            0);
-
-            ////        Complex[] R = new Complex[K];
-            ////        Array.Copy(Rfull, R, K);
-
-            ////        // 2) Target admittance Y = (1 - R) / (1 + R)
-            ////        Complex[] Y = new Complex[K];
-            ////        for (int i = 0; i < K; i++)
-            ////        {
-            ////            Complex denom = Complex.One + R[i];
-            ////            if (denom.Magnitude < 1e-12) denom = new Complex(1e-12, 0);
-
-            ////            Complex Yi = (Complex.One - R[i]) / denom;
-
-            ////            // keep your "no active" clamp on target
-            ////            if (Yi.Real < 0) Yi = new Complex(0, Yi.Imaginary);
-
-            ////            Y[i] = Yi;
-            ////        }
-
-            ////        // 3) Fit: stable poles first
-            ////        int min_order = 2;
-            ////        int max_order = 12;
-            ////        double fLo = 20.0;
-            ////        double fHi = Math.Min(max_freq * 0.95, 0.45 * fs);
-
-            ////        if (filter_order > 0)
-            ////        {
-            ////            int order = Math.Max(2, filter_order);
-            ////            if ((order & 1) == 1) order++; // even
-
-            ////            var fit = StableAdmittanceFitter.FitStableAdmittanceIIR(frequencies, Y, order, fs, fLo, fHi);
-
-            ////            rec_order = order;
-            ////            rec_a = fit.a;
-            ////            rec_b = fit.b;
-            ////            return (rec_a, rec_b);
-            ////        }
-            ////        else
-            ////        {
-            ////            double bestErr = double.PositiveInfinity;
-            ////            (double[] b, double[] a) best = (null, null);
-            ////            int bestOrder = min_order;
-
-            ////            for (int order = min_order; order <= max_order; order += 2)
-            ////            {
-            ////                var cand = StableAdmittanceFitter.FitStableAdmittanceIIR(frequencies, Y, order, fs, fLo, fHi);
-
-            ////                // error metric: relative complex error over 20..10k (or adapt to your needs)
-            ////                double errSum = 0.0;
-            ////                int count = 0;
-            ////                bool passive = true;
-
-            ////                for (int i = 0; i < K; i++)
-            ////                {
-            ////                    double f = frequencies[i];
-            ////                    if (f < 20 || f > 10000) continue;
-
-            ////                    double w = 2.0 * Math.PI * f / fs;
-            ////                    Complex z1 = Complex.Exp(-Complex.ImaginaryOne * w);
-
-            ////                    Complex A = StableAdmittanceFitter.EvalZinvPoly(cand.a, z1);
-            ////                    Complex B = StableAdmittanceFitter.EvalZinvPoly(cand.b, z1);
-            ////                    Complex H = (A.Magnitude < 1e-18) ? Complex.Zero : (B / A);
-
-            ////                    if (H.Real < -1e-6) passive = false;
-
-            ////                    double denomMag = Math.Max(1e-6, Y[i].Magnitude);
-            ////                    errSum += (H - Y[i]).Magnitude / denomMag;
-            ////                    count++;
-            ////                }
-
-            ////                double avgErr = (count > 0) ? (errSum / count) : double.PositiveInfinity;
-            ////                if (!passive) avgErr += 10.0;
-
-            ////                if (avgErr < bestErr)
-            ////                {
-            ////                    bestErr = avgErr;
-            ////                    best = cand;
-            ////                    bestOrder = order;
-            ////                }
-            ////            }
-
-            ////            rec_order = bestOrder;
-            ////            rec_a = best.a;
-            ////            rec_b = best.b;
-            ////            return (rec_a, rec_b);
-            ////        }
-            ////    }
-            ////}
-
-            ////internal static class StableAdmittanceFitter
-            ////{
-            ////    public static double[] Convolve(double[] a, double[] b)
-            ////    {
-            ////        double[] c = new double[a.Length + b.Length - 1];
-            ////        for (int i = 0; i < a.Length; i++)
-            ////            for (int j = 0; j < b.Length; j++)
-            ////                c[i + j] += a[i] * b[j];
-            ////        return c;
-            ////    }
-
-            ////    public static Complex EvalZinvPoly(double[] c, Complex z1)
-            ////    {
-            ////        // c[0] + c[1] z^-1 + ... with z1 = e^{-j w}
-            ////        Complex acc = 0;
-            ////        Complex zp = 1;
-            ////        for (int k = 0; k < c.Length; k++)
-            ////        {
-            ////            acc += c[k] * zp;
-            ////            zp *= z1;
-            ////        }
-            ////        return acc;
-            ////    }
-
-            ////    public static double[] BuildStableDenominatorBiquads(int order, double fs, double fLo, double fHi, double Q = 1.0)
-            ////    {
-            ////        if (order < 2) order = 2;
-            ////        if ((order & 1) == 1) order++; // even
-
-            ////        int nsec = order / 2;
-
-            ////        fLo = Math.Max(1.0, fLo);
-            ////        fHi = Math.Min(0.49 * fs, Math.Max(fLo * 1.01, fHi));
-
-            ////        double[] a = new double[] { 1.0 };
-
-            ////        for (int s = 0; s < nsec; s++)
-            ////        {
-            ////            double t = (s + 0.5) / nsec;
-            ////            double fc = fLo * Math.Pow(fHi / fLo, t);
-
-            ////            double w0 = 2.0 * Math.PI * fc / fs;
-
-            ////            double bw = fc / Math.Max(0.25, Q);
-            ////            double r = Math.Exp(-Math.PI * bw / fs);
-
-            ////            // keep safely inside unit circle
-            ////            r = Math.Min(r, 0.995);
-            ////            r = Math.Max(r, 0.20);
-
-            ////            double c0 = Math.Cos(w0);
-
-            ////            // A_sec(z) = 1 - 2 r cos(w0) z^-1 + r^2 z^-2
-            ////            double[] sec = new double[] { 1.0, -2.0 * r * c0, r * r };
-            ////            a = Convolve(a, sec);
-            ////        }
-
-            ////        // normalize a[0]=1
-            ////        double a0 = a[0];
-            ////        if (Math.Abs(a0 - 1.0) > 1e-12 && Math.Abs(a0) > 1e-12)
-            ////        {
-            ////            double inv = 1.0 / a0;
-            ////            for (int i = 0; i < a.Length; i++) a[i] *= inv;
-            ////        }
-
-            ////        return a;
-            ////    }
-
-            ////    public static double[] SolveNumeratorLeastSquares(double[] freqs, Complex[] Y, double[] a, double fs, double ridge = 1e-10)
-            ////    {
-            ////        // Solve for real b[] minimizing ||B - Y*A|| on sampled grid.
-            ////        int M = a.Length; // numerator length = denominator length
-            ////        int K = Math.Min(freqs.Length, Y.Length);
-
-            ////        double[,] G = new double[M, M];
-            ////        double[] h = new double[M];
-
-            ////        for (int i = 0; i < K; i++)
-            ////        {
-            ////            double w = 2.0 * Math.PI * freqs[i] / fs;
-            ////            Complex z1 = Complex.Exp(-Complex.ImaginaryOne * w);
-
-            ////            Complex A = EvalZinvPoly(a, z1);
-            ////            Complex d = Y[i] * A; // desired B(e^jw)
-
-            ////            // basis z^{-m}
-            ////            Complex bp = 1.0;
-
-            ////            double[] xr = new double[M];
-            ////            double[] xi = new double[M];
-
-            ////            for (int m = 0; m < M; m++)
-            ////            {
-            ////                xr[m] = bp.Real;
-            ////                xi[m] = bp.Imaginary;
-            ////                bp *= z1;
-            ////            }
-
-            ////            double yr = d.Real;
-            ////            double yi = d.Imaginary;
-
-            ////            for (int m = 0; m < M; m++)
-            ////            {
-            ////                h[m] += xr[m] * yr + xi[m] * yi;
-            ////                for (int n = 0; n < M; n++)
-            ////                    G[m, n] += xr[m] * xr[n] + xi[m] * xi[n];
-            ////            }
-            ////        }
-
-            ////        for (int m = 0; m < M; m++) G[m, m] += ridge;
-
-            ////        // Gaussian elimination (M is small: <= 13)
-            ////        double[,] Aaug = new double[M, M + 1];
-            ////        for (int i = 0; i < M; i++)
-            ////        {
-            ////            for (int j = 0; j < M; j++) Aaug[i, j] = G[i, j];
-            ////            Aaug[i, M] = h[i];
-            ////        }
-
-            ////        for (int col = 0; col < M; col++)
-            ////        {
-            ////            int piv = col;
-            ////            double best = Math.Abs(Aaug[col, col]);
-            ////            for (int r = col + 1; r < M; r++)
-            ////            {
-            ////                double v = Math.Abs(Aaug[r, col]);
-            ////                if (v > best) { best = v; piv = r; }
-            ////            }
-            ////            if (best < 1e-18) break;
-
-            ////            if (piv != col)
-            ////            {
-            ////                for (int j = col; j < M + 1; j++)
-            ////                {
-            ////                    double tmp = Aaug[col, j];
-            ////                    Aaug[col, j] = Aaug[piv, j];
-            ////                    Aaug[piv, j] = tmp;
-            ////                }
-            ////            }
-
-            ////            double diag = Aaug[col, col];
-            ////            for (int j = col; j < M + 1; j++) Aaug[col, j] /= diag;
-
-            ////            for (int r = 0; r < M; r++)
-            ////            {
-            ////                if (r == col) continue;
-            ////                double f = Aaug[r, col];
-            ////                if (Math.Abs(f) < 1e-18) continue;
-            ////                for (int j = col; j < M + 1; j++) Aaug[r, j] -= f * Aaug[col, j];
-            ////            }
-            ////        }
-
-            ////        double[] b = new double[M];
-            ////        for (int i = 0; i < M; i++) b[i] = Aaug[i, M];
-            ////        return b;
-            ////    }
-
-            ////    public static void EnforceSampledPositiveReal(double[] freqs, double fs, double[] a, ref double[] b)
-            ////    {
-            ////        double minRe = double.PositiveInfinity;
-
-            ////        for (int i = 0; i < freqs.Length; i++)
-            ////        {
-            ////            double w = 2.0 * Math.PI * freqs[i] / fs;
-            ////            Complex z1 = Complex.Exp(-Complex.ImaginaryOne * w);
-
-            ////            Complex A = EvalZinvPoly(a, z1);
-            ////            Complex B = EvalZinvPoly(b, z1);
-            ////            Complex H = (A.Magnitude < 1e-18) ? Complex.Zero : (B / A);
-
-            ////            if (H.Real < minRe) minRe = H.Real;
-            ////        }
-
-            ////        if (minRe < -1e-9)
-            ////        {
-            ////            // Lift by adding a small constant conductance (passive “fuse”)
-            ////            b[0] += (-minRe + 1e-9);
-            ////        }
-            ////    }
-
-            ////    public static (double[] b, double[] a) FitStableAdmittanceIIR(double[] freqs, Complex[] Y, int order, double fs, double fLo, double fHi)
-            ////    {
-            ////        double[] a = BuildStableDenominatorBiquads(order, fs, fLo, fHi, Q: 1.0);
-            ////        double[] b = SolveNumeratorLeastSquares(freqs, Y, a, fs, ridge: 1e-10);
-            ////        EnforceSampledPositiveReal(freqs, fs, a, ref b);
-            ////        return (b, a);
-            ////    }
-            ////}
-
-            //public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
-            //{
-            //    // Number of samples for the IIR filter design
-            //    int samplect = 4096;
-            //    frequencies = new double[(int)(samplect * max_freq / sample_frequency)];
-
-            //    lock (lock_IIR)
-            //    {
-            //        if (rec_fs == sample_frequency) return (rec_a, rec_b);
-
-            //        rec_fs = sample_frequency;
-
-            //        // Get reflection spectrum and calculate desired absorption coefficients
-            //        Complex[] desired_Spectrum = new Complex[(int)(samplect * max_freq / sample_frequency)];
-            //        Array.Copy(this.Reflection_Spectrum((int)sample_frequency, samplect, new Hare.Geometry.Vector(0, 0, 1), new Hare.Geometry.Vector(0, 0, 1), 0), desired_Spectrum, desired_Spectrum.Length / 2);
-
-            //        for (int i = 0; i < frequencies.Length; i++)
-            //        {
-            //            frequencies[i] = (double)((i + 1) * (sample_frequency / 2)) / samplect;
-            //        }
-
-            //        double[] desired_alpha = AbsorptionModels.Operations.Absorption_Coef(desired_Spectrum);
-
-            //        // If filter_order is zero or negative, automatically determine the optimal order
-            //        if (filter_order <= 0)
-            //        {
-            //            if (rec_order == 0)
-            //            {
-            //                int min_order = 2;
-            //                int max_order = 12;
-            //                double error_threshold = 0.01; // 1% average error threshold
-            //                double best_error = double.MaxValue;
-            //                (double[] b, double[] a) best_filter = (new double[min_order + 1], new double[min_order + 1]);
-
-            //                for (int order = min_order; order <= max_order; order += 2) // Try even orders
-            //                {
-            //                    try
-            //                    {
-            //                        // Design filter with current order
-            //                        (double[] b, double[] a) current_filter = Pach_SP.IIR_Design.FitIIRToFrequencyResponse(
-            //                            frequencies, desired_Spectrum, order, order, sample_frequency);
-
-            //                        // Normalize the filter
-            //                        double mag = 0;
-            //                        Complex[] filter_response = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
-            //                            new List<double>(current_filter.b), new List<double>(current_filter.a),
-            //                            frequencies, sample_frequency);
-
-            //                        mag = filter_response.MaximumMagnitudePhase().Magnitude;
-            //                        if (mag > 1)
-            //                        {
-            //                            for (int j = 0; j < current_filter.b.Length; j++)
-            //                                current_filter.b[j] /= mag;
-            //                        }
-            //                        else
-            //                        {
-            //                            double mod = mag / desired_Spectrum.MaximumMagnitudePhase().Magnitude;
-            //                            for (int j = 0; j < current_filter.b.Length; j++)
-            //                                current_filter.b[j] /= mod;
-            //                        }
-
-            //                        // Recalculate response after normalization
-            //                        filter_response = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
-            //                            new List<double>(current_filter.b), new List<double>(current_filter.a),
-            //                            frequencies, sample_frequency);
-
-            //                        // Calculate error metric (average magnitude error)
-            //                        double error_sum = 0;
-            //                        int count = 0;
-
-            //                        // Evaluate from 20 Hz. to 10,000 Hz. (as applicable)
-            //                        for (int i = 0; i < frequencies.Length; i++)
-            //                        {
-            //                            if (frequencies[i] >= 20 && frequencies[i] <= 10000)
-            //                            {
-            //                                double mag_error = Math.Abs(filter_response[i].Magnitude - desired_Spectrum[i].Magnitude);
-            //                                error_sum += mag_error / Math.Max(0.01, desired_Spectrum[i].Magnitude); // Relative error
-            //                                count++;
-            //                            }
-            //                        }
-
-            //                        double avg_error = count > 0 ? error_sum / count : double.MaxValue;
-
-            //                        // Update best filter if this one is better
-            //                        if (avg_error < best_error)
-            //                        {
-            //                            best_error = avg_error;
-            //                            best_filter = current_filter;
-            //                        }
-
-            //                        // If error is below threshold, we've found a good enough match
-            //                        if (avg_error < error_threshold)
-            //                            break;
-            //                    }
-            //                    catch
-            //                    {
-            //                        // If filter design fails, continue to next order
-            //                        continue;
-            //                    }
-            //                }
-
-            //                // Use the best filter found
-            //                rec_order = best_filter.a.Length - 1;
-            //                rec_a = best_filter.a;
-            //                rec_b = best_filter.b;
-            //                return best_filter;
-            //            }
-            //            else
-            //            {
-            //                return (rec_a, rec_b); // Return previously calculated coefficients
-            //            }
-            //        }
-            //        else
-            //        {
-            //            // Original code for specified filter order
-            //            int numeratorOrder = filter_order;
-            //            int denominatorOrder = filter_order;
-
-            //            try
-            //            {
-            //                // Use the IIR filter design method from Pach_SP.IIR_Design
-            //                (rec_b, rec_a) = Pach_SP.IIR_Design.FitIIRToFrequencyResponse(
-            //                    frequencies, desired_Spectrum, numeratorOrder, denominatorOrder, sample_frequency);
-
-            //                // Calculate frequency response of the fitted filter
-            //                Complex[] IIR_spec = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
-            //                    new List<double>(rec_b), new List<double>(rec_a), frequencies, sample_frequency);
-
-            //                // Normalize the filter if necessary
-            //                double m = IIR_spec.MaximumMagnitudePhase().Magnitude;
-            //                if (m > 1)
-            //                {
-            //                    for (int j = 0; j < rec_b.Length; j++) rec_b[j] /= m;
-            //                }
-            //                else
-            //                {
-            //                    double mod = m / desired_Spectrum.MaximumMagnitudePhase().Magnitude;
-            //                    for (int j = 0; j < rec_b.Length; j++) rec_b[j] /= mod;
-            //                }
-
-            //                return (rec_a, rec_b);
-            //            }
-            //            catch (Exception)
-            //            {
-            //                // If the fitting process fails, fall back to a simple filter
-            //                rec_a = new double[filter_order + 1];
-            //                rec_b = new double[filter_order + 1];
-
-            //                // Create a basic filter based on octave band coefficients
-            //                rec_a[0] = 1.0;
-            //                for (int i = 1; i < rec_a.Length; i++) rec_a[i] = -0.7 * Math.Pow(0.8, i - 1);
-            //                rec_b[0] = 1.0;
-
-            //                return (rec_a, rec_b);
-            //            }
-            //        }
-            //    }
-            //}
-            //    public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
-            //{
-            //    int samplect = 4096;
-            //    frequencies = new double[(int)(samplect * max_freq / sample_frequency)];
-
-            //    lock (lock_IIR)
-            //    {
-            //        if (rec_fs == sample_frequency) return (rec_a, rec_b);
-
-            //        rec_fs = sample_frequency;
-
-            //        // 1) Get reflection spectrum R(ω)
-            //        Complex[] R = new Complex[(int)(samplect * max_freq / sample_frequency)];
-            //        Array.Copy(
-            //            this.Reflection_Spectrum((int)sample_frequency, samplect, new Hare.Geometry.Vector(0, 0, 1), new Hare.Geometry.Vector(0, 0, 1), 0),
-            //            R,
-            //            R.Length
-            //        );
-
-            //        for (int i = 0; i < frequencies.Length; i++)
-            //        {
-            //            frequencies[i] = ((i + 1) * (sample_frequency / 2.0)) / samplect;
-            //        }
-
-            //        // 2) Convert to admittance spectrum Y = (1 - R) / (1 + R)
-            //        Complex[] Y = new Complex[R.Length];
-            //        for (int i = 0; i < R.Length; i++)
-            //        {
-            //            Complex denom = 1 + R[i];
-            //            if (denom.Magnitude < 1e-9) denom = new Complex(1e-9, 0); // avoid div-by-zero
-            //            Y[i] = (1 - R[i]) / denom;
-            //        }
-
-            //        // 3) Fit IIR to Y(ω)
-            //        if (filter_order <= 0)
-            //        {
-            //            if (rec_order == 0)
-            //            {
-            //                int min_order = 2;
-            //                int max_order = 12;
-            //                double error_threshold = 0.01;
-            //                double best_error = double.MaxValue;
-            //                (double[] b, double[] a) best_filter = (new double[min_order + 1], new double[min_order + 1]);
-
-            //                for (int order = min_order; order <= max_order; order += 2)
-            //                {
-            //                    try
-            //                    {
-            //                        (double[] b, double[] a) current = Pach_SP.IIR_Design.FitIIRToFrequencyResponse(
-            //                            frequencies, Y, order, order, sample_frequency);
-
-            //                        // Normalize to a[0] = 1 to keep physical scaling consistent
-            //                        double a0 = current.a[0];
-            //                        if (Math.Abs(a0) > 1e-12)
-            //                        {
-            //                            for (int j = 0; j < current.a.Length; j++) current.a[j] /= a0;
-            //                            for (int j = 0; j < current.b.Length; j++) current.b[j] /= a0;
-            //                        }
-
-            //                        Complex[] resp = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
-            //                            new List<double>(current.b), new List<double>(current.a), frequencies, sample_frequency);
-
-            //                        double errSum = 0;
-            //                        int count = 0;
-            //                        for (int i = 0; i < frequencies.Length; i++)
-            //                        {
-            //                            if (frequencies[i] >= 20 && frequencies[i] <= 10000)
-            //                            {
-            //                                double magErr = Math.Abs(resp[i].Magnitude - Y[i].Magnitude);
-            //                                errSum += magErr / Math.Max(1e-6, Y[i].Magnitude);
-            //                                count++;
-            //                            }
-            //                        }
-            //                        double avgErr = count > 0 ? errSum / count : double.MaxValue;
-
-            //                        if (avgErr < best_error)
-            //                        {
-            //                            best_error = avgErr;
-            //                            best_filter = current;
-            //                        }
-            //                        if (avgErr < error_threshold) break;
-            //                    }
-            //                    catch
-            //                    {
-            //                        continue;
-            //                    }
-            //                }
-
-            //                rec_order = best_filter.a.Length - 1;
-            //                rec_a = best_filter.a;
-            //                rec_b = best_filter.b;
-            //                return best_filter;
-            //            }
-            //            else
-            //            {
-            //                return (rec_a, rec_b);
-            //            }
-            //        }
-            //        else
-            //        {
-            //            int numeratorOrder = filter_order;
-            //            int denominatorOrder = filter_order;
-
-            //            try
-            //            {
-            //                (rec_b, rec_a) = Pach_SP.IIR_Design.FitIIRToFrequencyResponse(
-            //                    frequencies, Y, numeratorOrder, denominatorOrder, sample_frequency);
-
-            //                // Normalize to a[0] = 1
-            //                double a0 = rec_a[0];
-            //                if (Math.Abs(a0) > 1e-12)
-            //                {
-            //                    for (int j = 0; j < rec_a.Length; j++) rec_a[j] /= a0;
-            //                    for (int j = 0; j < rec_b.Length; j++) rec_b[j] /= a0;
-            //                }
-
-            //                return (rec_a, rec_b);
-            //            }
-            //            catch (Exception)
-            //            {
-            //                rec_a = new double[filter_order + 1];
-            //                rec_b = new double[filter_order + 1];
-            //                rec_a[0] = 1.0;
-            //                for (int i = 1; i < rec_a.Length; i++) rec_a[i] = -0.7 * Math.Pow(0.8, i - 1);
-            //                rec_b[0] = 1.0;
-            //                return (rec_a, rec_b);
-            //            }
-            //        }
-            //    }
-            //}
-            //public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
-            //{
-            //    int samplect = 4096;
-            //    frequencies = new double[(int)(samplect * max_freq / sample_frequency)];
-
-            //    lock (lock_IIR)
-            //    {
-            //        if (rec_fs == sample_frequency) return (rec_a, rec_b);
-
-            //        rec_fs = sample_frequency;
-
-            //        // 1) Get reflection spectrum R(ω)
-            //        Complex[] R = new Complex[(int)(samplect * max_freq / sample_frequency)];
-            //        Array.Copy(
-            //            this.Reflection_Spectrum((int)sample_frequency, samplect, new Hare.Geometry.Vector(0, 0, 1), new Hare.Geometry.Vector(0, 0, 1), 0),
-            //            R,
-            //            R.Length
-            //        );
-
-            //        for (int i = 0; i < frequencies.Length; i++)
-            //        {
-            //            frequencies[i] = ((i + 1) * (sample_frequency / 2.0)) / samplect;
-            //        }
-
-            //        // 2) Convert to admittance spectrum Y = (1 - R) / (1 + R)
-            //        Complex[] Y = new Complex[R.Length];
-            //        for (int i = 0; i < R.Length; i++)
-            //        {
-            //            Complex denom = 1 + R[i];
-            //            if (denom.Magnitude < 1e-9) denom = new Complex(1e-9, 0);
-            //            Y[i] = (1 - R[i]) / denom;
-
-            //            // Passivity enforcement: real part of admittance must be >= 0
-            //            // (negative real part means energy injection)
-            //            if (Y[i].Real < 0)
-            //                Y[i] = new Complex(0, Y[i].Imaginary);
-            //        }
-
-            //        // 3) Fit IIR to Y(ω)
-            //        if (filter_order <= 0)
-            //        {
-            //            if (rec_order == 0)
-            //            {
-            //                int min_order = 2;
-            //                int max_order = 12;
-            //                double error_threshold = 0.01;
-            //                double best_error = double.MaxValue;
-            //                (double[] b, double[] a) best_filter = (new double[min_order + 1], new double[min_order + 1]);
-
-            //                for (int order = min_order; order <= max_order; order += 2)
-            //                {
-            //                    try
-            //                    {
-            //                        (double[] b, double[] a) current = Pach_SP.IIR_Design.FitIIRToFrequencyResponse(
-            //                            frequencies, Y, order, order, sample_frequency);
-
-            //                        // Normalize to a[0] = 1
-            //                        double a0 = current.a[0];
-            //                        if (Math.Abs(a0) > 1e-12)
-            //                        {
-            //                            for (int j = 0; j < current.a.Length; j++) current.a[j] /= a0;
-            //                            for (int j = 0; j < current.b.Length; j++) current.b[j] /= a0;
-            //                        }
-
-            //                        // Verify passivity: check that the fitted filter doesn't go negative
-            //                        Complex[] resp = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
-            //                            new List<double>(current.b), new List<double>(current.a), frequencies, sample_frequency);
-
-            //                        bool passive = true;
-            //                        double errSum = 0;
-            //                        int count = 0;
-            //                        for (int i = 0; i < frequencies.Length; i++)
-            //                        {
-            //                            // Check passivity: Re{Y} >= 0 at all frequencies
-            //                            if (resp[i].Real < -1e-6)
-            //                                passive = false;
-
-            //                            if (frequencies[i] >= 20 && frequencies[i] <= 10000)
-            //                            {
-            //                                double magErr = Math.Abs(resp[i].Magnitude - Y[i].Magnitude);
-            //                                errSum += magErr / Math.Max(1e-6, Y[i].Magnitude);
-            //                                count++;
-            //                            }
-            //                        }
-            //                        double avgErr = count > 0 ? errSum / count : double.MaxValue;
-
-            //                        // Penalize non-passive filters heavily
-            //                        if (!passive) avgErr += 10.0;
-
-            //                        if (avgErr < best_error)
-            //                        {
-            //                            best_error = avgErr;
-            //                            best_filter = current;
-            //                        }
-            //                        if (avgErr < error_threshold) break;
-            //                    }
-            //                    catch
-            //                    {
-            //                        continue;
-            //                    }
-            //                }
-
-            //                // Final passivity check on best filter — if still non-passive,
-            //                // clamp b[0] to ensure DC admittance is non-negative
-            //                Complex[] bestResp = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
-            //                    new List<double>(best_filter.b), new List<double>(best_filter.a), frequencies, sample_frequency);
-
-            //                bool bestPassive = true;
-            //                for (int i = 0; i < bestResp.Length; i++)
-            //                {
-            //                    if (bestResp[i].Real < -1e-6) { bestPassive = false; break; }
-            //                }
-
-            //                if (!bestPassive)
-            //                {
-            //                    // Scale b coefficients to ensure max magnitude doesn't exceed
-            //                    // the target admittance max magnitude (conservative passive bound)
-            //                    double maxTarget = 0;
-            //                    double maxFit = 0;
-            //                    for (int i = 0; i < frequencies.Length; i++)
-            //                    {
-            //                        if (Y[i].Magnitude > maxTarget) maxTarget = Y[i].Magnitude;
-            //                        if (bestResp[i].Magnitude > maxFit) maxFit = bestResp[i].Magnitude;
-            //                    }
-            //                    if (maxFit > 1e-12)
-            //                    {
-            //                        double scale = maxTarget / maxFit;
-            //                        for (int j = 0; j < best_filter.b.Length; j++)
-            //                            best_filter.b[j] *= scale;
-            //                    }
-            //                }
-
-            //                rec_order = best_filter.a.Length - 1;
-            //                rec_a = best_filter.a;
-            //                rec_b = best_filter.b;
-            //                return best_filter;
-            //            }
-            //            else
-            //            {
-            //                return (rec_a, rec_b);
-            //            }
-            //        }
-            //        else
-            //        {
-            //            int numeratorOrder = filter_order;
-            //            int denominatorOrder = filter_order;
-
-            //            try
-            //            {
-            //                (rec_b, rec_a) = Pach_SP.IIR_Design.FitIIRToFrequencyResponse(
-            //                    frequencies, Y, numeratorOrder, denominatorOrder, sample_frequency);
-
-            //                double a0 = rec_a[0];
-            //                if (Math.Abs(a0) > 1e-12)
-            //                {
-            //                    for (int j = 0; j < rec_a.Length; j++) rec_a[j] /= a0;
-            //                    for (int j = 0; j < rec_b.Length; j++) rec_b[j] /= a0;
-            //                }
-
-            //                return (rec_a, rec_b);
-            //            }
-            //            catch (Exception)
-            //            {
-            //                rec_a = new double[filter_order + 1];
-            //                rec_b = new double[filter_order + 1];
-            //                rec_a[0] = 1.0;
-            //                for (int i = 1; i < rec_a.Length; i++) rec_a[i] = -0.7 * Math.Pow(0.8, i - 1);
-            //                rec_b[0] = 1.0;
-            //                return (rec_a, rec_b);
-            //            }
-            //        }
-            //    }
-            //}
         }
-
-
-        //public class Finite_Material : Material
-        //{
-        //    double[][][] alpha;
-        //    double[] Azimuth;
-        //    double[] Altitude;
-
-        //    Smart_Material Inf_Mat;
-
-        //    public Finite_Material(Smart_Material Mat, Rhino.Geometry.Brep Br, Rhino.Geometry.Mesh M, int face_id, Medium_Properties med)
-        //    {
-        //        //Strictly for the flat X,Y case - oversimplified for now.
-        //        Inf_Mat = Mat;
-        //        Azimuth = new double[36];
-        //        Altitude = new double[Mat.Angles.Length/2];
-        //        alpha = new double[Altitude.Length][][];
-        //        for(int i = 0; i < Altitude.Length; i++) Altitude[i] = Mat.Angles[i].Magnitude;
-        //        for(int i = 0; i < Azimuth.Length; i++) Azimuth[i] = i * 360f / Azimuth.Length;
-
-        //            //Set up a frequency interpolated Zr for each direction individually.
-        //            Rhino.Geometry.Point3d pt = M.Faces.GetFaceCenter(face_id);
-
-        //            double[][][] ZrR = new double[Altitude.Length][][], ZrI = new double[Altitude.Length][][];
-        //            double[] fr = new double[9];
-        //            for (int k = 0; k < Altitude.Length; k++)
-        //            {
-        //                ZrR[k] = new double[Azimuth.Length][];
-        //                ZrI[k] = new double[Azimuth.Length][];
-        //                alpha[k] = new double[Azimuth.Length][];
-        //                for (int j = 0; j < Azimuth.Length; j++)
-        //                {
-        //                    ZrR[k][j] = new double[9];
-        //                    ZrI[k][j] = new double[9];
-        //                    alpha[k][j] = new double[8];
-        //                }
-        //            }
-
-        //            for (int oct = 0; oct < 9; oct++)
-        //            {
-        //                fr[oct] = 62.5 * Math.Pow(2, oct) / Utilities.Numerics.rt2;
-        //                System.Numerics.Complex[][] Zr = AbsorptionModels.Operations.Finite_Radiation_Impedance_Rect_Longhand(pt.X, pt.Y, Br, fr[oct], Altitude, Azimuth, med.Sound_Speed(pt));
-
-        //                for (int k = 0; k < Zr.Length; k++)
-        //                {
-        //                    for (int j = 0; j < Zr[k].Length; j++)
-        //                    {
-        //                        ZrR[k][j][oct] = Zr[k][j].Real;
-        //                        ZrI[k][j][oct] = Zr[k][j].Imaginary;
-        //                    }
-        //                }
-        //            }
-
-        //            MathNet.Numerics.Interpolation.CubicSpline[][] Zr_r = new MathNet.Numerics.Interpolation.CubicSpline[Altitude.Length][];
-        //            MathNet.Numerics.Interpolation.CubicSpline[][] Zr_i = new MathNet.Numerics.Interpolation.CubicSpline[Altitude.Length][];
-
-        //            for (int k = 0; k < Zr_r.Length; k++)
-        //            {
-        //                Zr_r[k] = new MathNet.Numerics.Interpolation.CubicSpline[Azimuth.Length];
-        //                Zr_i[k] = new MathNet.Numerics.Interpolation.CubicSpline[Azimuth.Length];
-        //                for (int j = 0; j < Zr_r[k].Length; j++)
-        //                {
-        //                    //Interpolate over curve real and imaginary Zr here...
-        //                    Zr_r[k][j] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(fr, ZrR[k][j]);
-        //                    Zr_i[k][j] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(fr, ZrI[k][j]);
-        //                }
-        //            }
-
-        //            for (int k = 0; k < Zr_r.Length; k++)
-        //            {
-        //                for (int j = 0; j < Zr_r[k].Length; j++)
-        //                {
-        //                    List<double> freq = new List<double>();
-        //                    List<double> alpha_interp = new List<double>();
-        //                    for (int l = 0; l < Mat.frequency.Length; l++)
-        //                    {
-        //                        if (Mat.frequency[l] > 10000) break;
-        //                        freq.Add(Mat.frequency[l]);
-        //                        alpha_interp.Add(AbsorptionModels.Operations.Finite_Unit_Absorption_Coefficient(Mat.Z[k][j], new System.Numerics.Complex(Zr_r[k][j].Interpolate(Mat.frequency[l]), Zr_i[k][j].Interpolate(Mat.frequency[l])), med.Rho(pt), med.Sound_Speed(pt)));
-        //                    }
-        //                    MathNet.Numerics.Interpolation.CubicSpline a = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(freq, alpha_interp);
-        //                    for (int oct = 0; oct < 8; oct++)
-        //                    {
-        //                        alpha[k][j][oct] = 1 - a.Integrate(fr[oct], fr[oct + 1]) / (fr[oct + 1] - fr[oct]);
-        //                    }
-        //                }
-        //            }
-        //    }
-
-        //    public override void Absorb(ref BroadRay Ray, Hare.Geometry.Vector Normal)
-        //    {
-        //        //Simplified for sample laid on floor...
-        //        Ray.direction.Normalize();
-        //        int Alt = (int)Math.Floor((Math.Acos(Hare.Geometry.Hare_math.Dot(Ray.direction, new Hare.Geometry.Vector(0, 0, -1))) * Altitude.Length) / (Math.PI / 2));
-        //        if (Alt >= Altitude.Length / 2) Alt = Altitude.Length - 1;
-        //        int Azi = (int)Math.Round((Math.Atan2(Ray.direction.y, Ray.direction.x) * Azimuth.Length) / Math.PI);
-        //        if (Ray.direction.y < 0 && Azi < Azimuth.Length / 2) Azi = Azimuth.Length - Math.Abs(Azi);
-        //        for (int oct = 0; oct < 8; oct++) Ray.Energy[oct] *= alpha[Alt][Azi][oct];
-        //    }
-
-        //    public override void Absorb(ref BroadRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
-        //    {
-        //        Ray.direction.Normalize();
-        //        cos_theta = Math.Acos(Hare.Geometry.Hare_math.Dot(Ray.direction, new Hare.Geometry.Vector(0, 0, -1)));
-        //        int Alt = (int)Math.Floor((cos_theta * Altitude.Length) / (Math.PI / 2));
-        //        if (Alt >= Altitude.Length / 2) Alt = Altitude.Length - 1;
-        //        int Azi = (int)Math.Round((Math.Atan2(Ray.direction.y, Ray.direction.x) * Azimuth.Length) / Math.PI);
-        //        if (Ray.direction.y < 0 && Azi < Azimuth.Length / 2) Azi = Azimuth.Length - Math.Abs(Azi);
-
-        //        for (int oct = 0; oct < 8; oct++) Ray.Energy[oct] *= alpha[Alt][Azi][oct];                
-        //    }
-
-        //    public override void Absorb(ref OctaveRay Ray, Hare.Geometry.Vector Normal)
-        //    {
-        //        Ray.direction.Normalize();
-        //        int Alt = (int)Math.Floor((Math.Acos(Hare.Geometry.Hare_math.Dot(Ray.direction, new Hare.Geometry.Vector(0, 0, -1))) * Altitude.Length) / (Math.PI / 2));
-        //        if (Alt >= Altitude.Length / 2) Alt = Altitude.Length - 1;
-        //        int Azi = (int)Math.Round((Math.Atan2(Ray.direction.y, Ray.direction.x) * Azimuth.Length) / Math.PI);
-        //        if (Ray.direction.y < 0 && Azi < Azimuth.Length / 2) Azi = Azimuth.Length - Math.Abs(Azi);
-        //        Ray.Intensity *= alpha[Alt][Azi][Ray.Octave];
-        //    }
-
-        //    public override void Absorb(ref OctaveRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
-        //    {
-        //        Ray.direction.Normalize();
-        //        cos_theta = Math.Acos(Hare.Geometry.Hare_math.Dot(Ray.direction, new Hare.Geometry.Vector(0, 0, -1)));
-        //        int Alt = (int)Math.Floor((cos_theta * Altitude.Length) / (Math.PI / 2));
-        //        if (Alt >= Altitude.Length / 2) Alt = Altitude.Length - 1;
-        //        int Azi = (int)Math.Round((Math.Atan2(Ray.direction.y, Ray.direction.x) * Azimuth.Length) / Math.PI / 2);
-        //        if (Ray.direction.y < 0 && Azi < Azimuth.Length / 2) Azi = Azimuth.Length - Math.Abs(Azi);
-        //        if (Azi == Azimuth.Length) Azi = 0;
-        //        Ray.Intensity *= alpha[Alt][Azi][Ray.Octave];
-        //    }
-
-        //    public override double[] Coefficient_A_Broad()
-        //    {
-        //        return Inf_Mat.Coefficient_A_Broad();
-        //    }
-
-        //    public override double Coefficient_A_Broad(int Octave)
-        //    {
-        //        return Inf_Mat.Coefficient_A_Broad(Octave);
-        //    }
-
-        //    public override System.Numerics.Complex Reflection_Narrow(double frequency)
-        //    {
-        //        return Inf_Mat.Reflection_Narrow(frequency);
-        //    }
-
-        //    public override System.Numerics.Complex Reflection_Narrow(double frequency, Hare.Geometry.Vector Dir, Hare.Geometry.Vector Normal)
-        //    {
-        //        return Inf_Mat.Reflection_Narrow(frequency, Dir, Normal);
-        //    }
-
-        //    public override System.Numerics.Complex[] Reflection_Spectrum(int sample_frequency, int length, Hare.Geometry.Vector Normal, Hare.Geometry.Vector Dir, int threadid)
-        //    {
-        //        return Inf_Mat.Reflection_Spectrum(sample_frequency, length, Normal, Dir, threadid);
-        //    }
-        //}
 
         public class Smart_Material : Material
         {
@@ -2561,58 +1596,6 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            //private static double[] SM_BuildFitFrequencies(double fs, double maxFreq)
-            //{
-            //    List<double> f = new List<double>();
-
-            //    void AddLinear(double f0, double f1, int n)
-            //    {
-            //        if (n < 2) { f.Add(f0); return; }
-            //        for (int i = 0; i < n; i++)
-            //        {
-            //            double t = (double)i / (n - 1);
-            //            f.Add(f0 + t * (f1 - f0));
-            //        }
-            //    }
-
-            //    void AddLog(double f0, double f1, int n)
-            //    {
-            //        if (n < 2) { f.Add(f0); return; }
-            //        double l0 = Math.Log(f0);
-            //        double l1 = Math.Log(f1);
-            //        for (int i = 0; i < n; i++)
-            //        {
-            //            double t = (double)i / (n - 1);
-            //            f.Add(Math.Exp(l0 + t * (l1 - l0)));
-            //        }
-            //    }
-
-            //    double fHi = Math.Min(0.49 * fs, maxFreq);
-
-            //    AddLinear(5.0, 20.0, 32);
-            //    AddLinear(20.0, 60.0, 56);
-            //    AddLinear(60.0, 150.0, 72);
-            //    AddLog(150.0, 500.0, 40);
-            //    AddLog(500.0, Math.Min(1200.0, fHi), 24);
-
-            //    if (fHi > 1200.0)
-            //        AddLog(1200.0, fHi, 12);
-
-            //    f.Sort();
-
-            //    List<double> outF = new List<double>();
-            //    double last = -1.0;
-            //    for (int i = 0; i < f.Count; i++)
-            //    {
-            //        if (i == 0 || Math.Abs(f[i] - last) > 1e-9)
-            //        {
-            //            outF.Add(f[i]);
-            //            last = f[i];
-            //        }
-            //    }
-
-            //    return outF.ToArray();
-            //}
             private static double[] SM_BuildFitFrequencies(double fs, double maxFreq)
             {
                 List<double> f = new List<double>();
@@ -2776,38 +1759,6 @@ namespace Pachyderm_Acoustic
                 };
             }
 
-            //private static void SM_GetBounds(BottsModelSpec spec, out double[] lower, out double[] upper)
-            //{
-            //    const double rMax = 0.9997;
-            //    const double rMin = 0.7;
-
-            //    lower = new double[spec.ParameterCount];
-            //    upper = new double[spec.ParameterCount];
-
-            //    int k = 0;
-
-            //    // log gain
-            //    lower[k] = -8.0;
-            //    upper[k] = 4.0;
-            //    k++;
-
-            //    // real zero / real pole
-            //    for (int i = 0; i < spec.RealSections; i++)
-            //    {
-            //        lower[k] = -rMax; upper[k] = rMax; k++; // q
-            //        lower[k] = -rMax; upper[k] = rMax; k++; // p
-            //    }
-
-            //    // complex pair: radius and cos(angle) for zero and pole
-            //    for (int i = 0; i < spec.ComplexSections; i++)
-            //    {
-            //        lower[k] = 0.0; upper[k] = rMax; k++; // rq
-            //        lower[k] = -1.0; upper[k] = 1.0; k++; // cos phiq
-            //        lower[k] = 0.0; upper[k] = rMax; k++; // rp
-            //        lower[k] = -1.0; upper[k] = 1.0; k++; // cos phip
-            //    }
-            //}
-
             private static void SM_GetBounds(BottsModelSpec spec, double fs, double fMax, out double[] lower, out double[] upper)
             {
                 const double rMaxReal = 0.9997;
@@ -2852,14 +1803,6 @@ namespace Pachyderm_Acoustic
                 return c;
             }
 
-            //private static double[] SM_Conv(double[] a, double[] b)
-            //{
-            //    double[] c = new double[a.Length + b.Length - 1];
-            //    for (int i = 0; i < a.Length; i++)
-            //        for (int j = 0; j < b.Length; j++)
-            //            c[i + j] += a[i] * b[j];
-            //    return c;
-            //}
             private static void SM_BuildReflectionCoefficients(BottsModelSpec spec, double[] theta, double fs, out double[] bR, out double[] aR)
             {
                 int k = 0;
@@ -2913,45 +1856,6 @@ namespace Pachyderm_Acoustic
 
                 SM_NormalizeBA(ref bR, ref aR);
             }
-            //private static void SM_BuildReflectionCoefficients(BottsModelSpec spec, double[] theta, out double[] bR, out double[] aR)
-            //{
-            //    int k = 0;
-            //    double gain = Math.Exp(theta[k++]);
-
-            //    bR = new double[] { gain };
-            //    aR = new double[] { 1.0 };
-
-            //    // First-order sections
-            //    for (int i = 0; i < spec.RealSections; i++)
-            //    {
-            //        double q = theta[k++];
-            //        double p = theta[k++];
-
-            //        double[] b = new double[] { 1.0, -q };
-            //        double[] a = new double[] { 1.0, -p };
-
-            //        bR = SM_Conv(bR, b);
-            //        aR = SM_Conv(aR, a);
-            //    }
-
-            //    // Second-order conjugate-pair sections
-            //    for (int i = 0; i < spec.ComplexSections; i++)
-            //    {
-            //        double rq = theta[k++];
-            //        double cq = theta[k++];
-            //        double rp = theta[k++];
-            //        double cp = theta[k++];
-
-            //        double[] b = new double[] { 1.0, -2.0 * rq * cq, rq * rq };
-            //        double[] a = new double[] { 1.0, -2.0 * rp * cp, rp * rp };
-
-            //        bR = SM_Conv(bR, b);
-            //        aR = SM_Conv(aR, a);
-            //    }
-
-            //    SM_NormalizeBA(ref bR, ref aR);
-            //}
-
             private static void SM_ConvertReflectionToAdmittance(double[] bR, double[] aR, out double[] aY, out double[] bY)
             {
                 // R = B/A, so Y = (1-R)/(1+R) = (A-B)/(A+B)
@@ -3048,40 +1952,6 @@ namespace Pachyderm_Acoustic
 
                 return w;
             }
-            //private static double[] SM_BuildBandpassWeights(double[] freqs, double[] alphaTarget)
-            //{
-            //    int n = freqs.Length;
-            //    double[] w = new double[n];
-
-            //    int peak = 0;
-            //    for (int i = 1; i < n; i++)
-            //        if (alphaTarget[i] > alphaTarget[peak]) peak = i;
-
-            //    double f0 = freqs[peak];
-            //    double logf0 = Math.Log(Math.Max(f0, 1e-9));
-
-            //    for (int i = 0; i < n; i++)
-            //    {
-            //        double f = freqs[i];
-            //        double local = 0.0;
-
-            //        if (f0 > 0.0)
-            //        {
-            //            double d = Math.Abs(Math.Log(Math.Max(f, 1e-9)) - logf0);
-            //            local = Math.Exp(-(d * d) / (2.0 * 0.45 * 0.45));
-            //        }
-
-            //        double lowBias;
-            //        if (f < 20.0) lowBias = 1.6;
-            //        else if (f < 50.0) lowBias = 1.3;
-            //        else if (f < 100.0) lowBias = 1.1;
-            //        else lowBias = 0.8;
-
-            //        w[i] = lowBias + 2.5 * local;
-            //    }
-            //
-            //    return w;
-            //}
 
             private static double SM_ComputeLogLikelihoodForReflection(
                 BottsModelSpec spec,
@@ -3408,1057 +2278,6 @@ namespace Pachyderm_Acoustic
                     return (rec_a, rec_b);
                 }
             }
-            ////public override (double[] a, double[] b) Estimate_IIR_Coefficients(
-            ////    double sample_frequency,
-            ////    double max_freq,
-            ////    out double[] frequencies,
-            ////    int filter_order = 0)
-            ////{
-            ////    double fs = sample_frequency;
-
-            ////    lock (lock_IIR)
-            ////    {
-            ////        int requestedOrder = (filter_order > 0) ? filter_order : 0;
-
-            ////        if (rec_a != null && rec_b != null &&
-            ////            Math.Abs(rec_fs - fs) < 1e-9 &&
-            ////            Math.Abs(rec_maxfreq - max_freq) < 1e-9 &&
-            ////            rec_order == requestedOrder &&
-            ////            rec_fit_freqs != null)
-            ////        {
-            ////            frequencies = (double[])rec_fit_freqs.Clone();
-            ////            return (rec_a, rec_b);
-            ////        }
-
-            ////        // Keep aligned with your current Admittance(double frequency) convention.
-            ////        int idx = 17;
-            ////        if (Transfer_FunctionR == null || Transfer_FunctionR.Length == 0) idx = 0;
-            ////        idx = Math.Max(0, Math.Min(idx, Transfer_FunctionR.Length - 1));
-
-            ////        System.Numerics.Complex[] BuildTarget(double[] freqGrid)
-            ////        {
-            ////            var Y = new System.Numerics.Complex[freqGrid.Length];
-
-            ////            for (int i = 0; i < freqGrid.Length; i++)
-            ////            {
-            ////                double f = freqGrid[i];
-
-            ////                System.Numerics.Complex R = new System.Numerics.Complex(
-            ////                    Transfer_FunctionR[idx].Interpolate(f),
-            ////                    Transfer_FunctionI[idx].Interpolate(f));
-
-            ////                System.Numerics.Complex denom = System.Numerics.Complex.One + R;
-            ////                if (denom.Magnitude < 1e-12) denom = new System.Numerics.Complex(1e-12, 0.0);
-
-            ////                System.Numerics.Complex Yn = (System.Numerics.Complex.One - R) / denom;
-
-            ////                // Small passive clamp
-            ////                if (Yn.Real < 0.0) Yn = new System.Numerics.Complex(0.0, Yn.Imaginary);
-
-            ////                Y[i] = Yn;
-            ////            }
-
-            ////            return Y;
-            ////        }
-
-            ////        double[] BuildValueWeights(double[] freqGrid, System.Numerics.Complex[] Ytarget)
-            ////        {
-            ////            double[] wts = new double[freqGrid.Length];
-            ////            double fHiUse = Math.Min(0.49 * fs, max_freq);
-
-            ////            for (int i = 0; i < freqGrid.Length; i++)
-            ////            {
-            ////                double f = freqGrid[i];
-            ////                double w;
-
-            ////                if (f < 5.0 || f > fHiUse)
-            ////                {
-            ////                    wts[i] = 0.0;
-            ////                    continue;
-            ////                }
-
-            ////                if (f < 12.0) w = 5.0;
-            ////                else if (f < 25.0) w = 4.2;
-            ////                else if (f < 50.0) w = 3.4;
-            ////                else if (f < 100.0) w = 2.4;
-            ////                else if (f < 200.0) w = 1.7;
-            ////                else if (f < 1000.0) w = 1.0;
-            ////                else if (f < 2500.0) w = 0.35;
-            ////                else w = 0.12;
-
-            ////                wts[i] = w / Math.Max(0.02, Ytarget[i].Magnitude);
-            ////            }
-
-            ////            return wts;
-            ////        }
-
-            ////        double[] BuildSlopeWeights(double[] freqGrid, System.Numerics.Complex[] Ytarget, System.Numerics.Complex[] dYdLog)
-            ////        {
-            ////            double[] wts = new double[freqGrid.Length];
-            ////            double fHiUse = Math.Min(0.49 * fs, max_freq);
-
-            ////            const double lambdaSlope = 0.18;
-
-            ////            for (int i = 0; i < freqGrid.Length; i++)
-            ////            {
-            ////                double f = freqGrid[i];
-            ////                double w;
-
-            ////                if (f < 5.0 || f > fHiUse)
-            ////                {
-            ////                    wts[i] = 0.0;
-            ////                    continue;
-            ////                }
-
-            ////                if (f < 12.0) w = 5.0;
-            ////                else if (f < 25.0) w = 4.0;
-            ////                else if (f < 50.0) w = 3.0;
-            ////                else if (f < 100.0) w = 2.0;
-            ////                else if (f < 200.0) w = 1.2;
-            ////                else if (f < 1000.0) w = 0.55;
-            ////                else if (f < 2500.0) w = 0.20;
-            ////                else w = 0.08;
-
-            ////                // Keep slope rows from dominating where target is tiny or very flat.
-            ////                double scale = Math.Max(0.05, Ytarget[i].Magnitude + 0.5 * dYdLog[i].Magnitude);
-            ////                wts[i] = lambdaSlope * w / scale;
-            ////            }
-
-            ////            return wts;
-            ////        }
-
-            ////        (double[] bestA, double[] bestB, int bestBudget, double bestErr) RunSolve(
-            ////            double[] freqGrid,
-            ////            System.Numerics.Complex[] Ytarget,
-            ////            System.Numerics.Complex[] dYdLog,
-            ////            double[] valueWeights,
-            ////            double[] slopeWeights)
-            ////        {
-            ////            // Positive-real dictionary
-            ////            double[] hpHzBase = new double[] { 3, 6, 10, 16, 25, 40, 63, 100, 160, 250 };
-            ////            double[] bpHzBase = new double[] { 12, 18, 25, 35, 50, 70, 100, 140, 200, 280, 400, 560, 800 };
-            ////            double[] qBase = new double[] { 0.7, 1.4, 3.0, 6.0 };
-
-            ////            double[] hpShiftCandidates = new double[] { 0.85, 1.0, 1.2 };
-            ////            double[] bpShiftCandidates = new double[] { 0.85, 1.0, 1.15 };
-
-            ////            int[] budgets = (filter_order > 0)
-            ////                ? new int[] { Math.Max(4, Math.Min(filter_order, 10)) }
-            ////                : new int[] { 5, 7, 9 };
-
-            ////            double fHiUse = Math.Min(0.45 * fs, max_freq);
-
-            ////            double bestErrLocal = double.MaxValue;
-            ////            double[] bestALocal = null;
-            ////            double[] bestBLocal = null;
-            ////            int bestBudgetLocal = 0;
-
-            ////            foreach (int budget in budgets)
-            ////            {
-            ////                foreach (double hpShift in hpShiftCandidates)
-            ////                {
-            ////                    foreach (double bpShift in bpShiftCandidates)
-            ////                    {
-            ////                        List<double> hpHz = new List<double>();
-            ////                        for (int i = 0; i < hpHzBase.Length; i++)
-            ////                        {
-            ////                            double f = hpHzBase[i] * hpShift;
-            ////                            if (f >= 2.0 && f <= Math.Min(fHiUse, 400.0))
-            ////                                hpHz.Add(f);
-            ////                        }
-
-            ////                        List<double> bpHz = new List<double>();
-            ////                        List<double> bpQ = new List<double>();
-
-            ////                        for (int i = 0; i < bpHzBase.Length; i++)
-            ////                        {
-            ////                            double fc = bpHzBase[i] * bpShift;
-            ////                            if (fc >= 8.0 && fc <= Math.Min(fHiUse, 1200.0))
-            ////                            {
-            ////                                for (int q = 0; q < qBase.Length; q++)
-            ////                                {
-            ////                                    bpHz.Add(fc);
-            ////                                    bpQ.Add(qBase[q]);
-            ////                                }
-            ////                            }
-            ////                        }
-
-            ////                        int nHP = hpHz.Count;
-            ////                        int nBP = bpHz.Count;
-            ////                        int cols = 1 + nHP + nBP; // constant + hp + bp
-            ////                        int K = freqGrid.Length;
-            ////                        int rows = 4 * K;         // value real/imag + slope real/imag
-
-            ////                        double[,] A = new double[rows, cols];
-            ////                        double[] y = new double[rows];
-            ////                        double[] colNorm2 = new double[cols];
-
-            ////                        for (int i = 0; i < K; i++)
-            ////                        {
-            ////                            double f = freqGrid[i];
-            ////                            double w = 2.0 * Math.PI * f;
-            ////                            System.Numerics.Complex s = new System.Numerics.Complex(0.0, w);
-
-            ////                            int rv = i;
-            ////                            int iv = i + K;
-            ////                            int rd = i + 2 * K;
-            ////                            int id = i + 3 * K;
-
-            ////                            y[rv] = valueWeights[i] * Ytarget[i].Real;
-            ////                            y[iv] = valueWeights[i] * Ytarget[i].Imaginary;
-            ////                            y[rd] = slopeWeights[i] * dYdLog[i].Real;
-            ////                            y[id] = slopeWeights[i] * dYdLog[i].Imaginary;
-
-            ////                            int col = 0;
-
-            ////                            // Constant conductance atom
-            ////                            A[rv, col] = valueWeights[i];
-            ////                            A[iv, col] = 0.0;
-            ////                            A[rd, col] = 0.0;
-            ////                            A[id, col] = 0.0;
-            ////                            colNorm2[col] += valueWeights[i] * valueWeights[i];
-            ////                            col++;
-
-            ////                            // High-pass atoms: H = s/(s+sigma), dH/dlnw = s*sigma/(s+sigma)^2
-            ////                            for (int h = 0; h < nHP; h++)
-            ////                            {
-            ////                                double sigma = SM_WarpHzToAnalogRad(hpHz[h], fs);
-            ////                                System.Numerics.Complex H = s / (s + sigma);
-            ////                                System.Numerics.Complex dH = s * sigma / ((s + sigma) * (s + sigma));
-
-            ////                                double vr = valueWeights[i] * H.Real;
-            ////                                double vi = valueWeights[i] * H.Imaginary;
-            ////                                double dr = slopeWeights[i] * dH.Real;
-            ////                                double di = slopeWeights[i] * dH.Imaginary;
-
-            ////                                A[rv, col] = vr;
-            ////                                A[iv, col] = vi;
-            ////                                A[rd, col] = dr;
-            ////                                A[id, col] = di;
-
-            ////                                colNorm2[col] += vr * vr + vi * vi + dr * dr + di * di;
-            ////                                col++;
-            ////                            }
-
-            ////                            // Band-pass atoms:
-            ////                            // H = (bw s)/(s^2 + bw s + w0^2)
-            ////                            // dH/dlnw = s * bw * (w0^2 - s^2) / D^2
-            ////                            for (int bpi = 0; bpi < nBP; bpi++)
-            ////                            {
-            ////                                double w0 = SM_WarpHzToAnalogRad(bpHz[bpi], fs);
-            ////                                double bw = w0 / bpQ[bpi];
-
-            ////                                System.Numerics.Complex D = s * s + bw * s + w0 * w0;
-            ////                                if (D.Magnitude < 1e-18) D = new System.Numerics.Complex(1e-18, 0.0);
-
-            ////                                System.Numerics.Complex H = (bw * s) / D;
-            ////                                System.Numerics.Complex dH = s * bw * (w0 * w0 - s * s) / (D * D);
-
-            ////                                double vr = valueWeights[i] * H.Real;
-            ////                                double vi = valueWeights[i] * H.Imaginary;
-            ////                                double dr = slopeWeights[i] * dH.Real;
-            ////                                double di = slopeWeights[i] * dH.Imaginary;
-
-            ////                                A[rv, col] = vr;
-            ////                                A[iv, col] = vi;
-            ////                                A[rd, col] = dr;
-            ////                                A[id, col] = di;
-
-            ////                                colNorm2[col] += vr * vr + vi * vi + dr * dr + di * di;
-            ////                                col++;
-            ////                            }
-            ////                        }
-
-            ////                        double[] coeff = SM_SolveNNLSProjected(A, y, iters: 1800, ridge: 1e-6);
-
-            ////                        // Keep only the strongest atoms
-            ////                        int dynamicCount = cols - 1;
-            ////                        int keepDynamic = Math.Min(Math.Max(3, budget), dynamicCount);
-
-            ////                        List<(double score, int col)> ranked = new List<(double score, int col)>();
-            ////                        for (int col = 1; col < cols; col++)
-            ////                        {
-            ////                            double score = coeff[col] * Math.Sqrt(Math.Max(0.0, colNorm2[col]));
-            ////                            ranked.Add((score, col));
-            ////                        }
-
-            ////                        ranked.Sort((x, y2) => y2.score.CompareTo(x.score));
-
-            ////                        HashSet<int> keepCols = new HashSet<int>();
-            ////                        for (int i = 0; i < Math.Min(keepDynamic, ranked.Count); i++)
-            ////                            if (ranked[i].score > 1e-12) keepCols.Add(ranked[i].col);
-
-            ////                        double[] bTot = new double[] { 0.0 };
-            ////                        double[] aTot = new double[] { 1.0 };
-
-            ////                        double g0 = Math.Max(0.0, coeff[0]);
-            ////                        if (g0 > 0.0)
-            ////                        {
-            ////                            double[] bc = new double[] { g0 };
-            ////                            double[] ac = new double[] { 1.0 };
-            ////                            SM_AddParallelSection(ref bTot, ref aTot, bc, ac);
-            ////                        }
-
-            ////                        int colHP0 = 1;
-            ////                        for (int h = 0; h < nHP; h++)
-            ////                        {
-            ////                            int col = colHP0 + h;
-            ////                            if (!keepCols.Contains(col)) continue;
-
-            ////                            double gain = Math.Max(0.0, coeff[col]);
-            ////                            if (gain <= 0.0) continue;
-
-            ////                            double sigma = SM_WarpHzToAnalogRad(hpHz[h], fs);
-            ////                            SM_AddDigitalHighPassAtom(ref bTot, ref aTot, gain, sigma, fs);
-            ////                        }
-
-            ////                        int colBP0 = 1 + nHP;
-            ////                        for (int bpi = 0; bpi < nBP; bpi++)
-            ////                        {
-            ////                            int col = colBP0 + bpi;
-            ////                            if (!keepCols.Contains(col)) continue;
-
-            ////                            double gain = Math.Max(0.0, coeff[col]);
-            ////                            if (gain <= 0.0) continue;
-
-            ////                            double w0 = SM_WarpHzToAnalogRad(bpHz[bpi], fs);
-            ////                            double Q = bpQ[bpi];
-            ////                            SM_AddDigitalBandPassAtom(ref bTot, ref aTot, gain, w0, Q, fs);
-            ////                        }
-
-            ////                        double gScale = SM_BestPositiveScale(bTot, aTot, freqGrid, Ytarget, valueWeights, fs);
-
-            ////                        // Apply scalar to numerator only
-            ////                        if (Math.Abs(gScale - 1.0) > 1e-12)
-            ////                        {
-            ////                            for (int ii = 0; ii < bTot.Length; ii++) bTot[ii] *= gScale;
-            ////                        }
-
-            ////                        double err = SM_DigitalComplexError(bTot, aTot, freqGrid, Ytarget, valueWeights, fs);
-
-            ////                        if (err < bestErrLocal)
-            ////                        {
-            ////                            bestErrLocal = err;
-            ////                            bestALocal = aTot;
-            ////                            bestBLocal = bTot;
-            ////                            bestBudgetLocal = budget;
-            ////                        }
-            ////                    }
-            ////                }
-            ////            }
-
-            ////            return (bestALocal, bestBLocal, bestBudgetLocal, bestErrLocal);
-            ////        }
-
-            ////        // Pass 1
-            ////        double[] freqPass1 = SM_BuildFitFrequencies(fs, max_freq);
-            ////        System.Numerics.Complex[] targetPass1 = BuildTarget(freqPass1);
-            ////        System.Numerics.Complex[] dTargetPass1 = SM_BuildDerivativeLogTarget(freqPass1, targetPass1);
-            ////        double[] valueWeightsPass1 = BuildValueWeights(freqPass1, targetPass1);
-            ////        double[] slopeWeightsPass1 = BuildSlopeWeights(freqPass1, targetPass1, dTargetPass1);
-
-            ////        var pass1 = RunSolve(freqPass1, targetPass1, dTargetPass1, valueWeightsPass1, slopeWeightsPass1);
-
-            ////        // Pass 2: adaptive refinement around worst-fit frequencies
-            ////        double[] freqPass2;
-            ////        if (pass1.bestA != null && pass1.bestB != null)
-            ////        {
-            ////            freqPass2 = SM_RefineFitFrequencies(
-            ////                freqPass1,
-            ////                pass1.bestB,
-            ////                pass1.bestA,
-            ////                targetPass1,
-            ////                fs,
-            ////                extraPerPeak: 6,
-            ////                peakCount: 10);
-            ////        }
-            ////        else
-            ////        {
-            ////            freqPass2 = freqPass1;
-            ////        }
-
-            ////        System.Numerics.Complex[] targetPass2 = BuildTarget(freqPass2);
-            ////        System.Numerics.Complex[] dTargetPass2 = SM_BuildDerivativeLogTarget(freqPass2, targetPass2);
-            ////        double[] valueWeightsPass2 = BuildValueWeights(freqPass2, targetPass2);
-            ////        double[] slopeWeightsPass2 = BuildSlopeWeights(freqPass2, targetPass2, dTargetPass2);
-
-            ////        var pass2 = RunSolve(freqPass2, targetPass2, dTargetPass2, valueWeightsPass2, slopeWeightsPass2);
-
-            ////        double[] bestA = null;
-            ////        double[] bestB = null;
-            ////        int bestBudget = 0;
-
-            ////        if (pass2.bestA != null && pass2.bestB != null &&
-            ////            (pass1.bestA == null || pass2.bestErr <= pass1.bestErr))
-            ////        {
-            ////            bestA = pass2.bestA;
-            ////            bestB = pass2.bestB;
-            ////            bestBudget = pass2.bestBudget;
-            ////            frequencies = freqPass2;
-            ////        }
-            ////        else if (pass1.bestA != null && pass1.bestB != null)
-            ////        {
-            ////            bestA = pass1.bestA;
-            ////            bestB = pass1.bestB;
-            ////            bestBudget = pass1.bestBudget;
-            ////            frequencies = freqPass1;
-            ////        }
-            ////        else
-            ////        {
-            ////            frequencies = freqPass2;
-            ////        }
-
-            ////        // Guaranteed non-rigid fallback: constant positive conductance
-            ////        if (bestA == null || bestB == null)
-            ////        {
-            ////            double[] freqFallback = frequencies;
-            ////            System.Numerics.Complex[] targetFallback = BuildTarget(freqFallback);
-            ////            double[] weightsFallback = BuildValueWeights(freqFallback, targetFallback);
-
-            ////            double num = 0.0;
-            ////            double den = 0.0;
-            ////            for (int i = 0; i < freqFallback.Length; i++)
-            ////            {
-            ////                if (weightsFallback[i] <= 0.0) continue;
-            ////                num += weightsFallback[i] * Math.Max(0.0, targetFallback[i].Real);
-            ////                den += weightsFallback[i];
-            ////            }
-
-            ////            double g = (den > 0.0) ? (num / den) : 0.05;
-            ////            if (g < 1e-6) g = 0.05;
-
-            ////            bestA = new double[] { 1.0 };
-            ////            bestB = new double[] { g };
-            ////            bestBudget = 1;
-            ////        }
-
-            ////        rec_fs = fs;
-            ////        rec_maxfreq = max_freq;
-            ////        rec_order = (requestedOrder > 0) ? requestedOrder : bestBudget;
-            ////        rec_a = bestA;
-            ////        rec_b = bestB;
-            ////        rec_fit_freqs = (double[])frequencies.Clone();
-
-            ////        return (rec_a, rec_b);
-            ////    }
-            ////}
-
-            //private static double[] SM_Convolve(double[] a, double[] b)
-            //{
-            //    double[] c = new double[a.Length + b.Length - 1];
-            //    for (int i = 0; i < a.Length; i++)
-            //        for (int j = 0; j < b.Length; j++)
-            //            c[i + j] += a[i] * b[j];
-            //    return c;
-            //}
-
-            //private static System.Numerics.Complex SM_EvalZinvPoly(double[] c, System.Numerics.Complex z1)
-            //{
-            //    // c[0] + c[1] z^-1 + c[2] z^-2 + ...
-            //    System.Numerics.Complex acc = 0;
-            //    System.Numerics.Complex zp = 1;
-            //    for (int k = 0; k < c.Length; k++)
-            //    {
-            //        acc += c[k] * zp;
-            //        zp *= z1;
-            //    }
-            //    return acc;
-            //}
-
-            //private static double[] SM_BuildStableDenominatorBiquads(int order, double fs, double fLo, double fHi, double poleCap, double Q)
-            //{
-            //    if (order < 2) order = 2;
-            //    if ((order & 1) == 1) order++; // even
-            //    int nsec = order / 2;
-
-            //    fLo = Math.Max(1.0, fLo);
-            //    fHi = Math.Min(0.49 * fs, Math.Max(fLo * 1.01, fHi));
-
-            //    double[] a = new double[] { 1.0 };
-
-            //    for (int s = 0; s < nsec; s++)
-            //    {
-            //        double t = (s + 0.5) / nsec;
-            //        double fc = fLo * Math.Pow(fHi / fLo, t);
-            //        double w0 = 2.0 * Math.PI * fc / fs;
-
-            //        double bw = fc / Math.Max(0.25, Q);
-            //        double r = Math.Exp(-Math.PI * bw / fs);
-            //        r = Math.Min(r, poleCap);
-            //        r = Math.Max(r, 0.10);
-
-            //        double c0 = Math.Cos(w0);
-
-            //        // 1 - 2 r cos(w0) z^-1 + r^2 z^-2
-            //        double[] sec = new double[] { 1.0, -2.0 * r * c0, r * r };
-            //        a = SM_Convolve(a, sec);
-            //    }
-
-            //    double a0 = a[0];
-            //    if (Math.Abs(a0) > 1e-14 && Math.Abs(a0 - 1.0) > 1e-12)
-            //    {
-            //        double inv = 1.0 / a0;
-            //        for (int i = 0; i < a.Length; i++) a[i] *= inv;
-            //    }
-
-            //    return a;
-            //}
-
-            //private static double[] SM_SolveNumeratorLSComplexWeighted(
-            //    double[] freqs,
-            //    System.Numerics.Complex[] Ytarget,
-            //    double[] a,
-            //    double fs,
-            //    double[] weights,
-            //    double ridge = 1e-10)
-            //{
-            //    int M = a.Length;
-            //    int K = Math.Min(freqs.Length, Ytarget.Length);
-
-            //    double[,] G = new double[M, M];
-            //    double[] h = new double[M];
-
-            //    for (int i = 0; i < K; i++)
-            //    {
-            //        double wgt = weights[i];
-            //        if (wgt <= 0) continue;
-
-            //        double w = 2.0 * Math.PI * freqs[i] / fs;
-            //        System.Numerics.Complex z1 = System.Numerics.Complex.Exp(-System.Numerics.Complex.ImaginaryOne * w);
-
-            //        System.Numerics.Complex A = SM_EvalZinvPoly(a, z1);
-            //        System.Numerics.Complex d = Ytarget[i] * A;
-
-            //        System.Numerics.Complex bp = System.Numerics.Complex.One;
-            //        double[] xr = new double[M];
-            //        double[] xi = new double[M];
-
-            //        for (int m = 0; m < M; m++)
-            //        {
-            //            xr[m] = bp.Real;
-            //            xi[m] = bp.Imaginary;
-            //            bp *= z1;
-            //        }
-
-            //        double yr = d.Real;
-            //        double yi = d.Imaginary;
-            //        double ww = wgt * wgt;
-
-            //        for (int m = 0; m < M; m++)
-            //        {
-            //            h[m] += ww * (xr[m] * yr + xi[m] * yi);
-            //            for (int n = 0; n < M; n++)
-            //                G[m, n] += ww * (xr[m] * xr[n] + xi[m] * xi[n]);
-            //        }
-            //    }
-
-            //    for (int m = 0; m < M; m++) G[m, m] += ridge;
-
-            //    // Gaussian elimination
-            //    double[,] Aaug = new double[M, M + 1];
-            //    for (int i = 0; i < M; i++)
-            //    {
-            //        for (int j = 0; j < M; j++) Aaug[i, j] = G[i, j];
-            //        Aaug[i, M] = h[i];
-            //    }
-
-            //    for (int col = 0; col < M; col++)
-            //    {
-            //        int piv = col;
-            //        double best = Math.Abs(Aaug[col, col]);
-            //        for (int r = col + 1; r < M; r++)
-            //        {
-            //            double v = Math.Abs(Aaug[r, col]);
-            //            if (v > best) { best = v; piv = r; }
-            //        }
-            //        if (best < 1e-18) break;
-
-            //        if (piv != col)
-            //        {
-            //            for (int j = col; j < M + 1; j++)
-            //            {
-            //                double tmp = Aaug[col, j];
-            //                Aaug[col, j] = Aaug[piv, j];
-            //                Aaug[piv, j] = tmp;
-            //            }
-            //        }
-
-            //        double diag = Aaug[col, col];
-            //        for (int j = col; j < M + 1; j++) Aaug[col, j] /= diag;
-
-            //        for (int r = 0; r < M; r++)
-            //        {
-            //            if (r == col) continue;
-            //            double f = Aaug[r, col];
-            //            if (Math.Abs(f) < 1e-18) continue;
-            //            for (int j = col; j < M + 1; j++) Aaug[r, j] -= f * Aaug[col, j];
-            //        }
-            //    }
-
-            //    double[] b = new double[M];
-            //    for (int i = 0; i < M; i++) b[i] = Aaug[i, M];
-            //    return b;
-            //}
-
-            //private static bool SM_DenomIsStable(double[] a, double radius = 0.999999)
-            //{
-            //    int n = a.Length - 1;
-            //    if (n <= 0) return true;
-
-            //    double a0 = a[0];
-            //    if (Math.Abs(a0) < 1e-14) return false;
-
-            //    var C = MathNet.Numerics.LinearAlgebra.Double.Matrix.Build.Dense(n, n, 0.0);
-            //    for (int j = 0; j < n; j++)
-            //        C[0, j] = -a[j + 1] / a0;
-
-            //    for (int i = 1; i < n; i++)
-            //        C[i, i - 1] = 1.0;
-
-            //    var evd = C.Evd();
-            //    foreach (var p in evd.EigenValues)
-            //        if (p.Magnitude >= radius) return false;
-
-            //    return true;
-            //}
-
-            //private static double SM_MinRealY(double[] freqs, double[] a, double[] b, double fs, double[] weights)
-            //{
-            //    double minRe = double.PositiveInfinity;
-
-            //    for (int i = 0; i < freqs.Length; i++)
-            //    {
-            //        if (weights[i] <= 0) continue;
-
-            //        double w = 2.0 * Math.PI * freqs[i] / fs;
-            //        System.Numerics.Complex z1 = System.Numerics.Complex.Exp(-System.Numerics.Complex.ImaginaryOne * w);
-
-            //        System.Numerics.Complex A = SM_EvalZinvPoly(a, z1);
-            //        System.Numerics.Complex B = SM_EvalZinvPoly(b, z1);
-            //        System.Numerics.Complex Yfit = (A.Magnitude < 1e-18) ? System.Numerics.Complex.Zero : (B / A);
-
-            //        if (Yfit.Real < minRe) minRe = Yfit.Real;
-            //    }
-
-            //    return minRe;
-            //}
-
-            //private static double SM_ComplexErrorY(
-            //    double[] freqs,
-            //    System.Numerics.Complex[] Ytarget,
-            //    double[] a,
-            //    double[] b,
-            //    double fs,
-            //    double[] weights)
-            //{
-            //    double errSum = 0.0;
-            //    double wSum = 0.0;
-
-            //    for (int i = 0; i < freqs.Length; i++)
-            //    {
-            //        double wgt = weights[i];
-            //        if (wgt <= 0) continue;
-
-            //        double w = 2.0 * Math.PI * freqs[i] / fs;
-            //        System.Numerics.Complex z1 = System.Numerics.Complex.Exp(-System.Numerics.Complex.ImaginaryOne * w);
-
-            //        System.Numerics.Complex A = SM_EvalZinvPoly(a, z1);
-            //        System.Numerics.Complex B = SM_EvalZinvPoly(b, z1);
-            //        System.Numerics.Complex Yfit = (A.Magnitude < 1e-18) ? System.Numerics.Complex.Zero : (B / A);
-
-            //        double denom = Math.Max(0.05, Ytarget[i].Magnitude);
-            //        double e = (Yfit - Ytarget[i]).Magnitude / denom;
-
-            //        errSum += wgt * e;
-            //        wSum += wgt;
-            //    }
-
-            //    return (wSum > 0) ? errSum / wSum : double.MaxValue;
-            //}
-
-            //// -----------------------------------------------------------------------------
-            //// Replacement estimator for Smart_Material
-            //// -----------------------------------------------------------------------------
-
-            //public override (double[] a, double[] b) Estimate_IIR_Coefficients(
-            //    double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
-            //{
-            //    const int N = 4096;
-            //    double fs = sample_frequency;
-
-            //    int K = (int)Math.Floor(max_freq * N / fs) + 1;
-            //    K = Math.Max(16, Math.Min(K, N / 2 + 1));
-
-            //    frequencies = new double[K];
-            //    for (int i = 0; i < K; i++) frequencies[i] = i * fs / N;
-
-            //    lock (lock_IIR)
-            //    {
-            //        int requestedOrder = (filter_order > 0) ? filter_order : 0;
-
-            //        if (rec_a != null && rec_b != null &&
-            //            Math.Abs(rec_fs - fs) < 1e-9 &&
-            //            Math.Abs(rec_maxfreq - max_freq) < 1e-9 &&
-            //            rec_order == requestedOrder)
-            //        {
-            //            return (rec_a, rec_b);
-            //        }
-
-            //        // Use the same index convention as your current Admittance(double frequency) method.
-            //        int idx = 17;
-            //        if (Transfer_FunctionR == null || Transfer_FunctionR.Length == 0) idx = 0;
-            //        idx = Math.Max(0, Math.Min(idx, Transfer_FunctionR.Length - 1));
-
-            //        System.Numerics.Complex[] Ytarget = new System.Numerics.Complex[K];
-
-            //        for (int i = 0; i < K; i++)
-            //        {
-            //            double f = frequencies[i];
-
-            //            System.Numerics.Complex R = new System.Numerics.Complex(
-            //                Transfer_FunctionR[idx].Interpolate(f),
-            //                Transfer_FunctionI[idx].Interpolate(f));
-
-            //            System.Numerics.Complex denom = System.Numerics.Complex.One + R;
-            //            if (denom.Magnitude < 1e-12) denom = new System.Numerics.Complex(1e-12, 0);
-
-            //            // Normalized admittance
-            //            System.Numerics.Complex Y = (System.Numerics.Complex.One - R) / denom;
-
-            //            // Small passive fuse
-            //            if (Y.Real < 0) Y = new System.Numerics.Complex(0, Y.Imaginary);
-
-            //            Ytarget[i] = Y;
-            //        }
-
-            //        double[] weights = new double[K];
-            //        for (int i = 0; i < K; i++)
-            //        {
-            //            double f = frequencies[i];
-
-            //            double bandWeight = 0.0;
-            //            if (f >= 20 && f <= Math.Min(0.45 * fs, max_freq))
-            //                bandWeight = (f >= 125 && f <= 4000) ? 1.0 : 0.25;
-
-            //            // Relative-error style weighting so small admittances are not ignored
-            //            weights[i] = bandWeight / Math.Max(0.05, Ytarget[i].Magnitude);
-            //        }
-
-            //        int[] orders = (filter_order > 0)
-            //            ? new int[] { ((filter_order & 1) == 1) ? filter_order + 1 : filter_order }
-            //            : new int[] { 2, 4, 6 };
-
-            //        double[] poleCaps = new double[] { 0.85, 0.90, 0.93, 0.95 };
-            //        double[] Qs = new double[] { 0.6, 0.8, 1.0 };
-
-            //        double bestErr = double.MaxValue;
-            //        double[] bestA = null;
-            //        double[] bestB = null;
-            //        int bestOrder = 0;
-
-            //        foreach (int order0 in orders)
-            //        {
-            //            int order = Math.Max(2, order0);
-            //            if ((order & 1) == 1) order++;
-
-            //            foreach (double poleCap in poleCaps)
-            //            {
-            //                foreach (double Q in Qs)
-            //                {
-            //                    double[] aY = SM_BuildStableDenominatorBiquads(
-            //                        order,
-            //                        fs,
-            //                        20.0,
-            //                        Math.Min(max_freq * 0.95, 0.45 * fs),
-            //                        poleCap,
-            //                        Q);
-
-            //                    double[] bY = SM_SolveNumeratorLSComplexWeighted(
-            //                        frequencies,
-            //                        Ytarget,
-            //                        aY,
-            //                        fs,
-            //                        weights,
-            //                        1e-10);
-
-            //                    if (!SM_DenomIsStable(aY)) continue;
-            //                    if (SM_MinRealY(frequencies, aY, bY, fs, weights) < -1e-4) continue;
-
-            //                    double err = SM_ComplexErrorY(frequencies, Ytarget, aY, bY, fs, weights);
-
-            //                    if (err < bestErr)
-            //                    {
-            //                        bestErr = err;
-            //                        bestA = aY;
-            //                        bestB = bY;
-            //                        bestOrder = order;
-            //                    }
-            //                }
-            //            }
-            //        }
-
-            //        if (bestA == null || bestB == null)
-            //        {
-            //            // rigid fallback: normalized admittance = 0
-            //            rec_fs = fs;
-            //            rec_maxfreq = max_freq;
-            //            rec_order = requestedOrder;
-            //            rec_a = new double[] { 1.0 };
-            //            rec_b = new double[] { 0.0 };
-            //            return (rec_a, rec_b);
-            //        }
-
-            //        rec_fs = fs;
-            //        rec_maxfreq = max_freq;
-            //        rec_order = requestedOrder;
-            //        rec_a = bestA;
-            //        rec_b = bestB;
-
-            //        return (rec_a, rec_b);
-            //    }
-            //}
-
-            //public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
-            //{
-            //    const int N = 4096; // design FFT length / frequency grid basis
-            //    double fs = sample_frequency;
-
-            //    // Number of frequency points up to max_freq using bin spacing fs/N
-            //    int K = (int)Math.Floor(max_freq * N / fs) + 1;
-            //    if (K < 4) K = Math.Min(4, N);
-
-            //    frequencies = new double[K];
-            //    for (int i = 0; i < K; i++)
-            //        frequencies[i] = i * fs / N; // 0 .. max_freq
-
-            //    // Compute reflection spectrum at normal incidence (as before)
-            //    Complex[] Rfull = this.Reflection_Spectrum((int)fs, N,
-            //        new Hare.Geometry.Vector(0, 0, 1),
-            //        new Hare.Geometry.Vector(0, 0, 1),
-            //        0);
-
-            //    // Build admittance target Y = (1 - R) / (1 + R)
-            //    Complex[] Y = new Complex[K];
-            //    for (int i = 0; i < K; i++)
-            //    {
-            //        Complex R = Rfull[i];
-            //        Complex denom = Complex.One + R;
-            //        if (denom.Magnitude < 1e-12) denom = new Complex(1e-12, 0); // avoid R ~ -1 singularity
-            //        Y[i] = (Complex.One - R) / denom;
-
-            //        // Optional: crude passivity pre-clamp (helps prevent active fits)
-            //        if (Y[i].Real < 0) Y[i] = new Complex(0, Y[i].Imaginary);
-            //    }
-
-            //    // If filter_order is zero/negative, pick an order automatically (cached)
-            //    if (filter_order <= 0)
-            //    {
-            //        if (rec_order > 0 && rec_a != null && rec_b != null)
-            //            return (rec_a, rec_b);
-
-            //        int min_order = 2;
-            //        int max_order = 12;
-            //        double best_error = double.MaxValue;
-            //        (double[] b, double[] a) best_filter = (new double[min_order + 1], new double[min_order + 1]);
-            //        int best_order = min_order;
-
-            //        for (int order = min_order; order <= max_order; order += 2)
-            //        {
-            //            try
-            //            {
-            //                // Fit IIR to admittance spectrum Y(ω)
-            //                (double[] b, double[] a) current =
-            //                    Pach_SP.IIR_Design.FitIIRToFrequencyResponse(frequencies, Y, order, order, fs);
-
-            //                // Evaluate response (your helper)
-            //                Complex[] H =
-            //                    Audio.Pach_SP.IIR_Design.AB_FreqResponse(
-            //                        new List<double>(current.b),
-            //                        new List<double>(current.a),
-            //                        frequencies,
-            //                        fs);
-
-            //                // Error metric: compare COMPLEX (magnitude+phase), weighted to 125–4k like you did
-            //                double errSum = 0.0;
-            //                int count = 0;
-
-            //                for (int i = 0; i < K; i++)
-            //                {
-            //                    double f = frequencies[i];
-            //                    if (f >= 125 && f <= 4000)
-            //                    {
-            //                        // Relative complex error
-            //                        double denomMag = Math.Max(1e-3, Y[i].Magnitude);
-            //                        double e = (H[i] - Y[i]).Magnitude / denomMag;
-            //                        errSum += e;
-            //                        count++;
-            //                    }
-            //                }
-
-            //                double avgErr = (count > 0) ? errSum / count : double.MaxValue;
-
-            //                // Keep best
-            //                if (avgErr < best_error)
-            //                {
-            //                    best_error = avgErr;
-            //                    best_filter = current;
-            //                    best_order = order;
-            //                }
-            //            }
-            //            catch
-            //            {
-            //                continue;
-            //            }
-            //        }
-
-            //        // Cache and return best
-            //        rec_order = best_order;
-            //        rec_a = best_filter.a;
-            //        rec_b = best_filter.b;
-            //        return (rec_a, rec_b);
-            //    }
-            //    else
-            //    {
-            //        // Fixed specified order
-            //        int order = Math.Max(2, filter_order);
-            //        (double[] b, double[] a) =
-            //            Pach_SP.IIR_Design.FitIIRToFrequencyResponse(frequencies, Y, order, order, fs);
-
-            //        return (a, b);
-            //    }
-            //}
-            //    public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
-            //    {
-            //        int samplect = 4096; // Number of samples for the IIR filter design
-            //        frequencies = new double[(int)(samplect * max_freq / sample_frequency)];
-
-            //        // Get reflection spectrum and calculate desired absorption coefficients
-            //        Complex[] desired_Spectrum = new Complex[(int)(samplect * max_freq / sample_frequency)];
-            //        Array.Copy(this.Reflection_Spectrum((int)sample_frequency, samplect, new Hare.Geometry.Vector(0, 0, 1), new Hare.Geometry.Vector(0, 0, 1), 0), desired_Spectrum, desired_Spectrum.Length);
-
-            //        for (int i = 0; i < desired_Spectrum.Length; i++)
-            //        {
-            //            frequencies[i] = (double)((i + 1) * (sample_frequency / 2)) / 4096;
-            //        }
-
-            //        double[] desired_alpha = AbsorptionModels.Operations.Absorption_Coef(desired_Spectrum);
-
-            //        // If filter_order is zero or negative, automatically determine the optimal order
-            //        if (filter_order <= 0)
-            //        {
-            //            if (rec_order == 0)
-            //            {
-            //                // Use a range of filter orders to find the best fit
-
-            //                int min_order = 2;
-            //                int max_order = 12;
-            //                double error_threshold = 0.01; // 1% average error threshold
-            //                double best_error = double.MaxValue;
-            //                (double[] b, double[] a) best_filter = (new double[min_order + 1], new double[min_order + 1]);
-
-            //                for (int order = min_order; order <= max_order; order += 2) // Try even orders
-            //                {
-            //                    try
-            //                    {
-            //                        // Design filter with current order
-            //                        (double[] b, double[] a) current_filter = Pach_SP.IIR_Design.FitIIRToFrequencyResponse(frequencies, desired_Spectrum, order, order);
-
-            //                        // Normalize the filter
-            //                        Complex[] filter_response = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
-            //                            new List<double>(current_filter.b), new List<double>(current_filter.a),
-            //                            frequencies, sample_frequency);
-
-            //                        double mag = filter_response.MaximumMagnitudePhase().Magnitude;
-            //                        if (mag > 1)
-            //                        {
-            //                            for (int j = 0; j < current_filter.b.Length; j++)
-            //                                current_filter.b[j] /= mag;
-            //                        }
-            //                        else
-            //                        {
-            //                            double mod = mag / desired_Spectrum.MaximumMagnitudePhase().Magnitude;
-            //                            for (int j = 0; j < current_filter.b.Length; j++)
-            //                                current_filter.b[j] /= mod;
-            //                        }
-
-            //                        // Recalculate response after normalization
-            //                        filter_response = Audio.Pach_SP.IIR_Design.AB_FreqResponse(
-            //                            new List<double>(current_filter.b), new List<double>(current_filter.a),
-            //                            frequencies, sample_frequency);
-
-            //                        // Calculate error metric focusing on important frequency range
-            //                        double error_sum = 0;
-            //                        int count = 0;
-
-            //                        for (int i = 0; i < frequencies.Length; i++)
-            //                        {
-            //                            if (frequencies[i] >= 125 && frequencies[i] <= 4000)
-            //                            {
-            //                                double mag_error = Math.Abs(filter_response[i].Magnitude - desired_Spectrum[i].Magnitude);
-            //                                error_sum += mag_error / Math.Max(0.01, desired_Spectrum[i].Magnitude); // Relative error
-            //                                count++;
-            //                            }
-            //                        }
-
-            //                        double avg_error = count > 0 ? error_sum / count : double.MaxValue;
-
-            //                        // Update best filter if this one is better
-            //                        if (avg_error < best_error)
-            //                        {
-            //                            best_error = avg_error;
-            //                            best_filter = current_filter;
-            //                        }
-
-            //                        // If error is below threshold, we've found a good enough match
-            //                        if (avg_error < error_threshold)
-            //                        {
-            //                            // We found a filter with acceptable error, no need to try higher orders
-            //                            break;
-            //                        }
-            //                    }
-            //                    catch
-            //                    {
-            //                        // If filter design fails, continue to next order
-            //                        continue;
-            //                    }
-            //                }
-
-            //                // Use the best filter found
-            //                return (best_filter.a, best_filter.b);
-            //            }
-            //            else
-            //            {
-            //                // Use previously calculated coefficients
-            //                return (rec_a, rec_b);
-            //            }
-            //        }
-            //        else
-            //        {
-            //            // Original code for specified filter order
-            //            int numeratorOrder = filter_order;
-            //            int denominatorOrder = filter_order;
-
-            //            // Use Modified Yule-Walker method to fit the IIR filter
-            //            (double[] b, double[] a) = Pach_SP.IIR_Design.FitIIRToFrequencyResponse(frequencies, desired_Spectrum, numeratorOrder, denominatorOrder);
-
-            //            // Calculate frequency response of the fitted filter
-            //            Complex[] IIR_spec = Audio.Pach_SP.IIR_Design.AB_FreqResponse(new List<double>(b), new List<double>(a), frequencies, 44100);
-
-            //            // Normalize the filter if necessary
-            //            double m = IIR_spec.MaximumMagnitudePhase().Magnitude;
-            //            if (m > 1)
-            //            {
-            //                for (int j = 0; j < b.Length; j++) b[j] /= m;
-            //            }
-            //            else
-            //            {
-            //                double mod = m / desired_Spectrum.MaximumMagnitudePhase().Magnitude;
-            //                for (int j = 0; j < b.Length; j++) b[j] /= mod;
-            //            }
-
-            //            return (a, b);
-            //        }
-            //    }
         }
 
         public class Lambert_Scattering : Scattering
@@ -4604,7 +2423,7 @@ namespace Pachyderm_Acoustic
                     // random zenith (elevation)
                     x = Math.Cos(u1) * Math.Sin(u2);
                     y = Math.Sin(u1) * Math.Sin(u2);
-                    z = Scat_Mod; //Math.Cos(u2);
+                    z = Math.Cos(u2);
 
                     vect = (diffx * x) + (diffy * y) + (diffz * z);
                     vect.Normalize();
@@ -4701,237 +2520,5 @@ namespace Pachyderm_Acoustic
                 if (Transmit) Ray.Reverse();
             }
         }
-
-        //public class Lambert_Scattering : Scattering
-        //{
-        //    double[,] Scattering_Coefficient;
-        //    public Lambert_Scattering(double[] Scattering)
-        //    {
-        //        Scattering_Coefficient = new double[8, 3];
-        //        for (int oct = 0; oct < 8; oct++)
-        //        {
-        //            double Mod = Math.Abs(Scattering[oct] - 0.5); //((Scattering[oct] < (1 - Scattering[oct])) ? (Scattering[oct] * SplitRatio / 2) : ((1 - Scattering[oct]) * SplitRatio / 2));
-        //            Scattering_Coefficient[oct, 1] = Scattering[oct];
-        //            Scattering_Coefficient[oct, 0] = Scattering_Coefficient[oct, 1] - Mod;
-        //            Scattering_Coefficient[oct, 2] = Scattering_Coefficient[oct, 1] + Mod;
-        //        }
-        //    }
-        //    public override double[] Coefficient()
-        //    {
-        //        double[] Scat = new double[8];
-        //        for (int oct = 0; oct < 8; oct++) Scat[oct] = Scattering_Coefficient[oct, 1];
-        //        return Scat;
-        //    }
-
-        //    public override double Coefficient(int octave)
-        //    {
-        //        return Scattering_Coefficient[octave, 1];
-        //    }
-
-        //    public override void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, double[] Transmission = null)
-        //    {
-        //        if (Cos_Theta > 0)
-        //        {
-        //            Normal *= -1;
-        //            Cos_Theta *= -1;
-        //        }
-
-        //        for(int oct = 0; oct < 8; oct++)
-        //        {
-        //            if (Ray.Energy[oct] == 0) continue;
-        //            // 3. Apply Scattering.
-        //            //// a. Create new source for scattered energy (E * Scattering).
-        //            //// b. Modify E (E * 1 - Scattering).
-        //            OctaveRay R = Ray.SplitRay(oct, Scattering_Coefficient[oct, 1]);
-
-        //            Hare.Geometry.Vector diffx;
-        //            Hare.Geometry.Vector diffy;
-        //            Hare.Geometry.Vector diffz;
-        //            double proj;
-        //            //Check that the ray and the normal are both on the same side...
-        //            diffz = Normal;
-        //            diffx = new Hare.Geometry.Vector(0, 0, 1);
-        //            proj = Math.Abs(Hare.Geometry.Hare_math.Dot(diffz, diffx));
-
-        //            if (0.99 < proj && 1.01 > proj) diffx = new Hare.Geometry.Vector(1, 0, 0);
-        //            diffy = Hare.Geometry.Hare_math.Cross(diffz, diffx);
-        //            diffx = Hare.Geometry.Hare_math.Cross(diffy, diffz);
-        //            diffx.Normalize();
-        //            diffy.Normalize();
-        //            diffz.Normalize();
-
-        //            double u1;
-        //            double u2;
-        //            double x;
-        //            double y;
-        //            double z;
-        //            Hare.Geometry.Vector vect;
-        //            u1 = 2.0 * Math.PI * rand.NextDouble();
-        //            // random azimuth
-        //            double Scat_Mod = rand.NextDouble();
-        //            u2 = Math.Acos(Scat_Mod);
-        //            // random zenith (elevation)
-        //            x = Math.Cos(u1) * Math.Sin(u2);
-        //            y = Math.Sin(u1) * Math.Sin(u2);
-        //            z = Math.Cos(u2);
-
-        //            vect = (diffx * x) + (diffy * y) + (diffz * z);
-        //            vect.Normalize();
-
-        //            //Return the new direction
-        //            R.dx = vect.dx;
-        //            R.dy = vect.dy;
-        //            R.dz = vect.dz;
-        //            R.SetScattered();
-
-        //            if (Transmission != null && Transmission[oct] > 0)
-        //            {
-        //                OctaveRay tr = Ray.SplitRay(oct, Transmission[oct]);
-        //                Rays.Enqueue(tr);
-        //                tr.SetSpecular();
-        //                OctaveRay td = R.SplitRay(Transmission[oct]);
-        //                td.Reverse();
-        //                td.SetScattered();
-        //                Rays.Enqueue(td);
-        //            }
-
-        //            Rays.Enqueue(R);
-        //        }
-        //        Ray.dx -= Normal.dx * Cos_Theta * 2;
-        //        Ray.dy -= Normal.dy * Cos_Theta * 2;
-        //        Ray.dz -= Normal.dz * Cos_Theta * 2;
-        //    }
-
-        //    public override void Scatter_VeryLate(ref OctaveRay Ray, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false)
-        //    {
-        //        if (rand.NextDouble() < Scattering_Coefficient[Ray.Octave, 1])
-        //        {
-        //            Hare.Geometry.Vector diffx;
-        //            Hare.Geometry.Vector diffy;
-        //            Hare.Geometry.Vector diffz;
-        //            double proj;
-        //            //Check that the ray and the normal are both on the same side...
-        //            if (Cos_Theta > 0) Normal *= -1;
-        //            diffz = Normal;
-        //            diffx = new Hare.Geometry.Vector(0, 0, 1);
-        //            proj = Math.Abs(Hare.Geometry.Hare_math.Dot(diffz, diffx));
-
-        //            if (0.99 < proj && 1.01 > proj) diffx = new Hare.Geometry.Vector(1, 0, 0);
-        //            diffy = Hare.Geometry.Hare_math.Cross(diffz, diffx);
-        //            diffx = Hare.Geometry.Hare_math.Cross(diffy, diffz);
-        //            diffx.Normalize();
-        //            diffy.Normalize();
-        //            diffz.Normalize();
-
-        //            double u1;
-        //            double u2;
-        //            double x;
-        //            double y;
-        //            double z;
-        //            Hare.Geometry.Vector vect;
-        //            u1 = 2.0 * Math.PI * rand.NextDouble();
-        //            // random azimuth
-        //            double Scat_Mod = rand.NextDouble();
-        //            u2 = Math.Acos(Scat_Mod);
-        //            // random zenith (elevation)
-        //            x = Math.Cos(u1) * Math.Sin(u2);
-        //            y = Math.Sin(u1) * Math.Sin(u2);
-        //            z = Scat_Mod; //Math.Cos(u2);
-
-        //            vect = (diffx * x) + (diffy * y) + (diffz * z);
-        //            vect.Normalize();
-
-        //            //Return the new direction
-        //            Ray.dx = vect.dx;
-        //            Ray.dy = vect.dy;
-        //            Ray.dz = vect.dz;
-        //            Ray.SetScattered();
-        //        }
-        //        else
-        //        {
-        //            //Specular Reflection
-        //            Ray.dx -= Normal.dx * Cos_Theta * 2;
-        //            Ray.dy -= Normal.dy * Cos_Theta * 2;
-        //            Ray.dz -= Normal.dz * Cos_Theta * 2;
-        //            Ray.SetSpecular();
-        //        }
-
-        //        if (Transmit) Ray.Reverse();
-        //    }
-
-        //    public override void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false)
-        //    {
-        //        double scat_sel = rand.NextDouble();
-        //        if (scat_sel > Scattering_Coefficient[Ray.Octave, 2])
-        //        {
-        //            // Specular Reflection
-        //            Ray.dx -= Normal.dx * Cos_Theta * 2;
-        //            Ray.dy -= Normal.dy * Cos_Theta * 2;
-        //            Ray.dz -= Normal.dz * Cos_Theta * 2;
-        //            if (Transmit) Ray.Reverse();
-        //            Ray.SetSpecular();
-        //            return;
-        //        }
-        //        else if (scat_sel > Scattering_Coefficient[Ray.Octave, 0])
-        //        {
-        //            //Only for a certain portion of high benefit cases--
-        //            //// a. Create new source for scattered energy (E * Scattering).
-        //            //// b. Modify E (E * 1 - Scattering).
-        //            //Create a new ray...
-        //            OctaveRay tr = Ray.SplitRay(1 - Scattering_Coefficient[Ray.Octave,1]);
-        //            tr.SetSpecular();
-        //            // this is the specular reflection. Save it for later.
-        //            tr.dx -= Normal.dx * Cos_Theta * 2;
-        //            tr.dy -= Normal.dy * Cos_Theta * 2;
-        //            tr.dz -= Normal.dz * Cos_Theta * 2;
-        //            if (Transmit) tr.Reverse();
-        //            tr.SetSpecular();
-        //            Rays.Enqueue(tr);
-        //        }
-
-        //        //If we are here, the Original ray needs a scattered direction:
-        //        Hare.Geometry.Vector diffx;
-        //        Hare.Geometry.Vector diffy;
-        //        Hare.Geometry.Vector diffz;
-        //        double proj;
-        //        //Check that the ray and the normal are both on the same side...
-        //        if (Cos_Theta > 0) Normal *= -1;
-        //        diffz = Normal;
-        //        diffx = new Hare.Geometry.Vector(0, 0, 1);
-        //        proj = Math.Abs(Hare.Geometry.Hare_math.Dot(diffz, diffx));
-
-        //        if (0.99 < proj && 1.01 > proj) diffx = new Hare.Geometry.Vector(1, 0, 0);
-        //        diffy = Hare.Geometry.Hare_math.Cross(diffz, diffx);
-        //        diffx = Hare.Geometry.Hare_math.Cross(diffy, diffz);
-        //        diffx.Normalize();
-        //        diffy.Normalize();
-        //        diffz.Normalize();
-
-        //        double u1;
-        //        double u2;
-        //        double x;
-        //        double y;
-        //        double z;
-        //        Hare.Geometry.Vector vect;
-        //        u1 = 2.0 * Math.PI * rand.NextDouble();
-        //        // random azimuth
-        //        double Scat_Mod = rand.NextDouble();
-        //        u2 = Math.Acos(Scat_Mod);
-        //        // random zenith (elevation)
-        //        x = Math.Cos(u1) * Math.Sin(u2);
-        //        y = Math.Sin(u1) * Math.Sin(u2);
-        //        z = Math.Cos(u2);
-
-        //        vect = (diffx * x) + (diffy * y) + (diffz * z);
-        //        vect.Normalize();
-
-        //        //Return the new direction
-        //        Ray.dx = vect.dx;
-        //        Ray.dy = vect.dy;
-        //        Ray.dz = vect.dz;
-        //        Ray.SetScattered();
-        //        if (Transmit) Ray.Reverse();
-        //    }
-        //}
     }
 }

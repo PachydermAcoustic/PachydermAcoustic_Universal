@@ -1215,6 +1215,78 @@ namespace Pachyderm_Acoustic
                 double term = Math.PI * r0_m / v_mps;
                 return SEL_dB - 10.0 * Math.Log10(Math.Max(1e-12, term));
             }
+
+            /// <summary>
+            /// Standard octave band center frequencies, 63 Hz to 8000 Hz (8 bands).
+            /// </summary>
+            public static double[] OctaveCenters()
+            {
+                double[] c = new double[8];
+                for (int i = 0; i < 8; i++) c[i] = 62.5 * Math.Pow(2, i);
+                return c;
+            }
+
+            /// <summary>
+            /// Standard 1/3-octave band center frequencies underlying the 8 octave bands (24 bands),
+            /// matching the third-octave convention used elsewhere in Pachyderm (e.g. Source class).
+            /// </summary>
+            public static double[] ThirdOctaveCenters()
+            {
+                double[] c = new double[24];
+                for (int oct = 1; oct <= 8; oct++)
+                {
+                    for (int third = 1; third <= 3; third++)
+                    {
+                        c[3 * oct + third - 4] = 20 * Math.Pow(2, oct + (double)third / 3.0);
+                    }
+                }
+                return c;
+            }
+
+            /// <summary>
+            /// Calculates the per-band (octave or 1/3-octave) sound power loss between a source's sound
+            /// power spectrum and a simulated receiver's frequency-domain pressure response.
+            /// </summary>
+            /// <param name="fdom">Complex-valued FFT of the receiver's pressure-time signal.</param>
+            /// <param name="sampleFrequency">Sample frequency (Hz) used for the FFT.</param>
+            /// <param name="SourceSWL">Sound power level of the source (dB re 1 pW), per band. Must match
+            /// the length of the chosen band set (8 for octave, 24 for 1/3-octave).</param>
+            /// <param name="ThirdOctave">True to compute 1/3-octave bands, false for full octave bands.</param>
+            /// <param name="Rho_C">Characteristic impedance of air (default ~400).</param>
+            /// <returns>Loss (dB), per band = SourceSWL[band] - Receiver_SPL[band] (band-integrated).</returns>
+            public static double[] Band_Loss(System.Numerics.Complex[] fdom, double sampleFrequency, double[] SourceSWL, bool ThirdOctave, double Rho_C = 400)
+            {
+                double[] centers = ThirdOctave ? ThirdOctaveCenters() : OctaveCenters();
+                double bandsplit = ThirdOctave ? Math.Pow(2, 1.0 / 6.0) : Math.Sqrt(2);
+
+                if (SourceSWL == null || SourceSWL.Length != centers.Length)
+                    throw new ArgumentException(string.Format("SourceSWL must contain {0} values for {1} bands.", centers.Length, ThirdOctave ? "1/3-octave" : "octave"));
+
+                double[] loss = new double[centers.Length];
+                int N = fdom.Length;
+                double df = sampleFrequency / N;
+
+                for (int b = 0; b < centers.Length; b++)
+                {
+                    double fLow = centers[b] / bandsplit;
+                    double fHigh = centers[b] * bandsplit;
+
+                    int iLow = Math.Max(1, (int)Math.Ceiling(fLow / df));
+                    int iHigh = Math.Min(N / 2 - 1, (int)Math.Floor(fHigh / df));
+
+                    double energy = 0;
+                    for (int i = iLow; i <= iHigh; i++)
+                    {
+                        double p = fdom[i].Magnitude / N; //normalized pressure amplitude at this bin
+                        energy += Intensity_Pressure(p, Rho_C);
+                    }
+
+                    double bandSPL = energy > 0 ? SPL_Intensity(energy) : 0;
+                    loss[b] = SourceSWL[b] - bandSPL;
+                }
+
+                return loss;
+            }
         }
         public static class Geometry
         {
