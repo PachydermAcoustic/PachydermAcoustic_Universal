@@ -238,7 +238,7 @@ namespace Pachyderm_Acoustic
                 for (int i = 0; i < K; i++)
                     frequencies[i] = i * sample_frequency / samplect; // correct FFT bin mapping
 
-                if (_iirForced && rec_a != null && rec_b != null && Math.Abs(rec_fs - sample_frequency) < 1e-9 && Math.Abs(rec_maxfreq - max_freq) < 1e-9)
+                if (_iirForced && rec_a != null && rec_b != null && Math.Abs(rec_fs - sample_frequency) < 1e-9 && Math.Abs(rec_maxfreq - max_freq) < 1)
                 {
                     return (rec_a, rec_b);
                 }
@@ -1502,8 +1502,6 @@ namespace Pachyderm_Acoustic
 
                     System.Numerics.Complex[][] Zr = AbsorptionModels.Operations.Finite_Radiation_Impedance_Atalla_Rect(Xdim, Ydim, freq.ToArray(), anglesdeg, c_sound, air_density, Graph);
 
-                    //System.Numerics.Complex[][] Zr = AbsorptionModels.Operations.Finite_Radiation_Impedance_Rect_Longhand(Xdim, Ydim, freq.ToArray(), anglesdeg, c_sound, Graph);
-
                     Zr_Curves_R = new MathNet.Numerics.Interpolation.CubicSpline[Zr[0].Length];
                     Zr_Curves_I = new MathNet.Numerics.Interpolation.CubicSpline[Zr[0].Length];
                     for (int a = 0; a < Zr_Curves_R.Length; a++)
@@ -1557,20 +1555,11 @@ namespace Pachyderm_Acoustic
                 return Ref_trns;
             }
 
-            // -----------------------------------------------------------------------------
-            // Botts-style IIR estimation for Smart_Material
-            // Replace the previous Botts block with this.
-            // Assumes your class already has:
+            // Botts-style IIR estimation for Smart_Material0
             int rec_order;
             double[] rec_a, rec_b;
             double rec_fs, rec_maxfreq;
-            double[] rec_fit_freqs;
             object lock_IIR = new object();
-            // and helper methods:
-            //   SM_NormalizeBA(...)
-            //   SM_EvalDigital(...)
-            //   SM_BuildFitFrequencies(...)
-            // -----------------------------------------------------------------------------
 
             private sealed class BottsModelSpec
             {
@@ -2157,22 +2146,20 @@ namespace Pachyderm_Acoustic
             public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 6)
             {
                 double fs = sample_frequency;
+                frequencies = SM_BuildFitFrequencies(fs, max_freq);
 
                 lock (lock_IIR)
                 {
-                    int requestedOrder = (filter_order > 0) ? filter_order : 0;
+                    int requestedOrder = filter_order;
 
-                    if (rec_a != null && rec_b != null &&
-                        Math.Abs(rec_fs - fs) < 1e-9 &&
-                        Math.Abs(rec_maxfreq - max_freq) < 1e-9 &&
-                        rec_order == requestedOrder &&
-                        rec_fit_freqs != null)
+                    if (rec_a != null && rec_b != null && Math.Abs(rec_fs - sample_frequency) < 1e-9 && Math.Abs(rec_maxfreq - max_freq) < 1 && rec_order == requestedOrder)
                     {
-                        frequencies = (double[])rec_fit_freqs.Clone();
                         return (rec_a, rec_b);
                     }
 
-                    frequencies = SM_BuildFitFrequencies(fs, max_freq);
+                    rec_fs = sample_frequency;
+                    rec_maxfreq = max_freq;
+                    rec_order = requestedOrder;
 
                     // Keep this aligned with your current Admittance(double frequency) convention.
                     int idx = 17;
@@ -2256,24 +2243,16 @@ namespace Pachyderm_Acoustic
 
                     if (bestTheta == null || bestSpec == null)
                     {
-                        rec_fs = fs;
-                        rec_maxfreq = max_freq;
-                        rec_order = requestedOrder;
                         rec_a = new double[] { 1.0 };
                         rec_b = new double[] { 0.0 };
-                        rec_fit_freqs = (double[])frequencies.Clone();
                         return (rec_a, rec_b);
                     }
 
                     SM_BuildReflectionCoefficients(bestSpec, bestTheta, fs, out double[] bR, out double[] aR);
                     SM_ConvertReflectionToAdmittance(bR, aR, out double[] aY, out double[] bY);
 
-                    rec_fs = fs;
-                    rec_maxfreq = max_freq;
-                    rec_order = (requestedOrder > 0) ? requestedOrder : bestSpec.Order;
                     rec_a = aY;
                     rec_b = bY;
-                    rec_fit_freqs = (double[])frequencies.Clone();
 
                     return (rec_a, rec_b);
                 }

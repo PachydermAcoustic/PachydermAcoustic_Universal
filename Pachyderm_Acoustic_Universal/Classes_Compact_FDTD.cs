@@ -572,7 +572,7 @@ namespace Pachyderm_Acoustic
                                 }
                                 else
                                 {
-                                    PFrame[x][y][z] = new Bound_Node_RDD_MaterialFilter(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, abs, BDir); // abs,
+                                    PFrame[x][y][z] = new Bound_Node_RDD_MaterialFilter(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, abs, BDir);
                                     Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
                                 }
                             }

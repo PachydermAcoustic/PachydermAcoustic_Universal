@@ -427,7 +427,7 @@ namespace Pachyderm_Acoustic
                         double[] f_axis;
                         double[] aY, bY;
 
-                        (aY, bY) = mat.Estimate_IIR_Coefficients(sampleFrequency, sampleFrequency / 2.0, out f_axis);
+                        (aY, bY) = mat.Estimate_IIR_Coefficients(sampleFrequency, sampleFrequency * Math.Sqrt(2) / 10, out f_axis);
 
                         int order = Math.Max(aY.Length, bY.Length);
                         if (aY.Length < order) Array.Resize(ref aY, order);
