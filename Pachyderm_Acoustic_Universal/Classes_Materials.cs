@@ -1560,6 +1560,20 @@ namespace Pachyderm_Acoustic
             double[] rec_a, rec_b;
             double rec_fs, rec_maxfreq;
             object lock_IIR = new object();
+            bool _iirForced = false;
+
+            public override void ForceIIR(double[] a, double[] b, double fs, double max_freq = 0)
+            {
+                lock (lock_IIR)
+                {
+                    rec_a = a != null ? (double[])a.Clone() : null;
+                    rec_b = b != null ? (double[])b.Clone() : null;
+                    rec_fs = fs;
+                    if (max_freq > 0) rec_maxfreq = max_freq;
+                    rec_order = 0;
+                    _iirForced = true;
+                }
+            }
 
             private sealed class BottsModelSpec
             {
@@ -2143,19 +2157,19 @@ namespace Pachyderm_Acoustic
                 return (logZ, thetaBest, iter + 1);
             }
 
-            public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 6)
+            public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
             {
                 double fs = sample_frequency;
                 frequencies = SM_BuildFitFrequencies(fs, max_freq);
 
+                if (_iirForced && rec_a != null && rec_b != null && Math.Abs(rec_fs - sample_frequency) < 1e-9 && Math.Abs(rec_maxfreq - max_freq) < 1)
+                {
+                    return (rec_a, rec_b);
+                }
+
                 lock (lock_IIR)
                 {
                     int requestedOrder = filter_order;
-
-                    if (rec_a != null && rec_b != null && Math.Abs(rec_fs - sample_frequency) < 1e-9 && Math.Abs(rec_maxfreq - max_freq) < 1 && rec_order == requestedOrder)
-                    {
-                        return (rec_a, rec_b);
-                    }
 
                     rec_fs = sample_frequency;
                     rec_maxfreq = max_freq;
