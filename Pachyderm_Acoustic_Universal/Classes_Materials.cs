@@ -1583,6 +1583,15 @@ namespace Pachyderm_Acoustic
                 public int ParameterCount;
             }
 
+            private sealed class BottsTargetResonance
+            {
+                public double CenterLog;
+                public double WidthLog;
+                public double WindowLoLog;
+                public double WindowHiLog;
+                public double Prominence;
+            }
+
             private sealed class BottsSample
             {
                 public double[] Theta;
@@ -1911,20 +1920,42 @@ namespace Pachyderm_Acoustic
                 double maxD2 = Math.Max(1e-9, d2.Select(Math.Abs).Max());
 
                 List<int> peaks = new List<int>();
+                double[] prominence = new double[n];
+
                 for (int i = 1; i < n - 1; i++)
                 {
-                    if (alphaTarget[i] >= alphaTarget[i - 1] &&
-                        alphaTarget[i] >= alphaTarget[i + 1] &&
-                        alphaTarget[i] > 0.05)
+                    if (alphaTarget[i] < alphaTarget[i - 1] || alphaTarget[i] < alphaTarget[i + 1]) continue;
+
+                    // Determine how far this peak rises above its nearby response.
+                    // Use approximately a third-octave neighborhood on each side.
+                    double xi = Math.Log(Math.Max(freqs[i], 1e-9));
+                    double leftMin = alphaTarget[i];
+                    double rightMin = alphaTarget[i];
+
+                    for (int j = i - 1; j >= 0; j--)
                     {
-                        peaks.Add(i);
+                        if (xi - Math.Log(Math.Max(freqs[j], 1e-9)) > 0.24) break;
+                        leftMin = Math.Min(leftMin, alphaTarget[j]);
                     }
+
+                    for (int j = i + 1; j < n; j++)
+                    {
+                        if (Math.Log(Math.Max(freqs[j], 1e-9)) - xi > 0.24) break;
+                        rightMin = Math.Min(rightMin, alphaTarget[j]);
+                    }
+
+                    double baseline = 0.5 * (leftMin + rightMin);
+                    prominence[i] = Math.Max(0.0, alphaTarget[i] - baseline);
+
+                    // Don't promote tiny numerical wiggles to resonances.
+                    if (prominence[i] > 0.015 || -d2[i] / maxD2 > 0.10) peaks.Add(i);
                 }
 
-                peaks = peaks
-                    .OrderByDescending(i => alphaTarget[i])
-                    .Take(4)
-                    .ToList();
+                double maxProminence = Math.Max(1e-9, prominence.Max());
+
+                // Favor the strongest and sharpest resonances rather than simply
+                // choosing the four locations having the highest absolute alpha.
+                peaks = peaks.OrderByDescending(i => 0.65 * prominence[i] / maxProminence + 0.35 * Math.Max(0.0, -d2[i]) / maxD2).Take(6).ToList();
 
                 for (int i = 0; i < n; i++)
                 {
@@ -1937,45 +1968,54 @@ namespace Pachyderm_Acoustic
                     else if (f < 250.0) lowBias = 1.0;
                     else lowBias = 0.5;
 
-                    double shape =
-                        0.8 * (alphaTarget[i] / maxAlpha) +
-                        2.8 * (Math.Abs(d1[i]) / maxD1) +
-                        2.2 * (Math.Abs(d2[i]) / maxD2);
+                    // Slope matters around the sides of a resonance, but curvature
+                    // matters more when distinguishing a narrow peak from a broad hump.
+                    double shape = 0.5 * (alphaTarget[i] / maxAlpha) + 2.0 * (Math.Abs(d1[i]) / maxD1) + 4.0 * (Math.Abs(d2[i]) / maxD2);
 
                     double localPeak = 0.0;
+
                     for (int p = 0; p < peaks.Count; p++)
                     {
-                        double fp = freqs[peaks[p]];
+                        int pi = peaks[p];
+                        double fp = freqs[pi];
+
                         double d = Math.Abs(Math.Log(Math.Max(f, 1e-9)) - Math.Log(Math.Max(fp, 1e-9)));
-                        localPeak += Math.Exp(-(d * d) / (2.0 * 0.10 * 0.10));
+
+                        // Narrower than the old 0.10-log-frequency weighting.
+                        // This makes the optimizer care about reproducing the peak
+                        // itself rather than merely producing energy in its vicinity.
+                        double peakShape = Math.Exp(-(d * d) / (2.0 * 0.065 * 0.065));
+                        double strength = 0.5 + 1.5 * prominence[pi] / maxProminence + 0.75 * Math.Max(0.0, -d2[pi]) / maxD2;
+                        localPeak += strength * peakShape;
                     }
 
-                    w[i] = lowBias + shape + 6.0 * localPeak;
+                    w[i] = lowBias + shape + 8.0 * localPeak;
                 }
 
                 return w;
             }
 
-            private static double SM_ComputeLogLikelihoodForReflection(
-                BottsModelSpec spec,
-                double[] theta,
-                System.Numerics.Complex[] Rtarget,
-                double[] alphaTarget,
-                double[] freqs,
-                double[] weights,
-                double fs)
+            private static double SM_ComputeLogLikelihoodForReflection(BottsModelSpec spec, double[] theta, System.Numerics.Complex[] Rtarget, double[] alphaTarget, double[] freqs, double[] weights, double fs, IList<BottsTargetResonance> resonanceTargets = null)
             {
                 const double eps = 1e-8;
                 const double lambdaAlpha = 7.5;
                 const double lambdaLogMag = 2.5;
                 const double lambdaPhase = 0.25;
 
+                // Shape terms are deliberately modest. They should distinguish a
+                // narrow resonance from a broad hump, not overwhelm magnitude/phase.
+                const double lambdaSlope = 0.10;
+                const double lambdaCurvature = 0.15;
+
                 SM_BuildReflectionCoefficients(spec, theta, fs, out double[] bR, out double[] aR);
+
+                int n = freqs.Length;
+                double[] alphaFit = new double[n];
 
                 double E = 0.0;
                 int K = 0;
 
-                for (int i = 0; i < freqs.Length; i++)
+                for (int i = 0; i < n; i++)
                 {
                     double wt = weights[i];
                     if (wt <= 0.0) continue;
@@ -1990,39 +2030,214 @@ namespace Pachyderm_Acoustic
                     double magTar = Math.Max(Rtarget[i].Magnitude, eps);
 
                     double logMagErr = Math.Log(magFit) - Math.Log(magTar);
-                    double phaseErr = SM_WrapPhase(
-                        Math.Atan2(Rtarget[i].Imaginary, Rtarget[i].Real) -
-                        Math.Atan2(H.Imaginary, H.Real));
 
-                    double alphaFit = 1.0 - H.Magnitude * H.Magnitude;
-                    if (alphaFit < 0.0) alphaFit = 0.0;
-                    if (alphaFit > 1.0) alphaFit = 1.0;
+                    double phaseErr = SM_WrapPhase(Math.Atan2(Rtarget[i].Imaginary, Rtarget[i].Real) - Math.Atan2(H.Imaginary, H.Real));
 
-                    double alphaErr = alphaFit - alphaTarget[i];
+                    alphaFit[i] = 1.0 - H.Magnitude * H.Magnitude;
+                    if (alphaFit[i] < 0.0) alphaFit[i] = 0.0;
+                    if (alphaFit[i] > 1.0) alphaFit[i] = 1.0;
 
-                    E += wt * (
-                        lambdaAlpha * alphaErr * alphaErr +
-                        lambdaLogMag * logMagErr * logMagErr +
-                        lambdaPhase * phaseErr * phaseErr);
+                    double alphaErr = alphaFit[i] - alphaTarget[i];
+
+                    E += wt * (lambdaAlpha * alphaErr * alphaErr + lambdaLogMag * logMagErr * logMagErr + lambdaPhase * phaseErr * phaseErr);
 
                     K++;
                 }
 
                 if (K == 0) return double.NegativeInfinity;
+
+                // Compare the local shape of the target and fitted alpha curves in
+                // log-frequency coordinates. This is especially important for narrow
+                // resonant absorbers, where pointwise error alone tends to reward a
+                // broader hump.
+                if (n > 2)
+                {
+                    double[] targetSlope = new double[n];
+                    double[] fitSlope = new double[n];
+                    double[] targetCurvature = new double[n];
+                    double[] fitCurvature = new double[n];
+
+                    double maxTargetSlope = 0.0;
+                    double maxTargetCurvature = 0.0;
+
+                    for (int i = 1; i < n - 1; i++)
+                    {
+                        double x0 = Math.Log(Math.Max(freqs[i - 1], 1e-9));
+                        double x1 = Math.Log(Math.Max(freqs[i], 1e-9));
+                        double x2 = Math.Log(Math.Max(freqs[i + 1], 1e-9));
+
+                        double dx = Math.Max(1e-9, x2 - x0);
+                        double dx1 = Math.Max(1e-9, x1 - x0);
+                        double dx2 = Math.Max(1e-9, x2 - x1);
+
+                        targetSlope[i] = (alphaTarget[i + 1] - alphaTarget[i - 1]) / dx;
+                        fitSlope[i] = (alphaFit[i + 1] - alphaFit[i - 1]) / dx;
+
+                        double targetS1 = (alphaTarget[i] - alphaTarget[i - 1]) / dx1;
+                        double targetS2 = (alphaTarget[i + 1] - alphaTarget[i]) / dx2;
+                        double fitS1 = (alphaFit[i] - alphaFit[i - 1]) / dx1;
+                        double fitS2 = (alphaFit[i + 1] - alphaFit[i]) / dx2;
+
+                        double dxc = Math.Max(1e-9, 0.5 * (dx1 + dx2));
+
+                        targetCurvature[i] = (targetS2 - targetS1) / dxc;
+                        fitCurvature[i] = (fitS2 - fitS1) / dxc;
+
+                        maxTargetSlope = Math.Max(maxTargetSlope, Math.Abs(targetSlope[i]));
+                        maxTargetCurvature = Math.Max(maxTargetCurvature, Math.Abs(targetCurvature[i]));
+                    }
+
+                    // Prevent essentially flat targets from magnifying tiny numerical
+                    // slope/curvature differences.
+                    maxTargetSlope = Math.Max(0.05, maxTargetSlope);
+                    maxTargetCurvature = Math.Max(0.05, maxTargetCurvature);
+
+                    for (int i = 1; i < n - 1; i++)
+                    {
+                        double targetSlopeStrength = Math.Abs(targetSlope[i]) / maxTargetSlope;
+                        double targetCurvatureStrength = Math.Abs(targetCurvature[i]) / maxTargetCurvature;
+
+                        // Only invoke the shape penalty where the target actually has
+                        // meaningful structure.
+                        double structure = Math.Min(1.0, targetSlopeStrength + targetCurvatureStrength);
+                        if (structure < 0.05) continue;
+
+                        double slopeErr = (fitSlope[i] - targetSlope[i]) / maxTargetSlope;
+                        double curvatureErr = (fitCurvature[i] - targetCurvature[i]) / maxTargetCurvature;
+
+                        // The ordinary point weights are intentionally capped here:
+                        // SM_BuildBandpassWeights already boosts resonances strongly.
+                        double shapeWeight = Math.Min(3.0, weights[i]) * structure;
+
+                        E += shapeWeight * (lambdaSlope * slopeErr * slopeErr + lambdaCurvature * curvatureErr * curvatureErr);
+                    }
+                }
+
+                if (resonanceTargets != null && resonanceTargets.Count > 0)
+                {
+                    const double lambdaResonanceCenter = 0.25;
+                    const double lambdaResonanceWidth = 0.50;
+
+                    double CrossingLog(int i0, int i1, double level)
+                    {
+                        double x0 = Math.Log(Math.Max(freqs[i0], 1e-9));
+                        double x1 = Math.Log(Math.Max(freqs[i1], 1e-9));
+                        double y0 = alphaFit[i0];
+                        double y1 = alphaFit[i1];
+
+                        if (Math.Abs(y1 - y0) < 1e-12)
+                            return 0.5 * (x0 + x1);
+
+                        double t = (level - y0) / (y1 - y0);
+                        t = Math.Max(0.0, Math.Min(1.0, t));
+
+                        return x0 + t * (x1 - x0);
+                    }
+
+                    foreach (BottsTargetResonance target in resonanceTargets)
+                    {
+                        int first = -1;
+                        int last = -1;
+                        int peak = -1;
+                        int localCount = 0;
+                        double peakAlpha = double.NegativeInfinity;
+
+                        for (int i = 0; i < freqs.Length; i++)
+                        {
+                            double x = Math.Log(Math.Max(freqs[i], 1e-9));
+
+                            if (x < target.WindowLoLog || x > target.WindowHiLog)
+                                continue;
+
+                            if (first < 0) first = i;
+                            last = i;
+                            localCount++;
+
+                            if (alphaFit[i] > peakAlpha)
+                            {
+                                peakAlpha = alphaFit[i];
+                                peak = i;
+                            }
+                        }
+
+                        if (first < 0 || last <= first || peak < 0)
+                            continue;
+
+                        double leftMin = peakAlpha;
+                        double rightMin = peakAlpha;
+
+                        for (int i = first; i <= peak; i++)
+                            leftMin = Math.Min(leftMin, alphaFit[i]);
+
+                        for (int i = peak; i <= last; i++)
+                            rightMin = Math.Min(rightMin, alphaFit[i]);
+
+                        double baseline = 0.5 * (leftMin + rightMin);
+                        double fitProminence = Math.Max(0.0, peakAlpha - baseline);
+
+                        // If the fitted response has effectively lost the resonance,
+                        // give it a substantial but finite penalty.
+                        if (fitProminence < Math.Max(0.01, 0.10 * target.Prominence))
+                        {
+                            E += Math.Max(8.0, 0.35 * localCount) *
+                                (4.0 * lambdaResonanceCenter + 4.0 * lambdaResonanceWidth);
+
+                            continue;
+                        }
+
+                        double halfLevel = baseline + 0.5 * fitProminence;
+
+                        int left = peak;
+                        while (left > first && alphaFit[left] > halfLevel)
+                            left--;
+
+                        int right = peak;
+                        while (right < last && alphaFit[right] > halfLevel)
+                            right++;
+
+                        double leftLog;
+                        if (left == first && alphaFit[left] > halfLevel)
+                            leftLog = target.WindowLoLog;
+                        else
+                            leftLog = CrossingLog(left, Math.Min(left + 1, peak), halfLevel);
+
+                        double rightLog;
+                        if (right == last && alphaFit[right] > halfLevel)
+                            rightLog = target.WindowHiLog;
+                        else
+                            rightLog = CrossingLog(Math.Max(peak, right - 1), right, halfLevel);
+
+                        double fitCenterLog = Math.Log(Math.Max(freqs[peak], 1e-9));
+                        double fitWidthLog = Math.Max(1e-4, rightLog - leftLog);
+
+                        // Express center error in units of approximately one target
+                        // half-bandwidth, so shifts matter more for narrow resonances.
+                        double centerScale = Math.Max(0.025, 0.5 * target.WidthLog);
+
+                        double centerErr = (fitCenterLog - target.CenterLog) / centerScale;
+
+                        // A ratio is more meaningful for bandwidth than an absolute
+                        // difference. 2x too broad and 2x too narrow are symmetric.
+                        double widthErr =
+                            Math.Log(fitWidthLog / Math.Max(1e-4, target.WidthLog));
+
+                        centerErr = Math.Max(-4.0, Math.Min(4.0, centerErr));
+                        widthErr = Math.Max(-4.0, Math.Min(4.0, widthErr));
+
+                        // Scale like a local group of frequency samples so this descriptor
+                        // has enough influence relative to the existing pointwise errors.
+                        double resonanceWeight = Math.Max(8.0, 0.35 * localCount);
+
+                        E += resonanceWeight * (lambdaResonanceCenter * centerErr * centerErr + lambdaResonanceWidth * widthErr * widthErr);
+                    }
+                }
+
                 if (E <= 1e-30) E = 1e-30;
 
-                // Student-t likelihood, up to additive constants
                 return -0.5 * K * Math.Log(E);
             }
 
-            private static BottsSample SM_DrawPriorSample(
-                Random rng,
-                BottsModelSpec spec,
-                System.Numerics.Complex[] Rtarget,
-                double[] alphaTarget,
-                double[] freqs,
-                double[] weights,
-                double fs)
+            private static BottsSample SM_DrawPriorSample(Random rng, BottsModelSpec spec, System.Numerics.Complex[] Rtarget, double[] alphaTarget, double[] freqs, double[] weights, double fs)
             {
                 SM_GetBounds(spec, fs, freqs.Last(), out double[] lower, out double[] upper);
 
@@ -2146,8 +2361,7 @@ namespace Pachyderm_Acoustic
 
                     int seedIndex = 1 + rng.Next(Math.Max(1, live.Count - 1));
                     BottsSample seed = live[seedIndex];
-                    BottsSample repl = SM_ConstrainedRandomWalk(
-                        rng, spec, seed, worst.LogL, Rtarget, alphaTarget, freqs, weights, fs, mhSteps);
+                    BottsSample repl = SM_ConstrainedRandomWalk(rng, spec, seed, worst.LogL, Rtarget, alphaTarget, freqs, weights, fs, mhSteps);
 
                     live[0] = repl;
                     logXPrev = logXNew;
@@ -2161,6 +2375,8 @@ namespace Pachyderm_Acoustic
             {
                 double fs = sample_frequency;
                 frequencies = SM_BuildFitFrequencies(fs, max_freq);
+
+                double[] fitFrequencies = (double[])frequencies.Clone();
 
                 if (_iirForced && rec_a != null && rec_b != null && Math.Abs(rec_fs - sample_frequency) < 1e-9 && Math.Abs(rec_maxfreq - max_freq) < 1)
                 {
@@ -2187,9 +2403,7 @@ namespace Pachyderm_Acoustic
                     {
                         double f = frequencies[i];
 
-                        System.Numerics.Complex R = new System.Numerics.Complex(
-                            Transfer_FunctionR[idx].Interpolate(f),
-                            Transfer_FunctionI[idx].Interpolate(f));
+                        System.Numerics.Complex R = new System.Numerics.Complex(Transfer_FunctionR[idx].Interpolate(f), Transfer_FunctionI[idx].Interpolate(f));
 
                         double mag = R.Magnitude;
                         if (mag > 0.999) R *= 0.999 / mag;
@@ -2202,66 +2416,419 @@ namespace Pachyderm_Acoustic
 
                     double[] weights = SM_BuildBandpassWeights(frequencies, alphaTarget);
 
-                    List<int> orders = new List<int>();
-                    if (filter_order > 0)
+                    // Build resonance descriptors once. These are used only for final
+                    // fit refinement, not for the nested-sampling evidence calculation.
+                    List<BottsTargetResonance> resonanceTargets = new List<BottsTargetResonance>();
+
+                    double TargetCrossingLog(int i0, int i1, double level)
                     {
-                        orders.Add(Math.Max(1, filter_order));
+                        double x0 = Math.Log(Math.Max(fitFrequencies[i0], 1e-9));
+                        double x1 = Math.Log(Math.Max(fitFrequencies[i1], 1e-9));
+                        double y0 = alphaTarget[i0];
+                        double y1 = alphaTarget[i1];
+
+                        if (Math.Abs(y1 - y0) < 1e-12) return 0.5 * (x0 + x1);
+
+                        double t = (level - y0) / (y1 - y0);
+                        t = Math.Max(0.0, Math.Min(1.0, t));
+
+                        return x0 + t * (x1 - x0);
+                    }
+
+                    for (int peakIndex = 1; peakIndex < alphaTarget.Length - 1; peakIndex++)
+                    {
+                        if (alphaTarget[peakIndex] < alphaTarget[peakIndex - 1] || alphaTarget[peakIndex] < alphaTarget[peakIndex + 1]) continue;
+
+                        double peakF = fitFrequencies[peakIndex];
+                        double windowLo = peakF / Math.Sqrt(2.0);
+                        double windowHi = peakF * Math.Sqrt(2.0);
+
+                        int first = peakIndex;
+                        int last = peakIndex;
+
+                        while (first > 0 && fitFrequencies[first] > windowLo) first--;
+                        while (last < fitFrequencies.Length - 1 && fitFrequencies[last] < windowHi) last++;
+
+                        double leftMin = alphaTarget[peakIndex];
+                        double rightMin = alphaTarget[peakIndex];
+
+                        for (int i = first; i <= peakIndex; i++) leftMin = Math.Min(leftMin, alphaTarget[i]);
+
+                        for (int i = peakIndex; i <= last; i++) rightMin = Math.Min(rightMin, alphaTarget[i]);
+
+                        double baseline = 0.5 * (leftMin + rightMin);
+                        double peakProminence = alphaTarget[peakIndex] - baseline;
+
+                        if (peakProminence < 0.03) continue;
+
+                        double halfLevel = baseline + 0.5 * peakProminence;
+
+                        int left = peakIndex;
+                        while (left > first && alphaTarget[left] > halfLevel) left--;
+
+                        int right = peakIndex;
+                        while (right < last && alphaTarget[right] > halfLevel) right++;
+
+                        double leftLog = left == first && alphaTarget[left] > halfLevel ? Math.Log(Math.Max(windowLo, 1e-9)) : TargetCrossingLog(left, Math.Min(left + 1, peakIndex), halfLevel);
+                        double rightLog = right == last && alphaTarget[right] > halfLevel ? Math.Log(Math.Max(windowHi, 1e-9)) : TargetCrossingLog(Math.Max(peakIndex, right - 1), right, halfLevel);
+
+                        double widthLog = rightLog - leftLog;
+                        if (widthLog <= 1e-4) continue;
+
+                        resonanceTargets.Add(new BottsTargetResonance{CenterLog = Math.Log(Math.Max(peakF, 1e-9)), WidthLog = widthLog, WindowLoLog = Math.Log(Math.Max(windowLo, 1e-9)), WindowHiLog = Math.Log(Math.Max(windowHi, 1e-9)), Prominence = peakProminence});
+                    }
+
+                    resonanceTargets = resonanceTargets.OrderByDescending(r => r.Prominence).Take(6).ToList();
+
+
+                    double ScoreTheta(BottsModelSpec spec, double[] theta)
+                    {
+                        return SM_ComputeLogLikelihoodForReflection(spec, theta, Rtarget, alphaTarget, fitFrequencies, weights, fs, resonanceTargets);
+                    }
+
+
+                    // Refine any valid Botts starting point. This contains both the guided
+                    // resonant-section adjustment and the joint Nelder-Mead optimization.
+                    double[] RefineTheta(BottsModelSpec spec, double[] startTheta)
+                    {
+                        if (startTheta == null) return null;
+
+                        double[] refined = (double[])startTheta.Clone();
+                        double refinedLogL = ScoreTheta(spec, refined);
+
+                        SM_GetBounds(spec, fs, fitFrequencies.Last(), out double[] lower, out double[] upper);
+
+                        // First point the available complex sections toward the strongest
+                        // target resonances. Every candidate must improve the complete score.
+                        if (spec.ComplexSections > 0 && resonanceTargets.Count > 0)
+                        {
+                            bool[] usedSection = new bool[spec.ComplexSections];
+
+                            double[] centerScale = { 0.94, 0.97, 1.00, 1.03, 1.06 };
+                            double[] zeroBWScale = { 0.10, 0.20, 0.35, 0.50, 0.75 };
+                            double[] poleBWScale = { 0.50, 0.75, 1.00, 1.50, 2.00, 3.00 };
+                            double[] gainDb = { -1.5, 0.0, 1.5 };
+
+                            int complexStart = 1 + 2 * spec.RealSections;
+
+                            for (int r = 0; r < Math.Min(resonanceTargets.Count, spec.ComplexSections); r++)
+                            {
+                                BottsTargetResonance resonance = resonanceTargets[r];
+
+                                double peakF = Math.Exp(resonance.CenterLog);
+
+                                // Convert the measured log-frequency half-prominence width
+                                // to an approximate bandwidth in Hz.
+                                double halfWidthLog = 0.5 * resonance.WidthLog;
+                                double width = peakF * (Math.Exp(halfWidthLog) - Math.Exp(-halfWidthLog));
+                                width = Math.Max(1.0, width);
+
+                                double localBestLogL = refinedLogL;
+                                double[] localBestTheta = null;
+                                int localBestSection = -1;
+
+                                for (int section = 0; section < spec.ComplexSections; section++)
+                                {
+                                    if (usedSection[section]) continue;
+
+                                    int k = complexStart + 4 * section;
+
+                                    for (int cf = 0; cf < centerScale.Length; cf++)
+                                    {
+                                        double f = peakF * centerScale[cf];
+                                        f = Math.Max(Math.Exp(lower[k]), Math.Min(Math.Exp(upper[k]), f));
+
+                                        for (int z = 0; z < zeroBWScale.Length; z++)
+                                        {
+                                            double bwZero = Math.Max(1.0, width * zeroBWScale[z]);
+
+                                            for (int p = 0; p < poleBWScale.Length; p++)
+                                            {
+                                                double bwPole = Math.Max(0.5, width * poleBWScale[p]);
+
+                                                for (int g = 0; g < gainDb.Length; g++)
+                                                {
+                                                    double[] candidate = (double[])refined.Clone();
+
+                                                    // Keep zero/pole center together during this coarse
+                                                    // guided placement. Nelder-Mead may separate them later.
+                                                    candidate[k] = Math.Log(f);
+                                                    candidate[k + 1] = Math.Log(bwZero);
+                                                    candidate[k + 2] = Math.Log(f);
+                                                    candidate[k + 3] = Math.Log(bwPole);
+
+                                                    candidate[k + 1] = Math.Max(lower[k + 1], Math.Min(upper[k + 1], candidate[k + 1]));
+                                                    candidate[k + 3] = Math.Max(lower[k + 3], Math.Min(upper[k + 3], candidate[k + 3]));
+
+                                                    candidate[0] = refined[0] + gainDb[g] * Math.Log(10.0) / 20.0;
+                                                    candidate[0] = Math.Max(lower[0], Math.Min(upper[0], candidate[0]));
+
+                                                    double logL = ScoreTheta(spec, candidate);
+
+                                                    if (logL > localBestLogL)
+                                                    {
+                                                        localBestLogL = logL;
+                                                        localBestTheta = candidate;
+                                                        localBestSection = section;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (localBestTheta != null)
+                                {
+                                    refined = localBestTheta;
+                                    refinedLogL = localBestLogL;
+
+                                    if (localBestSection >= 0) usedSection[localBestSection] = true;
+                                }
+                            }
+                        }
+
+                        // Joint local optimization: allow every pole, zero, bandwidth and
+                        // gain parameter to rebalance simultaneously.
+                        double[] perturbation = new double[refined.Length];
+                        int pk = 0;
+
+                        perturbation[pk++] = 0.5 * Math.Log(10.0) / 20.0;
+
+                        for (int i = 0; i < spec.RealSections; i++)
+                        {
+                            perturbation[pk++] = 0.025;
+                            perturbation[pk++] = 0.025;
+                        }
+
+                        for (int i = 0; i < spec.ComplexSections; i++)
+                        {
+                            perturbation[pk++] = Math.Log(1.04);
+                            perturbation[pk++] = Math.Log(1.20);
+                            perturbation[pk++] = Math.Log(1.04);
+                            perturbation[pk++] = Math.Log(1.20);
+                        }
+
+                        var initialVector = MathNet.Numerics.LinearAlgebra.Vector<double>.Build.DenseOfArray(refined);
+
+                        var perturbationVector = MathNet.Numerics.LinearAlgebra.Vector<double>.Build.DenseOfArray(perturbation);
+
+                        var objective = MathNet.Numerics.Optimization.ObjectiveFunction.Value(v =>
+                        {
+                            double[] candidate = v.ToArray();
+                            for (int i = 0; i < candidate.Length; i++) candidate[i] = SM_ReflectToBounds(candidate[i], lower[i], upper[i]);
+
+                            double logL = ScoreTheta(spec, candidate);
+                            if (double.IsNaN(logL) || double.IsInfinity(logL)) return 1e100;
+                            return -logL;
+                        });
+
+                        try
+                        {
+                            var nm = MathNet.Numerics.Optimization.NelderMeadSimplex.Minimum(objective, initialVector, perturbationVector, 1e-6, 1000);
+
+                            double[] nmTheta = nm.MinimizingPoint.ToArray();
+                            for (int i = 0; i < nmTheta.Length; i++) nmTheta[i] = SM_ReflectToBounds(nmTheta[i], lower[i], upper[i]);
+
+                            double nmLogL = ScoreTheta(spec, nmTheta);
+
+                            // Never let local refinement make the starting solution worse.
+                            if (!double.IsNaN(nmLogL) && !double.IsInfinity(nmLogL) && nmLogL > refinedLogL)  refined = nmTheta;
+                        }
+                        catch
+                        {
+                            // Retain the valid pre-Nelder-Mead solution.
+                        }
+
+                        return refined;
+                    }
+
+                    // Embed a lower-order solution into the next model of the same parity.
+                    // The added pole/zero section is exactly neutral because its numerator
+                    // and denominator are identical.
+                    double[] ExpandTheta(BottsModelSpec oldSpec, double[] oldTheta, BottsModelSpec newSpec)
+                    {
+                        if (oldTheta == null || oldSpec.RealSections != newSpec.RealSections || newSpec.ComplexSections != oldSpec.ComplexSections + 1) return null;
+
+                        double[] theta = new double[newSpec.ParameterCount];
+                        Array.Copy(oldTheta, theta, oldTheta.Length);
+
+                        SM_GetBounds(newSpec, fs, fitFrequencies.Last(), out double[] lower, out double[] upper);
+
+                        int k = oldTheta.Length;
+                        double center = resonanceTargets.Count > 0 ? Math.Exp(resonanceTargets[0].CenterLog) : Math.Min(125.0, fitFrequencies.Last());
+                        center = Math.Max(Math.Exp(lower[k]), Math.Min(Math.Exp(upper[k]), center));
+
+                        double bandwidth = Math.Max(1.0, 0.25 * center);
+                        bandwidth = Math.Max(Math.Exp(lower[k + 1]), Math.Min(Math.Exp(upper[k + 1]), bandwidth));
+
+                        theta[k] = Math.Log(center);
+                        theta[k + 1] = Math.Log(bandwidth);
+                        theta[k + 2] = Math.Log(center);
+                        theta[k + 3] = Math.Log(bandwidth);
+
+                        return theta;
+                    }
+
+                    // For an explicit order, calculate the preceding same-parity models as
+                    // stepping stones. Auto evaluates the complete 2..10 family.
+                    List<int> orders = new List<int>();
+                    double[] bestTheta = null;
+                    BottsModelSpec bestSpec = null;
+
+                    if (requestedOrder > 0)
+                    {
+                        if (requestedOrder <= 2)
+                        {
+                            orders.Add(requestedOrder);
+                        }
+                        else
+                        {
+                            int firstOrder = requestedOrder % 2 == 0 ? 2 : 3;
+                            for (int n = firstOrder; n <= requestedOrder; n += 2) orders.Add(n);
+                        }
                     }
                     else
                     {
                         for (int n = 2; n <= 10; n++) orders.Add(n);
                     }
 
-                    double bestLogZ = double.NegativeInfinity;
-                    double[] bestTheta = null;
-                    BottsModelSpec bestSpec = null;
+                    // First run the ordinary Botts nested sampler for every required order.
+                    // Keep these searches independent and deterministic.
+                    var nestedResults = new Dictionary<int, (double logZ, double[] theta, BottsModelSpec spec)>();
 
-                    object bestLock = new object();
-
-                    double[] freqs = frequencies.Clone() as double[];
+                    object nestedLock = new object();
+                    double[] freqs = (double[])fitFrequencies.Clone();
 
                     Parallel.ForEach(
                         orders,
-                        new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, System.Environment.ProcessorCount - 1) },
+                        new ParallelOptions
+                        {
+                            MaxDegreeOfParallelism = Math.Max(1, System.Environment.ProcessorCount - 1)
+                        },
                         order =>
                         {
-                            Random rngLocal = new Random(Guid.NewGuid().GetHashCode());
-
+                            Random rngLocal = new Random(unchecked(7919 + order * 104729));
                             BottsModelSpec spec = SM_MakeSpec(order);
-
-                            var ns = SM_RunNestedSampling(
-                                rngLocal,
-                                spec,
-                                Rtarget,
-                                alphaTarget,
-                                freqs,
-                                weights,
-                                fs,
-                                nLive: 96,
-                                mhSteps: 100,
-                                maxIter: 12000,
-                                stopDeltaLogZ: 1e-7);
-
-                            if (ns.thetaBest == null) return;
-
-                            lock (bestLock)
-                            {
-                                if (ns.logZ > bestLogZ)
-                                {
-                                    bestLogZ = ns.logZ;
-                                    bestTheta = ns.thetaBest;
-                                    bestSpec = spec;
-                                }
-                            }
+                            var ns = SM_RunNestedSampling(rngLocal, spec, Rtarget, alphaTarget, freqs, weights, fs, nLive: 96, mhSteps: 100, maxIter: 12000, stopDeltaLogZ: 1e-7);
+                            lock (nestedLock) nestedResults[order] = (ns.logZ, ns.thetaBest, spec);
                         });
 
-                    if (bestTheta == null || bestSpec == null)
+
+                    // Now walk each parity chain. A higher-order model gets both:
+                    // 1. its independently discovered Botts solution, and
+                    // 2. the already-refined lower-order solution plus a neutral section.
+                    //
+                    // Whichever refines to the better complete fit becomes the solution
+                    // inherited by the next model.
+                    var finalResults = new Dictionary<int, (double logZ, double logL, double[] theta, BottsModelSpec spec)>();
+
+                    void ProcessChain(IEnumerable<int> chain)
+                    {
+                        double[] previousTheta = null;
+                        BottsModelSpec previousSpec = null;
+
+                        foreach (int order in chain)
+                        {
+                            if (!nestedResults.TryGetValue(order, out var nested)) continue;
+
+                            double[] bestOrderTheta = null;
+                            double bestOrderLogL = double.NegativeInfinity;
+
+                            // Independent nested-sampling candidate.
+                            if (nested.theta != null)
+                            {
+                                double[] candidate = RefineTheta(nested.spec, nested.theta);
+
+                                if (candidate != null)
+                                {
+                                    double logL = ScoreTheta(nested.spec, candidate);
+
+                                    if (logL > bestOrderLogL)
+                                    {
+                                        bestOrderLogL = logL;
+                                        bestOrderTheta = candidate;
+                                    }
+                                }
+                            }
+
+                            // Inherited candidate from the preceding order of the same parity.
+                            if (previousTheta != null && previousSpec != null)
+                            {
+                                double[] inherited = ExpandTheta(previousSpec, previousTheta, nested.spec);
+
+                                if (inherited != null)
+                                {
+                                    // Before optimization this produces exactly the old response;
+                                    // the added section cancels identically.
+                                    double[] candidate = RefineTheta(nested.spec, inherited);
+
+                                    if (candidate != null)
+                                    {
+                                        double logL = ScoreTheta(nested.spec, candidate);
+
+                                        if (logL > bestOrderLogL)
+                                        {
+                                            bestOrderLogL = logL;
+                                            bestOrderTheta = candidate;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (bestOrderTheta == null)
+                                continue;
+
+                            finalResults[order] =
+                                (nested.logZ, bestOrderLogL, bestOrderTheta, nested.spec);
+
+                            previousTheta = bestOrderTheta;
+                            previousSpec = nested.spec;
+                        }
+                    }
+
+                    if (requestedOrder > 0)
+                    {
+                        ProcessChain(orders);
+                    }
+                    else
+                    {
+                        ProcessChain(new int[] { 2, 4, 6, 8, 10 });
+                        ProcessChain(new int[] { 3, 5, 7, 9 });
+                    }
+
+                    if (finalResults.Count == 0)
                     {
                         rec_a = new double[] { 1.0 };
                         rec_b = new double[] { 0.0 };
                         return (rec_a, rec_b);
                     }
 
+                    // Explicit order means exactly that order.
+                    if (requestedOrder > 0)
+                    {
+                        if (!finalResults.TryGetValue(requestedOrder, out var selectedExplicit))
+                        {
+                            rec_a = new double[] { 1.0 };
+                            rec_b = new double[] { 0.0 };
+                            return (rec_a, rec_b);
+                        }
+
+                        bestTheta = selectedExplicit.theta;
+                        bestSpec = selectedExplicit.spec;
+                    }
+                    else
+                    {
+                        double bestFitLogL = finalResults.Values.Max(r => r.logL);
+
+                        int K = Math.Max(1, weights.Count(w => w > 0.0));
+                        double fitTolerance = 0.5 * K * Math.Log(1.01);
+
+                        var acceptable = finalResults.Where(r => r.Value.logL >= bestFitLogL - fitTolerance).ToList();
+                        var selectedAuto = acceptable.OrderByDescending(r => r.Value.logZ).ThenBy(r => r.Key).First();
+
+                        bestTheta = selectedAuto.Value.theta;
+                        bestSpec = selectedAuto.Value.spec;
+                    }
                     SM_BuildReflectionCoefficients(bestSpec, bestTheta, fs, out double[] bR, out double[] aR);
                     SM_ConvertReflectionToAdmittance(bR, aR, out double[] aY, out double[] bY);
 
