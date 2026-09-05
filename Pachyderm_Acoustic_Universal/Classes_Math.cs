@@ -1051,6 +1051,9 @@ namespace Pachyderm_Acoustic
                 double tStart,
                 double tEnd)
             {
+                if (leftEarIR == null || rightEarIR == null)
+                    throw new ArgumentNullException("Ear impulse responses must not be null.");
+
                 // Extract window from left and right ear impulse responses
                 int startIndex = (int)Math.Round(tStart * sampleFrequency);
                 int endIndex = (int)Math.Round(tEnd * sampleFrequency);
@@ -1067,10 +1070,8 @@ namespace Pachyderm_Acoustic
 
                 for (int i = 0; i < length; i++)
                 {
-                    //Hann window
-                    double w = 0.5 * (1 - Math.Cos(2 * Math.PI * i / (length - 1)));
-                    leftPadded[i] = leftEarIR[startIndex + i] * w;
-                    rightPadded[i] = rightEarIR[startIndex + i] * w;
+                    leftPadded[i] = leftEarIR[startIndex + i];
+                    rightPadded[i] = rightEarIR[startIndex + i];
                 }
 
                 // FFT both signals
@@ -1111,7 +1112,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                // Normalise by RMS energies of windowed signals
+                // Normalise by the energy in the analysis window.
                 double energyLeft = 0;
                 double energyRight = 0;
                 for (int i = 0; i < length; i++)
@@ -4044,12 +4045,12 @@ namespace Pachyderm_Acoustic
                 }
                 return Histogram;
             }
-
             public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, Audio.HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, Pachyderm_Acoustic.Audio.SystemResponseCompensation.SystemCompensationSettings sysCompSettings, bool StartAtZero, double alt, double azi, bool degrees, bool flat, bool auto, IProgressFeedback VB = null)
             {
                 if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
                 if (ISData == null) ISData = new ImageSourceData[SrcIDs[SrcIDs.Count - 1] + 1];
                 if (RTData == null) RTData = new Environment.Receiver_Bank[SrcIDs[SrcIDs.Count - 1] + 1];
+                if (sysCompSettings == null) sysCompSettings = new Audio.SystemResponseCompensation.SystemCompensationSettings();
 
                 double maxdelay = 0;
                 List<double> delays = new List<double>();
@@ -4070,28 +4071,33 @@ namespace Pachyderm_Acoustic
                         maxdelay = Math.Max(maxdelay, (r as PachMapReceiver).delay_ms);
                     }
                 }
-                maxdelay *= Sampling_Frequency / 1000;
 
+                int maxDelaySamples = (int)Math.Ceiling(maxdelay * Sampling_Frequency / 1000.0);
                 double[][] Histogram = new double[2][];
 
                 foreach (int s in SrcIDs)
                 {
-                    double[][] IR = Aurfilter_HRTF(Direct, ISData, RTData, hrtf, CO_Time_ms, Sampling_Frequency, Rec_ID,new int[1] {s}.ToList(), StartAtZero, alt, azi, degrees, flat, VB);
+                    hrtf.Load(Direct.ElementAt<Direct_Sound>(s), ISData.ElementAt<ImageSourceData>(s), RTData.ElementAt<Receiver_Bank>(s), sysCompSettings, CO_Time_ms, Sampling_Frequency, Rec_ID, StartAtZero, flat, auto);
+                    double[][] IR = hrtf.Binaural_IR(azi, alt);
+
                     if (Histogram[0] == null)
                     {
-                        Histogram[0] = new double[IR[0].Length];
-                        Histogram[1] = new double[IR[0].Length];
+                        int histogramLength = maxDelaySamples + IR[0].Length;
+                        Histogram[0] = new double[histogramLength];
+                        Histogram[1] = new double[histogramLength];
                     }
 
+                    int insertionIdx = (int)Math.Ceiling(delays[s] * Sampling_Frequency / 1000.0);
                     for (int i = 0; i < IR[0].Length; i++)
                     {
-                        Histogram[0][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[0][i];
-                        Histogram[1][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[1][i];
+                        int idx = i + insertionIdx;
+                        if (idx >= Histogram[0].Length) continue;
+                        Histogram[0][idx] += IR[0][i];
+                        Histogram[1][idx] += IR[1][i];
                     }
                 }
                 return Histogram;
             }
-
             public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, Audio.HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
             {
                 //This version of the function achieves an HRTF filter by dividing up the 3 dimensional signal according to a set number of equidistant points on a sphere.
@@ -4125,9 +4131,7 @@ namespace Pachyderm_Acoustic
 
                 double[][] Histogram = new double[2][];
 
-                int maxDelaySamples = (int)Math.Ceiling(maxdelay * Sampling_Frequency / 1000);
-                int no_of_irs = 0;
-
+                int maxDelaySamples = (int)Math.Ceiling(maxdelay);
                 SystemResponseCompensation.SystemCompensationSettings sysCompSettings = new Audio.SystemResponseCompensation.SystemCompensationSettings();
 
                 foreach (int s in SrcIDs)
@@ -4141,9 +4145,6 @@ namespace Pachyderm_Acoustic
                         Histogram[0] = new double[histogramLength];
                         Histogram[1] = new double[histogramLength];
                     }
-
-                    no_of_irs++;
-
                     int insertionIdx = (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency);
                     for (int i = 0; i < IR[0].Length; i++)
                     {
@@ -4152,13 +4153,6 @@ namespace Pachyderm_Acoustic
                         Histogram[1][i + insertionIdx] += IR[1][i];
                     }
                 }
-
-                for (int i = 0; i < Histogram[0].Length; i++)
-                {
-                    Histogram[0][i] /= no_of_irs;
-                    Histogram[1][i] /= no_of_irs;
-                }
-
                 return Histogram;
             }
 
