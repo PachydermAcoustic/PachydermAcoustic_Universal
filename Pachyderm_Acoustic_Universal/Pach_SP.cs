@@ -692,7 +692,7 @@ namespace Pachyderm_Acoustic
 
             public static Complex[] IFFT16384(System.Numerics.Complex[] spectrum, int threadid)
             {
-                lock (ifftlock[threadid])
+                lock (ifftlock16384[threadid])
                 {
                     //FFTW.Net Setup//
                     IFFT_ArrayIn16384[threadid].SetData(spectrum);
@@ -704,15 +704,23 @@ namespace Pachyderm_Acoustic
 
             public static System.Numerics.Complex[] FFT_General(Complex[] Signal, int threadid)
             {
-                //FFTW.Net Setup//
                 lock (fftlock[threadid])
                 {
-                    FFT_ArrayIn[threadid] = new fftw_complexarray(Signal);
-                    FFT_ArrayOut[threadid] = new fftw_complexarray(Signal.Length);
-                    FFT_Plan[threadid] = fftw_plan.dft_1d(Signal.Length, FFT_ArrayIn[threadid], FFT_ArrayOut[threadid], fftw_direction.Forward, fftw_flags.Estimate);
+                    if (FFT_Plan[threadid] == null || FFT_ArrayIn[threadid] == null || FFT_ArrayOut[threadid] == null || FFT_ArrayIn[threadid].Length != Signal.Length)
+                    {
+                        FFT_Plan[threadid]?.Dispose();
+                        FFT_ArrayIn[threadid]?.Dispose();
+                        FFT_ArrayOut[threadid]?.Dispose();
+
+                        FFT_ArrayIn[threadid] = new fftw_complexarray(Signal.Length);
+                        FFT_ArrayOut[threadid] = new fftw_complexarray(Signal.Length);
+                        FFT_Plan[threadid] = fftw_plan.dft_1d(Signal.Length, FFT_ArrayIn[threadid], FFT_ArrayOut[threadid], fftw_direction.Forward, fftw_flags.Estimate);
+                    }
+
+                    FFT_ArrayIn[threadid].SetData(Signal);
                     FFT_Plan[threadid].Execute();
-                    System.Numerics.Complex[] Out = FFT_ArrayOut[threadid].GetData_Complex();
-                    return Out;
+
+                    return FFT_ArrayOut[threadid].GetData_Complex();
                 }
             }
 
@@ -720,19 +728,40 @@ namespace Pachyderm_Acoustic
             {
                 lock (fftlock[threadid])
                 {
-                    double[] Sig_complex = new double[Signal.Length * 2];
-                    for (int i = 0; i < Signal.Length; i++) Sig_complex[i * 2] = Signal[i];
+                    if (FFT_Plan[threadid] == null || FFT_ArrayIn[threadid] == null || FFT_ArrayOut[threadid] == null || FFT_ArrayIn[threadid].Length != Signal.Length)
+                    {
+                        FFT_Plan[threadid]?.Dispose();
+                        FFT_ArrayIn[threadid]?.Dispose();
+                        FFT_ArrayOut[threadid]?.Dispose();
 
-                    //FFTW.Net Setup//
-                    FFT_ArrayIn[threadid] = new fftw_complexarray(Sig_complex);
-                    FFT_ArrayOut[threadid] = new fftw_complexarray(Signal.Length);
-                    FFT_Plan[threadid] = fftw_plan.dft_1d(Signal.Length, FFT_ArrayIn[threadid], FFT_ArrayOut[threadid], fftw_direction.Forward, fftw_flags.Estimate);
+                        FFT_ArrayIn[threadid] = new fftw_complexarray(Signal.Length);
+                        FFT_ArrayOut[threadid] = new fftw_complexarray(Signal.Length);
+                        FFT_Plan[threadid] = fftw_plan.dft_1d(Signal.Length, FFT_ArrayIn[threadid], FFT_ArrayOut[threadid], fftw_direction.Forward, fftw_flags.Estimate);
+                    }
+
+                    FFT_ArrayIn[threadid].SetData(Signal);
                     FFT_Plan[threadid].Execute();
 
-                    System.Numerics.Complex[] Out = FFT_ArrayOut[threadid].GetData_Complex();
-                    return Out;
+                    return FFT_ArrayOut[threadid].GetData_Complex();
                 }
             }
+            //public static System.Numerics.Complex[] FFT_General(double[] Signal, int threadid)
+            //{
+            //    lock (fftlock[threadid])
+            //    {
+            //        double[] Sig_complex = new double[Signal.Length * 2];
+            //        for (int i = 0; i < Signal.Length; i++) Sig_complex[i * 2] = Signal[i];
+
+            //        //FFTW.Net Setup//
+            //        FFT_ArrayIn[threadid] = new fftw_complexarray(Sig_complex);
+            //        FFT_ArrayOut[threadid] = new fftw_complexarray(Signal.Length);
+            //        FFT_Plan[threadid] = fftw_plan.dft_1d(Signal.Length, FFT_ArrayIn[threadid], FFT_ArrayOut[threadid], fftw_direction.Forward, fftw_flags.Estimate);
+            //        FFT_Plan[threadid].Execute();
+
+            //        System.Numerics.Complex[] Out = FFT_ArrayOut[threadid].GetData_Complex();
+            //        return Out;
+            //    }
+            //}
 
             public static double[] IFFT_Real_General(System.Numerics.Complex[] spectrum, int threadid)
             {
@@ -753,7 +782,7 @@ namespace Pachyderm_Acoustic
 
             public static Complex[] IFFT_General(System.Numerics.Complex[] spectrum, int threadid)
             {
-                lock (fftlock[threadid])
+                lock (ifftlock[threadid])
                 {
                     //FFTW.Net Setup//
                     IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum);

@@ -29,7 +29,7 @@ namespace FFTWSharp
     /// <summary>
     /// To simplify FFTW memory management
     /// </summary>
-    public class fftwf_complexarray
+    public class fftwf_complexarray: IDisposable
     {
         private IntPtr handle;
         public IntPtr Handle
@@ -48,6 +48,7 @@ namespace FFTWSharp
         {
             this.length = length;
             this.handle = fftwf.malloc(this.length * 8);
+            GC.AddMemoryPressure((long)this.length * 8);
         }
 
         /// <summary>
@@ -58,6 +59,7 @@ namespace FFTWSharp
         {
             this.length = data.Length / 2;
             this.handle = fftwf.malloc(this.length * 8);
+            GC.AddMemoryPressure((long)this.length * 8);
 
             this.SetData(data);
         }
@@ -70,6 +72,7 @@ namespace FFTWSharp
         {
             this.length = data.Length;
             this.handle = FFTW.malloc(this.length * 16);
+            GC.AddMemoryPressure((long)this.length * 16);
 
             this.SetData(data);
         }
@@ -158,10 +161,38 @@ namespace FFTWSharp
             return dataf;
         }
 
+        private bool disposed = false;
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        private void Dispose(bool disposing)
+        {
+            if (!disposed)
+            {
+                if (handle != IntPtr.Zero)
+                {
+                    FFTW.free(handle);
+                    handle = IntPtr.Zero;
+                    GC.RemoveMemoryPressure((long)length * 16);
+                }
+
+                disposed = true;
+            }
+        }
+
         ~fftwf_complexarray()
         {
-            fftwf.free(handle);
+            Dispose(false);
         }
+
+        //~fftwf_complexarray()
+        //{
+        //    fftwf.free(handle);
+        //}
     }
 
     /// <summary>
@@ -382,7 +413,7 @@ namespace FFTWSharp
     /// <summary>
     /// So FFTW can manage its own memory nicely
     /// </summary>
-    public class fftw_complexarray
+    public class fftw_complexarray: IDisposable
     {
         private IntPtr handle;
         public IntPtr Handle
@@ -434,7 +465,7 @@ namespace FFTWSharp
             if (data.Length / 2 == this.length)
             {
                 Marshal.Copy(data, 0, handle, this.length * 2);
-                GC.AddMemoryPressure(this.length * 16);
+                //GC.AddMemoryPressure(this.length * 16);
             }
             else if (data.Length == this.length)
             {
@@ -445,7 +476,7 @@ namespace FFTWSharp
                     data_in[2 * i + 1] = 0;
                 }
                 Marshal.Copy(data_in, 0, handle, this.length * 2);
-                GC.AddMemoryPressure(this.length * 16);
+                //GC.AddMemoryPressure(this.length * 16);
             }
             else throw new ArgumentException("Array length mismatch!");
         }
@@ -466,7 +497,7 @@ namespace FFTWSharp
             }
 
             Marshal.Copy(data_in, 0, handle, this.length * 2);
-            GC.AddMemoryPressure(this.length * 16);
+            //GC.AddMemoryPressure(this.length * 16);
         }
 
         /// <summary>
@@ -477,7 +508,7 @@ namespace FFTWSharp
             double[] data_in = new double[this.Length * 2];
             // C# arrays always initialized to 0
             Marshal.Copy(data_in, 0, handle, this.length * 2);
-            GC.AddMemoryPressure(this.length * 16);
+            //GC.AddMemoryPressure(this.length * 16);
         }
 
         /// <summary>
@@ -524,11 +555,39 @@ namespace FFTWSharp
             return datad;
         }
 
+
+        private bool disposed = false;
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        private void Dispose(bool disposing)
+        {
+            if (!disposed)
+            {
+                if (handle != IntPtr.Zero)
+                {
+                    FFTW.free(handle);
+                    handle = IntPtr.Zero;
+                    GC.RemoveMemoryPressure((long)length * 16);
+                }
+
+                disposed = true;
+            }
+        }
+
         ~fftw_complexarray()
         {
-            FFTW.free(handle);
-            GC.RemoveMemoryPressure(this.length * 16);
+            Dispose(false);
         }
+        //~fftw_complexarray()
+        //{
+        //    FFTW.free(handle);
+        //    GC.RemoveMemoryPressure(this.length * 16);
+        //}
     }
 
     /// <summary>
@@ -560,10 +619,17 @@ namespace FFTWSharp
             {
                 if (handle != IntPtr.Zero)
                 {
-                    FFTW.destroy_plan(handle);
-                    handle = IntPtr.Zero;
+                    FFTW_Lock.WaitOne();
+                    try
+                    {
+                        FFTW.destroy_plan(handle);
+                        handle = IntPtr.Zero;
+                    }
+                    finally
+                    {
+                        FFTW_Lock.ReleaseMutex();
+                    }
                 }
-                disposed = true;
             }
         }
 

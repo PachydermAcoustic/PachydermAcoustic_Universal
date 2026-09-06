@@ -1658,7 +1658,8 @@ namespace Pachyderm_Acoustic
                                         Y.Add(y);
                                         Z.Add(z);
                                         SrcNode.Add(Frame[x][y][z]);
-                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dy, dz)).Length();
+                                        //double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
                                         double poweradj = Math.Log10(4 * Math.PI * d * d);
                                         SWL.Add(new double[8]{TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
                                         delays.Add((int)Math.Round((d / 343)/dt)); // Store delay for this source
@@ -1680,7 +1681,8 @@ namespace Pachyderm_Acoustic
                                         Y.Add(y);
                                         Z.Add(z);
                                         SrcNode.Add(Frame[x][y][z]);
-                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dy, dz)).Length();
+                                        //double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
                                         double poweradj = Math.Log10(4 * Math.PI * d * d);
                                         SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
                                         delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
@@ -1704,7 +1706,8 @@ namespace Pachyderm_Acoustic
                                         Y.Add(y);
                                         Z.Add(z);
                                         SrcNode.Add(Frame[x][y][z]);
-                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dy, dz)).Length();
+                                        //double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
                                         double poweradj = Math.Log10(4 * Math.PI * d * d);
                                         SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
                                         delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
@@ -1728,7 +1731,8 @@ namespace Pachyderm_Acoustic
                                         Y.Add(y);
                                         Z.Add(z);
                                         SrcNode.Add(Frame[x][y][z]);
-                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dy, dz)).Length();
+                                        //double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
                                         double poweradj = Math.Log10(4 * Math.PI * d * d);
                                         SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
                                         delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
@@ -1752,7 +1756,8 @@ namespace Pachyderm_Acoustic
                                         Y.Add(y);
                                         Z.Add(z);
                                         SrcNode.Add(Frame[x][y][z]);
-                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dy, dz)).Length();
+                                        //double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
                                         double poweradj = Math.Log10(4 * Math.PI * d * d);
                                         SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
                                         delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
@@ -1776,7 +1781,8 @@ namespace Pachyderm_Acoustic
                                         Y.Add(y);
                                         Z.Add(z);
                                         SrcNode.Add(Frame[x][y][z]);
-                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dy, dz)).Length();
+                                        //double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
                                         double poweradj = Math.Log10(4 * Math.PI * d * d);
                                         SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
                                         delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
