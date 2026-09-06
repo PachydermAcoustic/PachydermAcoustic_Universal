@@ -31,6 +31,8 @@ namespace FFTWSharp
     /// </summary>
     public class fftwf_complexarray: IDisposable
     {
+        static Mutex FFTWf_Lock = new Mutex();
+
         private IntPtr handle;
         public IntPtr Handle
         { get { return handle; } }
@@ -71,8 +73,8 @@ namespace FFTWSharp
         public fftwf_complexarray(Complex[] data)
         {
             this.length = data.Length;
-            this.handle = FFTW.malloc(this.length * 16);
-            GC.AddMemoryPressure((long)this.length * 16);
+            this.handle = FFTW.malloc(this.length * 8);
+            GC.AddMemoryPressure((long)this.length * 8);
 
             this.SetData(data);
         }
@@ -175,9 +177,9 @@ namespace FFTWSharp
             {
                 if (handle != IntPtr.Zero)
                 {
-                    FFTW.free(handle);
+                    fftwf.free(handle);
                     handle = IntPtr.Zero;
-                    GC.RemoveMemoryPressure((long)length * 16);
+                    GC.RemoveMemoryPressure((long)length * 8);
                 }
 
                 disposed = true;
@@ -225,9 +227,18 @@ namespace FFTWSharp
             {
                 if (handle != IntPtr.Zero)
                 {
-                    fftwf.destroy_plan(handle);
-                    handle = IntPtr.Zero;
+                    FFTW_Lock.WaitOne();
+                    try
+                    {
+                        fftwf.destroy_plan(handle);
+                        handle = IntPtr.Zero;
+                    }
+                    finally
+                    {
+                        FFTW_Lock.ReleaseMutex();
+                    }
                 }
+
                 disposed = true;
             }
         }
@@ -431,6 +442,8 @@ namespace FFTWSharp
         {
             this.length = length;
             this.handle = FFTW.malloc(this.length * 16);
+            GC.RemoveMemoryPressure((long)length * 16);
+
         }
 
         /// <summary>
@@ -441,6 +454,7 @@ namespace FFTWSharp
         {
             this.length = data.Length / 2;
             this.handle = FFTW.malloc(this.length * 16);
+            GC.RemoveMemoryPressure((long)length * 16);
 
             this.SetData(data);
         }
@@ -453,6 +467,7 @@ namespace FFTWSharp
         {
             this.length = data.Length;
             this.handle = FFTW.malloc(this.length * 16);
+            GC.RemoveMemoryPressure((long)length * 16);
 
             this.SetData(data);
         }
@@ -630,6 +645,8 @@ namespace FFTWSharp
                         FFTW_Lock.ReleaseMutex();
                     }
                 }
+
+                disposed = true;
             }
         }
 

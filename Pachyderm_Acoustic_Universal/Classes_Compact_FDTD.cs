@@ -266,7 +266,7 @@ namespace Pachyderm_Acoustic
                     dx = 2 * dydz / Math.Sqrt(2);
 
                     Bounds = new AABB(Rm.Min() - new Vector(.025 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.025 * dx, .05 * dydz, .05 * dydz));
-                    Bounds.Min_PT.z = floorplaneoverride;
+                    //Bounds.Min_PT.z = floorplaneoverride;
                     Bounds_Inner = new AABB(Bounds.Min_PT.x, Bounds.Min_PT.y, Bounds.Min_PT.z, Bounds.Max_PT.x, Bounds.Max_PT.y, Bounds.Max_PT.z);
 
                     no_of_Layers = 0;
@@ -365,7 +365,7 @@ namespace Pachyderm_Acoustic
 
                     MinPt.x -= x_length / 2;
                     MinPt.y -= y_length / 2;
-                    MinPt.z = 0 + floorplaneoverride;
+                    //MinPt.z = 0 + floorplaneoverride;
                     Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
 
                     //System.Threading.Tasks.Parallel.For(0, xDim, (x) =>
@@ -1792,7 +1792,8 @@ namespace Pachyderm_Acoustic
                         }
                     }
 
-                    delayshortcut = delays.Min();
+                    if (delays.Count != 0) 
+                        delayshortcut = delays.Min();
 
                     Generate_Signal();
                 }
