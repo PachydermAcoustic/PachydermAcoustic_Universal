@@ -47,29 +47,45 @@ namespace Pachyderm_Acoustic
                     Terrain
                 }
 
+                public static int[] RDD_Location(Hare.Geometry.Point MinPt, Hare.Geometry.Point p, double dx, double dy, double dz)
+                {
+                    int x = (int)Math.Round((p.x - MinPt.x) / dx + 0.5);
+                    int mod = x % 2;
+
+                    int y = (int)Math.Round((p.y - MinPt.y) / (2 * dy) - (0.5 - 0.5 * mod));
+                    int z = (int)Math.Round((p.z - MinPt.z) / (2 * dz) - (0.5 - 0.5 * mod));
+
+                    return new int[] { x, y, z };
+                }
+
+                public int[] RDD_Location(Hare.Geometry.Point p)
+                {
+                    return RDD_Location(Bounds.Min_PT, p, dx, dy, dz);
+                }
+
                 public static Hare.Geometry.Point RDD_Location(Hare.Geometry.Point MinPt, int x, int y, int z, double dx, double dy, double dz)
                 {
                     int mod = x % 2;
                     return new Point(MinPt.x + (((double)x - 0.5) * dx), MinPt.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), MinPt.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
                 }
 
-                public int[] RDD_Location(Hare.Geometry.Point p)
-                {
-                    int[] loc = new int[3];
-                    loc[0] = (int)Math.Floor((p.x - Bounds.Min_PT.x) / dx);
-                    loc[1] = (int)Math.Floor((p.y - Bounds.Min_PT.y) / dy);// (4 * dx / Utilities.Numerics.rt2));
-                    loc[2] = (int)Math.Floor((p.z - Bounds.Min_PT.z) / dz);// (2 * dx / Utilities.Numerics.rt2));
+                //public int[] RDD_Location(Hare.Geometry.Point p)
+                //{
+                //    int[] loc = new int[3];
+                //    loc[0] = (int)Math.Floor((p.x - Bounds.Min_PT.x) / dx);
+                //    loc[1] = (int)Math.Floor((p.y - Bounds.Min_PT.y) / dy);// (4 * dx / Utilities.Numerics.rt2));
+                //    loc[2] = (int)Math.Floor((p.z - Bounds.Min_PT.z) / dz);// (2 * dx / Utilities.Numerics.rt2));
 
-                    //p -= Bounds.Min_PT;
-                    //p.x -= 05 * dx;
-                    //loc[0] = (int)Math.Round(p.x / dx);
-                    //int mod = loc[0] % 2;
-                    //p.y -= (0.5 - 0.5 * mod) * 2 * dy;
-                    //loc[1] =  (int)Math.Round(p.y / (2 * dy));
-                    //p.z -= (0.5 - 0.5 * mod) * 2 * dz;
-                    //loc[2] = (int)Math.Round(p.z / (2 * dz));
-                    return loc;
-                }
+                //    //p -= Bounds.Min_PT;
+                //    //p.x -= 05 * dx;
+                //    //loc[0] = (int)Math.Round(p.x / dx);
+                //    //int mod = loc[0] % 2;
+                //    //p.y -= (0.5 - 0.5 * mod) * 2 * dy;
+                //    //loc[1] =  (int)Math.Round(p.y / (2 * dy));
+                //    //p.z -= (0.5 - 0.5 * mod) * 2 * dz;
+                //    //loc[2] = (int)Math.Round(p.z / (2 * dz));
+                //    return loc;
+                //}
 
                 public Hare.Geometry.Point RDD_Location(int x, int y, int z)
                 {
@@ -96,7 +112,7 @@ namespace Pachyderm_Acoustic
                     {
                         Build_ScatteringLaboratory_FVM13(ref xDim, ref yDim, ref zDim, PML, SampleOrigin, mindimx, mindimy, mindimz);
                         SD.Connect_Grid_Laboratory(PFrame, Bounds, Bounds_Inner, dx, dy, dz, tmax, dt, no_of_Layers);
-                        Mic.Connect_Grid_Hemisphere_Laboratory(PFrame, Bounds, SampleOrigin, 1, dx, tmax, dt, no_of_Layers);
+                        Mic.Connect_Grid_Hemisphere_Laboratory(PFrame, Bounds, SampleOrigin, 1, dx, dy, dz, tmax, dt, no_of_Layers);
                     }
                     else if (GT == GridType.TransparencyLab)
                     {
@@ -122,9 +138,6 @@ namespace Pachyderm_Acoustic
                     double dydz = Rm.Sound_speed(0) / fmax * .1;
                     dx = 2 * dydz / Math.Sqrt(2);
 
-                    Bounds = new AABB(Rm.Min() - new Vector(.05 * dx, .05 * dydz, .05 * dydz), Rm.Max() + new Point(.05 * dx, .05 * dydz, .05 * dydz));
-                    Bounds_Inner = new AABB(Bounds.Min_PT.x, Bounds.Min_PT.y, Bounds.Min_PT.z, Bounds.Max_PT.x, Bounds.Max_PT.y, Bounds.Max_PT.z);
-
                     no_of_Layers = 0;
                     double max_Layer = 0;
 
@@ -134,28 +147,17 @@ namespace Pachyderm_Acoustic
                         max_Layer = PML_MaxAtten;
                     }
 
-                    //double x_length = Bounds.X_Length(), y_length = Bounds.Y_Length(), z_length = Bounds.Z_Length();
-                    double x_length, y_length, z_length;
-                    Point MinPt = new Hare.Geometry.Point(SampleOrigin.x, SampleOrigin.y, SampleOrigin.z);
-                    //if (x_length < xmin)
-                    //{
-                    x_length = xmin;
-                    MinPt.x -= x_length / 2;
-                    //}
-                    //if (y_length < ymin)
-                    //{
-                    y_length = ymin;
-                    MinPt.y -= y_length / 2;
-                    //}
-                    //if (z_length < zmin)
-                    //{
-                    z_length = zmin;
-                    MinPt.z -= z_length /2;
-                    //}
+                    double inner_x_length = xmin;
+                    double inner_y_length = ymin;
+                    double inner_z_length = zmin;
 
-                    x_length += (no_of_Layers * 4 + 1) * dx;
-                    y_length += (no_of_Layers * 4 + 1) * dydz;
-                    z_length += (no_of_Layers * 4 + 1) * dydz;
+                    Point InnerMin = new Point(SampleOrigin.x - inner_x_length / 2, SampleOrigin.y - inner_y_length / 2, SampleOrigin.z - inner_z_length / 2);
+
+                    Bounds_Inner = new AABB(InnerMin, InnerMin + new Point(inner_x_length, inner_y_length, inner_z_length));
+
+                    double x_length = inner_x_length + (no_of_Layers * 4 + 1) * dx;
+                    double y_length = inner_y_length + (no_of_Layers * 4 + 1) * dydz;
+                    double z_length = inner_z_length + (no_of_Layers * 4 + 1) * dydz;
 
                     //estimated distance between nodes
                     xDim = (int)Math.Ceiling(x_length / (dx));                                //set number of nodes in x direction
@@ -164,6 +166,9 @@ namespace Pachyderm_Acoustic
                     dy = y_length / yDim;
                     zDim = (int)Math.Ceiling(z_length / dydz);                                //set number of nodes in z direction
                     dz = z_length / zDim;
+
+                    Point MinPt = new Point(InnerMin.x - 2 * dx * no_of_Layers, InnerMin.y - 2 * dy * no_of_Layers, InnerMin.z - 2 * dz * no_of_Layers);
+                    Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
 
                     dt = dy * rt2 / (Rm.Sound_speed(0));                           //set time step small enough to satisfy courrant condition
                     dxrt2 = dx * rt2;
@@ -279,7 +284,7 @@ namespace Pachyderm_Acoustic
                     }
 
                     double x_length = Bounds.X_Length(), y_length = Bounds.Y_Length(), z_length = Bounds.Z_Length();
-                    Point MinPt = new Hare.Geometry.Point(SampleOrigin.x, SampleOrigin.y, 0 + floorplaneoverride);
+                    //Point MinPt = new Hare.Geometry.Point(SampleOrigin.x, SampleOrigin.y, 0 + floorplaneoverride);
 
                     //MinPt.x -= (x_length / 4);// + no_of_Layers / 2 * dx);
                     //MinPt.y -= (y_length / 2);// + no_of_Layers / 2 * dydz);
@@ -288,18 +293,19 @@ namespace Pachyderm_Acoustic
 
                     if (x_length < xmin)
                     {
+
                         x_length = xmin;
-                        MinPt.x -= (xmin - x_length) / 2;
+                        //MinPt.x -= (xmin - x_length) / 2;
                     }
                     if (y_length < ymin)
                     {
                         y_length = ymin;
-                        MinPt.y -= (ymin - y_length) / 2;
+                        //MinPt.y -= (ymin - y_length) / 2;
                     }
                     if (z_length < zmin - floorplaneoverride)
                     {
                         z_length = zmin - floorplaneoverride;
-                        MinPt.z -= (zmin - z_length) / 2;
+                        //MinPt.z -= (zmin - z_length) / 2;
                     }
 
                     x_length += (no_of_Layers * 4 + 1) * dx;
@@ -313,6 +319,9 @@ namespace Pachyderm_Acoustic
                     dy = y_length / yDim;
                     zDim = (int)Math.Ceiling(z_length / dydz);                                //set number of nodes in z direction
                     dz = z_length / zDim;
+
+                    Point MinPt = new Point(SampleOrigin.x - x_length / 2, SampleOrigin.y - y_length / 2, floorplaneoverride);
+                    Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
 
                     dt = dy * rt2 / (Rm.Sound_speed(0));                           //set time step small enough to satisfy courrant condition
                     dxrt2 = dx * rt2;
@@ -360,13 +369,6 @@ namespace Pachyderm_Acoustic
 
                     int threadct = System.Environment.ProcessorCount;
                     List<System.Threading.Thread> T = new List<System.Threading.Thread>();
-
-                    floorplaneoverride = Math.Round(floorplaneoverride / dydz) * dydz;
-
-                    MinPt.x -= x_length / 2;
-                    MinPt.y -= y_length / 2;
-                    //MinPt.z = 0 + floorplaneoverride;
-                    Bounds = new AABB(MinPt, MinPt + new Point(x_length, y_length, z_length));
 
                     //System.Threading.Tasks.Parallel.For(0, xDim, (x) =>
                     //for (int x = 0; x < PFrame.Length; x++)
@@ -1589,11 +1591,15 @@ namespace Pachyderm_Acoustic
 
                     for (int i = 0; i < TempLOC.Count; i++)
                     {
-                        X.Add((int)Math.Floor((TempLOC[i].x - Bounds.Min_PT.x) / (dx)));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        int[] loc = Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, TempLOC[i], dx, dy, dz);
+                        //X.Add((int)Math.Floor((TempLOC[i].x - Bounds.Min_PT.x) / (dx)));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        X.Add(loc[0]);
                         if (X[X.Count-1] >= Frame.Length || X[X.Count-1] < 0) continue;
-                        Y.Add((int)Math.Floor((TempLOC[i].y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2)));// + no_of_Layers / 2;
+                        //Y.Add((int)Math.Floor((TempLOC[i].y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2)));// + no_of_Layers / 2;
+                        Y.Add(loc[1]);
                         if (Y[Y.Count-1] >= Frame[X[i]].Length || Y[Y.Count-1] < 0) continue;
-                        Z.Add((int)Math.Floor((TempLOC[i].z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2)));// + no_of_Layers / 2;
+                        //Z.Add((int)Math.Floor((TempLOC[i].z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2)));// + no_of_Layers / 2;
+                        Z.Add(loc[2]);
                         if (Z[Z.Count-1] >= Frame[X[i]][Y[i]].Length || Z[Z.Count-1] < 0) continue;
                         SrcNode.Add(Frame[X[X.Count-1]][Y[Y.Count-1]][Z[Z.Count-1]]);
                         Loc.Add(TempLOC[i]);
@@ -1617,48 +1623,89 @@ namespace Pachyderm_Acoustic
                     List<double[]> TempSWL = SWL;
                     SWL = new List<double[]>();
 
-                    int[] minIndices = new int[3];
-                    int[] maxIndices = new int[3];
-                    minIndices[0] = (int)Math.Floor((Inner_Bounds.Min_PT.x - Bounds.Min_PT.x) / dx);
-                    minIndices[1] = (int)Math.Floor((Inner_Bounds.Min_PT.y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));
-                    minIndices[2] = (int)Math.Floor((Inner_Bounds.Min_PT.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));
-                    maxIndices[0] = (int)Math.Floor((Inner_Bounds.Max_PT.x - Bounds.Min_PT.x) / dx);
-                    maxIndices[1] = (int)Math.Floor((Inner_Bounds.Max_PT.y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));
-                    maxIndices[2] = (int)Math.Floor((Inner_Bounds.Max_PT.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));
+                    //int[] minIndices = new int[3];
+                    //int[] maxIndices = new int[3];
+                    //minIndices[0] = (int)Math.Floor((Inner_Bounds.Min_PT.x - Bounds.Min_PT.x) / dx);
+                    //minIndices[1] = (int)Math.Floor((Inner_Bounds.Min_PT.y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));
+                    //minIndices[2] = (int)Math.Floor((Inner_Bounds.Min_PT.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));
+                    //maxIndices[0] = (int)Math.Floor((Inner_Bounds.Max_PT.x - Bounds.Min_PT.x) / dx);
+                    //maxIndices[1] = (int)Math.Floor((Inner_Bounds.Max_PT.y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));
+                    //maxIndices[2] = (int)Math.Floor((Inner_Bounds.Max_PT.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));
+
+                    int XIndex(double x)
+                    {
+                        return (int)Math.Round((x - Bounds.Min_PT.x) / dx + 0.5);
+                    }
+
+                    int YIndex(double y, int x)
+                    {
+                        int mod = x % 2;
+                        return (int)Math.Round((y - Bounds.Min_PT.y) / (2 * dy) - (0.5 - 0.5 * mod));
+                    }
+
+                    int ZIndex(double z, int x)
+                    {
+                        int mod = x % 2;
+                        return (int)Math.Round((z - Bounds.Min_PT.z) / (2 * dz) - (0.5 - 0.5 * mod));
+                    }
+
+                    int minX = Math.Max(0, XIndex(Inner_Bounds.Min_PT.x));
+                    int maxX = Math.Min(Frame.Length - 1, XIndex(Inner_Bounds.Max_PT.x));
 
                     for (int i = 0; i < Loc.Count; i++)
                     {
+                        //if (Inner_Bounds.IsPointInBox(Loc[i].x, Loc[i].y, Loc[i].z))
+                        //{
+                        //    X.Add((int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx)));
+                        //    if (X[X.Count - 1] >= Frame.Length || X[X.Count - 1] < 0) continue;
+                        //    Y.Add((int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2)));
+                        //    if (Y[Y.Count - 1] >= Frame[X[i]].Length || Y[Y.Count - 1] < 0) continue;
+                        //    Z.Add((int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2)));
+                        //    if (Z[Z.Count - 1] >= Frame[X[i]][Y[i]].Length || Z[Z.Count - 1] < 0) continue;
+                        //    SrcNode.Add(Frame[X[X.Count - 1]][Y[Y.Count - 1]][Z[Z.Count - 1]]);
+                        //    delays.Add(0);
+                        //    SWL.Add(TempSWL[i]);
+                        //}
                         if (Inner_Bounds.IsPointInBox(Loc[i].x, Loc[i].y, Loc[i].z))
                         {
-                            X.Add((int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx)));
-                            if (X[X.Count - 1] >= Frame.Length || X[X.Count - 1] < 0) continue;
-                            Y.Add((int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2)));
-                            if (Y[Y.Count - 1] >= Frame[X[i]].Length || Y[Y.Count - 1] < 0) continue;
-                            Z.Add((int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2)));
-                            if (Z[Z.Count - 1] >= Frame[X[i]][Y[i]].Length || Z[Z.Count - 1] < 0) continue;
-                            SrcNode.Add(Frame[X[X.Count - 1]][Y[Y.Count - 1]][Z[Z.Count - 1]]);
+                            int x = XIndex(Loc[i].x);
+                            if (x < 0 || x >= Frame.Length) continue;
+
+                            int y = YIndex(Loc[i].y, x);
+                            if (y < 0 || y >= Frame[x].Length) continue;
+
+                            int z = ZIndex(Loc[i].z, x);
+                            if (z < 0 || z >= Frame[x][y].Length) continue;
+
+                            X.Add(x);
+                            Y.Add(y);
+                            Z.Add(z);
+                            SrcNode.Add(Frame[x][y][z]);
                             delays.Add(0);
                             SWL.Add(TempSWL[i]);
                         }
                         else
                         {
                             // Source is outside - find all visible faces and iterate only over valid indices on those faces
-
                             // Check X-Min face (left face)
                             if (Loc[i].x < Inner_Bounds.Min_PT.x)
                             {
-                                int x = minIndices[0]; // Fixed x at minimum face
+                                int minY = Math.Max(0, YIndex(Inner_Bounds.Min_PT.y, minX));
+                                int maxY = Math.Min(Frame[minX].Length - 1, YIndex(Inner_Bounds.Max_PT.y, minX));
 
                                 // Loop only through valid y and z on this face
-                                for (int y = Math.Max(0, minIndices[1]); y <= Math.Min(maxIndices[1], Frame[x].Length - 1); y++)
+                                for (int y = Math.Max(0, minY); y <= Math.Min(maxY, Frame[minX].Length - 1); y++)
                                 {
-                                    for (int z = Math.Max(0, minIndices[2]); z <= Math.Min(maxIndices[2], Frame[x][y].Length - 1); z++)
+                                    int minZ = Math.Max(0, ZIndex(Inner_Bounds.Min_PT.z, minX));
+                                    int maxZ = Math.Min(Frame[minX][y].Length - 1, ZIndex(Inner_Bounds.Max_PT.z, minX));
+
+                                    for (int z = Math.Max(0, minZ); z <= Math.Min(maxZ, Frame[minX][y].Length - 1); z++)
                                     {
-                                        X.Add(x);
+                                        X.Add(minX);
                                         Y.Add(y);
                                         Z.Add(z);
-                                        SrcNode.Add(Frame[x][y][z]);
-                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dy, dz)).Length();
+                                        SrcNode.Add(Frame[minX][y][z]);
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, minX, y, z, dx, dy, dz)).Length();
                                         //double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
                                         double poweradj = Math.Log10(4 * Math.PI * d * d);
                                         SWL.Add(new double[8]{TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
@@ -1668,20 +1715,24 @@ namespace Pachyderm_Acoustic
                             }
 
                             // Check X-Max face (right face)
-                            if (Loc[i].x > Inner_Bounds.Max_PT.x)
+                            if (Loc[i].x < Inner_Bounds.Max_PT.x)
                             {
-                                int x = maxIndices[0]; // Fixed x at maximum face
+                                int minY = Math.Max(0, YIndex(Inner_Bounds.Min_PT.y, maxX));
+                                int maxY = Math.Min(Frame[minX].Length - 1, YIndex(Inner_Bounds.Max_PT.y, maxX));
 
                                 // Loop only through valid y and z on this face
-                                for (int y = Math.Max(0, minIndices[1]); y <= Math.Min(maxIndices[1], Frame[x].Length - 1); y++)
+                                for (int y = Math.Max(0, minY); y <= Math.Min(maxY, Frame[maxX].Length - 1); y++)
                                 {
-                                    for (int z = Math.Max(0, minIndices[2]); z <= Math.Min(maxIndices[2], Frame[x][y].Length - 1); z++)
+                                    int minZ = Math.Max(0, ZIndex(Inner_Bounds.Min_PT.z, maxX));
+                                    int maxZ = Math.Min(Frame[maxX][y].Length - 1, ZIndex(Inner_Bounds.Max_PT.z, maxX));
+
+                                    for (int z = Math.Max(0, minZ); z <= Math.Min(maxZ, Frame[minX][y].Length - 1); z++)
                                     {
-                                        X.Add(x);
+                                        X.Add(maxX);
                                         Y.Add(y);
                                         Z.Add(z);
-                                        SrcNode.Add(Frame[x][y][z]);
-                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dy, dz)).Length();
+                                        SrcNode.Add(Frame[maxX][y][z]);
+                                        double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, maxX, y, z, dx, dy, dz)).Length();
                                         //double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
                                         double poweradj = Math.Log10(4 * Math.PI * d * d);
                                         SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
@@ -1693,49 +1744,51 @@ namespace Pachyderm_Acoustic
                             // Check Y-Min face (front face)
                             if (Loc[i].y < Inner_Bounds.Min_PT.y)
                             {
-                                int y = minIndices[1]; // Fixed y at minimum face
-
-                                // Loop through x-range, but skip corners already handled by x-faces
-                                for (int x = Math.Max(0, minIndices[0] + 1); x <= Math.Min(maxIndices[0] - 1, Frame.Length - 1); x++)
+                                for (int x = minX + 1; x <= maxX - 1; x++)
                                 {
-                                    if (y >= Frame[x].Length) continue; // Skip invalid indices
+                                    int y = YIndex(Inner_Bounds.Min_PT.y, x);
+                                    if (y < 0 || y >= Frame[x].Length) continue;
 
-                                    for (int z = Math.Max(0, minIndices[2]); z <= Math.Min(maxIndices[2], Frame[x][y].Length - 1); z++)
+                                    int minZ = Math.Max(0, ZIndex(Inner_Bounds.Min_PT.z, x));
+                                    int maxZ = Math.Min(Frame[x][y].Length - 1, ZIndex(Inner_Bounds.Max_PT.z, x));
+
+                                    for (int z = minZ; z <= maxZ; z++)
                                     {
                                         X.Add(x);
                                         Y.Add(y);
                                         Z.Add(z);
                                         SrcNode.Add(Frame[x][y][z]);
+
                                         double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dy, dz)).Length();
-                                        //double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
                                         double poweradj = Math.Log10(4 * Math.PI * d * d);
                                         SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
-                                        delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
+                                        delays.Add((int)Math.Round((d / 343) / dt));
                                     }
                                 }
                             }
 
                             // Check Y-Max face (back face)
-                            if (Loc[i].y > Inner_Bounds.Max_PT.y)
+                            if (Loc[i].y < Inner_Bounds.Min_PT.y)
                             {
-                                int y = maxIndices[1]; // Fixed y at maximum face
-
-                                // Loop through x-range, but skip corners already handled by x-faces
-                                for (int x = Math.Max(0, minIndices[0] + 1); x <= Math.Min(maxIndices[0] - 1, Frame.Length - 1); x++)
+                                for (int x = minX + 1; x <= maxX - 1; x++)
                                 {
-                                    if (y >= Frame[x].Length) continue; // Skip invalid indices
+                                    int y = YIndex(Inner_Bounds.Max_PT.y, x);
+                                    if (y < 0 || y >= Frame[x].Length) continue;
 
-                                    for (int z = Math.Max(0, minIndices[2]); z <= Math.Min(maxIndices[2], Frame[x][y].Length - 1); z++)
+                                    int minZ = Math.Max(0, ZIndex(Inner_Bounds.Min_PT.z, x));
+                                    int maxZ = Math.Min(Frame[x][y].Length - 1, ZIndex(Inner_Bounds.Max_PT.z, x));
+
+                                    for (int z = minZ; z <= maxZ; z++)
                                     {
                                         X.Add(x);
                                         Y.Add(y);
                                         Z.Add(z);
                                         SrcNode.Add(Frame[x][y][z]);
+
                                         double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dy, dz)).Length();
-                                        //double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
                                         double poweradj = Math.Log10(4 * Math.PI * d * d);
                                         SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
-                                        delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
+                                        delays.Add((int)Math.Round((d / 343) / dt));
                                     }
                                 }
                             }
@@ -1743,49 +1796,55 @@ namespace Pachyderm_Acoustic
                             // Check Z-Min face (bottom face)
                             if (Loc[i].z < Inner_Bounds.Min_PT.z)
                             {
-                                int z = minIndices[2]; // Fixed z at minimum face
-
-                                // Loop through x and y ranges, but skip edges already handled by x and y faces
-                                for (int x = Math.Max(0, minIndices[0] + 1); x <= Math.Min(maxIndices[0] - 1, Frame.Length - 1); x++)
+                                for (int x = minX + 1; x <= maxX - 1; x++)
                                 {
-                                    for (int y = Math.Max(0, minIndices[1] + 1); y <= Math.Min(maxIndices[1] - 1, Frame[x].Length - 1); y++)
+                                    int z = ZIndex(Inner_Bounds.Min_PT.z, x);
+                                    if (z < 0) continue;
+
+                                    int minY = Math.Max(0, YIndex(Inner_Bounds.Min_PT.y, x) + 1);
+                                    int maxY = Math.Min(Frame[x].Length - 1, YIndex(Inner_Bounds.Max_PT.y, x) - 1);
+
+                                    for (int y = minY; y <= maxY; y++)
                                     {
-                                        if (z >= Frame[x][y].Length || z < 0) continue; // Skip invalid indices
+                                        if (z >= Frame[x][y].Length) continue;
 
                                         X.Add(x);
                                         Y.Add(y);
                                         Z.Add(z);
                                         SrcNode.Add(Frame[x][y][z]);
+
                                         double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dy, dz)).Length();
-                                        //double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
                                         double poweradj = Math.Log10(4 * Math.PI * d * d);
                                         SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
-                                        delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
+                                        delays.Add((int)Math.Round((d / 343) / dt));
                                     }
                                 }
                             }
 
                             // Check Z-Max face (top face)
-                            if (Loc[i].z > Inner_Bounds.Max_PT.z)
+                            if (Loc[i].z < Inner_Bounds.Min_PT.z)
                             {
-                                int z = maxIndices[2]; // Fixed z at maximum face
-
-                                // Loop through x and y ranges, but skip edges already handled by x and y faces
-                                for (int x = Math.Max(0, minIndices[0] + 1); x <= Math.Min(maxIndices[0] - 1, Frame.Length - 1); x++)
+                                for (int x = minX + 1; x <= maxX - 1; x++)
                                 {
-                                    for (int y = Math.Max(0, minIndices[1] + 1); y <= Math.Min(maxIndices[1] - 1, Frame[x].Length - 1); y++)
+                                    int z = ZIndex(Inner_Bounds.Max_PT.z, x);
+                                    if (z < 0) continue;
+
+                                    int minY = Math.Max(0, YIndex(Inner_Bounds.Min_PT.y, x) + 1);
+                                    int maxY = Math.Min(Frame[x].Length - 1, YIndex(Inner_Bounds.Max_PT.y, x) - 1);
+
+                                    for (int y = minY; y <= maxY; y++)
                                     {
-                                        if (z >= Frame[x][y].Length || z < 0) continue; // Skip invalid indices
+                                        if (z >= Frame[x][y].Length) continue;
 
                                         X.Add(x);
                                         Y.Add(y);
                                         Z.Add(z);
                                         SrcNode.Add(Frame[x][y][z]);
+
                                         double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dy, dz)).Length();
-                                        //double d = (Loc[i] - Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, x, y, z, dx, dx * Utilities.Numerics.rt2, dx * Utilities.Numerics.rt2)).Length();
                                         double poweradj = Math.Log10(4 * Math.PI * d * d);
                                         SWL.Add(new double[8] { TempSWL[i][0] + poweradj, TempSWL[i][1] + poweradj, TempSWL[i][2] + poweradj, TempSWL[i][3] + poweradj, TempSWL[i][4] + poweradj, TempSWL[i][5] + poweradj, TempSWL[i][6] + poweradj, TempSWL[i][7] + poweradj });
-                                        delays.Add((int)Math.Round((d / 343) / dt)); // Store delay for this source
+                                        delays.Add((int)Math.Round((d / 343) / dt));
                                     }
                                 }
                             }
@@ -2020,7 +2079,7 @@ namespace Pachyderm_Acoustic
                     RecNode = new Acoustic_Compact_FDTD.Node[Loc.Length];
                 }
 
-                public void Connect_Grid_Freefield(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double _tmax, double dt, int no_of_Layers)
+                public void Connect_Grid_Freefield(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, double dx, double dy, double dz, double _tmax, double dt, int no_of_Layers)
                 {
                     Sample_Freq = 1 / dt;
                     no_of_samples = (int)Math.Ceiling(_tmax / dt / 1000);
@@ -2033,9 +2092,13 @@ namespace Pachyderm_Acoustic
                     for (int i = 0; i < Loc.Length; i++)
                     {
                         recording[i] = new double[no_of_samples];
-                        X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
-                        Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
-                        Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        //X[i] = (int)Math.Floor((Loc[i].x - Bounds.Min_PT.x) / (dx));// + (int)(no_of_Layers) / Utilities.Numerics.rt2);
+                        //Y[i] = (int)Math.Floor((Loc[i].y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        //Z[i] = (int)Math.Floor((Loc[i].z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2));// + no_of_Layers / 2;
+                        int[] loc = Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, Loc[i], dx, dy, dz);
+                        X[i] = loc[0];
+                        Y[i] = loc[1];
+                        Z[i] = loc[2];
                         RecNode[i] = Frame[X[i]][Y[i]][Z[i]];
                     }
                 }
@@ -2124,7 +2187,7 @@ namespace Pachyderm_Acoustic
 
                 //    RecNode = Rec_Unique.ToArray();
                 //}
-                public void Connect_Grid_Hemisphere_Laboratory(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, Point center, double radius, double dx, double _tmax, double dt, int no_of_Layers)
+                public void Connect_Grid_Hemisphere_Laboratory(Acoustic_Compact_FDTD.Node[][][] Frame, AABB Bounds, Point center, double radius, double dx, double dy, double dz, double _tmax, double dt, int no_of_Layers)
                 {
                     List<Point> Loc_List = new List<Point>();
                     no_of_samples = (int)Math.Ceiling(_tmax / dt / 1000);
@@ -2140,16 +2203,18 @@ namespace Pachyderm_Acoustic
 
                     for (int i = 0; i < grid_template.Vertex_Count; i++)
                     {
-                        Point p = grid_template[i];            
-                        int x = (int)Math.Floor((p.x - Bounds.Min_PT.x) / (dx));
-                        int y = (int)Math.Floor((p.y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));
-                        int z = (int)Math.Max(Math.Floor((p.z + center.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2)),0);
+                        //Point p = grid_template[i];            
+                        //int x = (int)Math.Floor((p.x - Bounds.Min_PT.x) / (dx));
+                        //int y = (int)Math.Floor((p.y - Bounds.Min_PT.y) / (dx * Utilities.Numerics.rt2));
+                        //int z = (int)Math.Max(Math.Floor((p.z + center.z - Bounds.Min_PT.z) / (dx * Utilities.Numerics.rt2)),0);
+                        Point p = grid_template[i] + center;
+                        int[] loc = Acoustic_Compact_FDTD.RDD_Location(Bounds.Min_PT, p, dx, dy, dz);
 
-                        Xl.Add(x);
-                        Yl.Add(y);
-                        Zl.Add(z);
+                        Xl.Add(loc[0]);
+                        Yl.Add(loc[1]);
+                        Zl.Add(loc[2]);
                         ptlist.Add(p);
-                        Rec.Add(Frame[x][y][z]);
+                        Rec.Add(Frame[loc[0]][loc[1]][loc[2]]);
                     }
 
                     Loc = ptlist.ToArray();
