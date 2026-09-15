@@ -1541,7 +1541,7 @@ namespace Pachyderm_Acoustic
                     if (dy > 0) Dir_Rec_Pos[1][Octave][sample] += (float)(dy * Energy_in);
                     else Dir_Rec_Neg[1][Octave][sample] += (float)(dy * Energy_in);
                     if (dz > 0) Dir_Rec_Pos[2][Octave][sample] += (float)(dz * Energy_in);
-                    else Dir_Rec_Pos[2][Octave][sample] += (float)(dz * Energy_in);
+                    else Dir_Rec_Neg[2][Octave][sample] += (float)(dz * Energy_in);
                 }
 
                 /// <summary>
@@ -1573,7 +1573,7 @@ namespace Pachyderm_Acoustic
                     Vector D = new Vector(Dir_Rec_Pos[0][0][t], Dir_Rec_Pos[1][0][t], Dir_Rec_Pos[2][0][t]);
                     D.dx += Dir_Rec_Pos[0][1][t] + Dir_Rec_Pos[0][2][t] + Dir_Rec_Pos[0][3][t] + Dir_Rec_Pos[0][4][t] + Dir_Rec_Pos[0][5][t] + Dir_Rec_Pos[0][6][t] + Dir_Rec_Pos[0][7][t];
                     D.dy += Dir_Rec_Pos[1][1][t] + Dir_Rec_Pos[1][2][t] + Dir_Rec_Pos[1][3][t] + Dir_Rec_Pos[1][4][t] + Dir_Rec_Pos[1][5][t] + Dir_Rec_Pos[1][6][t] + Dir_Rec_Pos[1][7][t];
-                    D.dx += Dir_Rec_Pos[2][1][t] + Dir_Rec_Pos[2][2][t] + Dir_Rec_Pos[2][3][t] + Dir_Rec_Pos[2][4][t] + Dir_Rec_Pos[2][5][t] + Dir_Rec_Pos[2][6][t] + Dir_Rec_Pos[2][7][t];
+                    D.dz += Dir_Rec_Pos[2][1][t] + Dir_Rec_Pos[2][2][t] + Dir_Rec_Pos[2][3][t] + Dir_Rec_Pos[2][4][t] + Dir_Rec_Pos[2][5][t] + Dir_Rec_Pos[2][6][t] + Dir_Rec_Pos[2][7][t];
                     return D;
                 }
 
@@ -1590,7 +1590,7 @@ namespace Pachyderm_Acoustic
                     Vector D = new Vector(Dir_Rec_Neg[0][0][t], Dir_Rec_Neg[1][0][t], Dir_Rec_Neg[2][0][t]);
                     D.dx += Dir_Rec_Neg[0][1][t] + Dir_Rec_Neg[0][2][t] + Dir_Rec_Neg[0][3][t] + Dir_Rec_Neg[0][4][t] + Dir_Rec_Neg[0][5][t] + Dir_Rec_Neg[0][6][t] + Dir_Rec_Neg[0][7][t];
                     D.dy += Dir_Rec_Neg[1][1][t] + Dir_Rec_Neg[1][2][t] + Dir_Rec_Neg[1][3][t] + Dir_Rec_Neg[1][4][t] + Dir_Rec_Neg[1][5][t] + Dir_Rec_Neg[1][6][t] + Dir_Rec_Neg[1][7][t];
-                    D.dx += Dir_Rec_Neg[2][1][t] + Dir_Rec_Neg[2][2][t] + Dir_Rec_Neg[2][3][t] + Dir_Rec_Neg[2][4][t] + Dir_Rec_Neg[2][5][t] + Dir_Rec_Neg[2][6][t] + Dir_Rec_Neg[2][7][t];
+                    D.dz += Dir_Rec_Neg[2][1][t] + Dir_Rec_Neg[2][2][t] + Dir_Rec_Neg[2][3][t] + Dir_Rec_Neg[2][4][t] + Dir_Rec_Neg[2][5][t] + Dir_Rec_Neg[2][6][t] + Dir_Rec_Neg[2][7][t];
                     return D;
                 }
 
