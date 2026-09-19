@@ -2060,7 +2060,7 @@ namespace Pachyderm_Acoustic
                     int D_Start = 0;
                     if (!Start_at_Zero) D_Start = (int)Math.Ceiling(Direct[Src_ID].Time(Rec_ID) * Sampling_Frequency);
 
-                    double[] Filter = flat ? Direct[Src_ID].Get_Filter(Rec_ID, Sampling_Frequency)[0] : Direct[Src_ID].Create_Filter(Direct[Rec_ID].SWL, Rec_ID, 0, Sampling_Frequency);
+                    double[] Filter = flat ? Direct[Src_ID].Get_Filter(Rec_ID, Sampling_Frequency)[0] : Direct[Src_ID].Create_Filter(Direct[Src_ID].SWL, Rec_ID, 0, Sampling_Frequency);
 
                     for (int i = 0; i < Filter.Length; i++)
                     {
@@ -2075,13 +2075,13 @@ namespace Pachyderm_Acoustic
                         if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < F.Length - 1)
                         {
                             if (value.Filter == null) value.Create_Filter(16384, 0);
-                            double[] f_value = flat ? value.Filter : value.Create_Filter(SWL, Sampling_Frequency, 0, 16384, 0);
-                            int end = value.Filter.Length < F.Length - (int)Math.Ceiling(Sampling_Frequency * value.TravelTime) ? value.Filter.Length : F.Length - (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                            double[] f_value = (flat && Sampling_Frequency == 44100) ? value.Filter : value.Create_Filter(SWL, Sampling_Frequency, 16384, 0, 0);
                             int R_start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                            int end = Math.Min(f_value.Length, F.Length - R_start);
                             for (int t = 0; t < end; t++)
                             {
                                 int t_s = R_start + t;
-                                if (t_s >= 0) F[t_s] += (float)value.Filter[t];
+                                if (t_s >= 0) F[t_s] += (float)f_value[t];
                             }
                         }
                     }
@@ -2241,10 +2241,10 @@ namespace Pachyderm_Acoustic
                         double magneg = Math.Sqrt(Vneg.dx * Vneg.dx + Vneg.dy * Vneg.dy + Vneg.dz * Vneg.dz);
                         double magxyp = Math.Sqrt(Vpos.dx * Vpos.dx + Vpos.dy * Vpos.dy);
                         double magxyn = Math.Sqrt(Vneg.dx * Vneg.dx + Vneg.dy * Vneg.dy);
-                        double phipos = Math.Atan(Vpos.dz / (magxyp == 0 ? 1 : magxyp));
-                        double phineg = Math.Atan(Vneg.dz / (magxyn == 0 ? 1 : magxyn));
-                        double thetapos = Math.Asin(Vpos.dy / (magxyp == 0 ? 1 : magxyp));
-                        double thetaneg = Math.Asin(Vneg.dy / (magxyn == 0 ? 1 : magxyn));
+                        double phipos = Math.Atan2(Vpos.dz, magxyp);
+                        double phineg = Math.Atan2(Vneg.dz, magxyn); 
+                        double thetapos = Math.Atan2(Vpos.dy, Vpos.dx);
+                        double thetaneg = Math.Atan2(Vneg.dy, Vneg.dx);
                         double rt3_2 = Math.Sqrt(3) / 2;
 
                         double sin2phpos = Math.Sin(2 * phipos);
@@ -2252,7 +2252,8 @@ namespace Pachyderm_Acoustic
                         double cossqphpos = Math.Cos(phipos) * Math.Cos(phipos);
                         double cossqphneg = Math.Cos(phineg) * Math.Cos(phineg);
 
-                        Histogram[0][i] = magpos * (3 * (Math.Sin(phipos) * Math.Sin(phipos) - 1) / 2 + magneg * 3 * Math.Sin(phineg) * Math.Sin(phineg) - 1) / 2; //R
+                        //Histogram[0][i] = magpos * (3 * (Math.Sin(phipos) * Math.Sin(phipos) - 1) / 2 + magneg * 3 * Math.Sin(phineg) * Math.Sin(phineg) - 1) / 2; //R
+                        Histogram[0][i] = magpos * (3 * Math.Pow(Math.Sin(phipos), 2) - 1) / 2 + magneg * (3 * Math.Pow(Math.Sin(phineg), 2) - 1) / 2; 
                         Histogram[1][i] = rt3_2 * (Math.Cos(thetapos) * sin2phpos * magpos + Math.Cos(thetaneg) * sin2phneg * magneg);  //S
                         Histogram[2][i] = rt3_2 * (Math.Sin(thetapos) * sin2phpos * magpos + Math.Sin(thetaneg) * sin2phneg * magneg);  //T
                         Histogram[3][i] = rt3_2 * (Math.Cos(2 * thetapos) * cossqphpos * magpos + Math.Cos(2 * thetaneg) * cossqphneg * magneg);  //U
@@ -2264,8 +2265,8 @@ namespace Pachyderm_Acoustic
                     Histogram[0] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 16384];
                     Histogram[1] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 16384];
                     Histogram[2] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 16384];
+                    Histogram[3] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 16384];
                     Histogram[4] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 16384];
-                    Histogram[5] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 16384];
                 }
 
                 if (Direct != null && Direct.IsOccluded(Rec_ID))
@@ -2278,8 +2279,8 @@ namespace Pachyderm_Acoustic
                     {
                         double mag = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1] + V[i][2] * V[i][2]);
                         double magxy = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1]);
-                        double phi = Math.Atan(V[i][2] / (magxy == 0 ? 1 : magxy));// Math.Asin(Vpos.z / (magpos == 0? 1 : magpos));
-                        double theta = Math.Asin(V[i][1] / (magxy == 0 ? 1 : magxy));//phipos / Math.Cos(phipos));
+                        double phi = Math.Atan2(V[i][2], magxy); 
+                        double theta = Math.Atan2(V[i][1], V[i][0]);
                         double rt3_2 = Math.Sqrt(3) / 2;
 
                         double sin2phi = Math.Sin(2 * phi);
@@ -2309,8 +2310,8 @@ namespace Pachyderm_Acoustic
                             {
                                 double mag = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1] + V[i][2] * V[i][2]);
                                 double magxy = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1]);
-                                double phi = Math.Atan(V[i][2] / (magxy == 0 ? 1 : magxy));
-                                double theta = Math.Asin(V[i][1] / (magxy == 0 ? 1 : magxy));
+                                double phi = Math.Atan2(V[i][2], magxy); 
+                                double theta = Math.Atan2(V[i][1], V[i][0]); 
                                 double rt3_2 = Math.Sqrt(3) / 2;
 
                                 double sin2phi = Math.Sin(2 * phi);
@@ -2350,10 +2351,10 @@ namespace Pachyderm_Acoustic
                         double magneg = Math.Sqrt(Vneg.dx * Vneg.dx + Vneg.dy * Vneg.dy + Vneg.dz * Vneg.dz);
                         double magxyp = Math.Sqrt(Vpos.dx * Vpos.dx + Vpos.dy * Vpos.dy);
                         double magxyn = Math.Sqrt(Vneg.dx * Vneg.dx + Vneg.dy * Vneg.dy);
-                        double phipos = Math.Atan(Vpos.dz / (magxyp == 0 ? 1 : magxyp));
-                        double phineg = Math.Atan(Vneg.dz / (magxyn == 0 ? 1 : magxyn));
-                        double thetapos = Math.Asin(Vpos.dy / (magxyp == 0 ? 1 : magxyp));
-                        double thetaneg = Math.Asin(Vneg.dy / (magxyn == 0 ? 1 : magxyn));
+                        double phipos = Math.Atan2(Vpos.dz, magxyp);
+                        double phineg = Math.Atan2(Vneg.dz, magxyn); 
+                        double thetapos = Math.Atan2(Vpos.dy, Vpos.dx);
+                        double thetaneg = Math.Atan2(Vneg.dy, Vneg.dx); 
                         double rt3_8 = Math.Sqrt(3.0 / 8.0);
                         double rt15_2 = Math.Sqrt(15.0) / 2.0;
                         double rt5_8 = Math.Sqrt(5.0 / 8.0);
@@ -2363,15 +2364,15 @@ namespace Pachyderm_Acoustic
                         double NO_compos = Math.Sin(phipos) * Math.Pow(Math.Cos(phipos), 2);
                         double NO_comneg = Math.Sin(phineg) * Math.Pow(Math.Cos(phineg), 2);
                         double PQ_compos = Math.Pow(Math.Cos(phipos), 3);
-                        double PQ_comneg = Math.Pow(Math.Cos(phipos), 3);
+                        double PQ_comneg = Math.Pow(Math.Cos(phineg), 3);
 
                         Histogram[0][i] = magpos * Math.Sin(phipos) * (5 * Math.Sin(phipos) * Math.Sin(phipos) - 3) / 2 + magneg * Math.Sin(phineg) * (5 * Math.Sin(phineg) * Math.Sin(phineg) - 3) / 2; //K
                         Histogram[1][i] = rt3_8 * (magpos * Math.Cos(thetapos) * LM_compos + magneg * Math.Cos(thetaneg) * LM_comneg); //L
                         Histogram[2][i] = rt3_8 * (magpos * Math.Sin(thetapos) * LM_compos + magneg * Math.Sin(thetaneg) * LM_comneg); //M
-                        Histogram[3][i] = rt15_2 * (magpos * Math.Cos(2 * thetapos) * NO_compos + magneg * Math.Cos(2 * thetaneg) * NO_compos); //N
-                        Histogram[4][i] = rt15_2 * (magpos * Math.Sin(2 * thetapos) * NO_compos + magneg * Math.Sin(2 * thetaneg) * NO_compos); //O
-                        Histogram[5][i] = rt5_8 * (magpos * Math.Cos(3 * thetapos) * PQ_compos + magneg * Math.Cos(3 * thetaneg) * PQ_compos); //P
-                        Histogram[6][i] = rt5_8 * (magpos * Math.Sin(3 * thetapos) * PQ_compos + magneg * Math.Sin(3 * thetaneg) * PQ_compos); //Q
+                        Histogram[3][i] = rt15_2 * (magpos * Math.Cos(2 * thetapos) * NO_compos + magneg * Math.Cos(2 * thetaneg) * NO_comneg); //N
+                        Histogram[4][i] = rt15_2 * (magpos * Math.Sin(2 * thetapos) * NO_compos + magneg * Math.Sin(2 * thetaneg) * NO_comneg); //O
+                        Histogram[5][i] = rt5_8 * (magpos * Math.Cos(3 * thetapos) * PQ_compos + magneg * Math.Cos(3 * thetaneg) * PQ_comneg); //P
+                        Histogram[6][i] = rt5_8 * (magpos * Math.Sin(3 * thetapos) * PQ_compos + magneg * Math.Sin(3 * thetaneg) * PQ_comneg); //Q
                     }
                 }
                 else
@@ -2395,8 +2396,8 @@ namespace Pachyderm_Acoustic
                     {
                         double mag = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1] + V[i][2] * V[i][2]);
                         double magxy = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1]);
-                        double phi = Math.Atan(V[i][2] / (magxy == 0 ? 1 : magxy));
-                        double theta = Math.Asin(V[i][1] / (magxy == 0 ? 1 : magxy));
+                        double phi = Math.Atan2(V[i][2], magxy); 
+                        double theta = Math.Atan2(V[i][1], V[i][0]); 
                         double rt3_8 = Math.Sqrt(3.0 / 8.0);
                         double rt15_2 = Math.Sqrt(15.0) / 2.0;
                         double rt5_8 = Math.Sqrt(5.0 / 8.0);
@@ -2431,8 +2432,8 @@ namespace Pachyderm_Acoustic
                             {
                                 double mag = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1] + V[i][2] * V[i][2]);
                                 double magxy = Math.Sqrt(V[i][0] * V[i][0] + V[i][1] * V[i][1]);
-                                double phi = Math.Atan(V[i][2] / (magxy == 0 ? 1 : magxy));// Math.Asin(Vpos.z / (magpos == 0? 1 : magpos));
-                                double theta = Math.Asin(V[i][1] / (magxy == 0 ? 1 : magxy));//phipos / Math.Cos(phipos));
+                                double phi = Math.Atan2(V[i][2], magxy); 
+                                double theta = Math.Atan2(V[i][1], V[i][0]); 
                                 double rt3_8 = Math.Sqrt(3.0 / 8.0);
                                 double rt15_2 = Math.Sqrt(15.0) / 2.0;
                                 double rt5_8 = Math.Sqrt(5.0 / 8.0);
@@ -3823,9 +3824,9 @@ namespace Pachyderm_Acoustic
                 if (order == Ambisonics_Component_Order.ACN)
                 {
                     double[][] final = new double[filter.Length][];
-                    final[0] = filter[2];
-                    final[1] = filter[0];
-                    final[2] = filter[1];
+                    final[0] = filter[1];
+                    final[1] = filter[2];
+                    final[2] = filter[0];
                     return final;
                 }
                 else return filter; //FuMa,SID
@@ -3838,10 +3839,10 @@ namespace Pachyderm_Acoustic
                 {
                     double[][] final = new double[filter.Length][];
                     final[0] = filter[4];//4
-                    final[1] = filter[0];//5
-                    final[2] = filter[3];//6
+                    final[1] = filter[2];//5
+                    final[2] = filter[0];//6
                     final[3] = filter[1];//7
-                    final[4] = filter[2];//8
+                    final[4] = filter[3];//8
                     return final;
                 }
                 else return filter; //FuMa,SID
@@ -3854,12 +3855,12 @@ namespace Pachyderm_Acoustic
                 {
                     double[][] final = new double[filter.Length][];
                     final[0] = filter[6];//9
-                    final[1] = filter[0];//10
-                    final[2] = filter[5];//11
-                    final[3] = filter[1];//12
-                    final[4] = filter[4];//13
-                    final[5] = filter[2];//14
-                    final[6] = filter[3];//15
+                    final[1] = filter[4];//10
+                    final[2] = filter[2];//11
+                    final[3] = filter[0];//12
+                    final[4] = filter[1];//13
+                    final[5] = filter[3];//14
+                    final[6] = filter[5];//15
                     return final;
                 }
                 else return filter; //FuMa,SID
@@ -3871,15 +3872,15 @@ namespace Pachyderm_Acoustic
                 if (order == Ambisonics_Component_Order.ACN)
                 {
                     double[][] final = new double[filter.Length][];
-                    final[0] = filter[8];//16
-                    final[1] = filter[0];//17
-                    final[2] = filter[7];//18
+                    final[0] = filter[7];//16
+                    final[1] = filter[5];//17
+                    final[2] = filter[3];//18
                     final[3] = filter[1];//19
-                    final[4] = filter[6];//20
+                    final[4] = filter[0];//20
                     final[5] = filter[2];//21
-                    final[6] = filter[5];//22
-                    final[7] = filter[3];//23
-                    final[8] = filter[4];//24
+                    final[6] = filter[4];//22
+                    final[7] = filter[6];//23
+                    final[8] = filter[8];//24
                     return final;
                 }
                 else return filter; //FuMa,SID
@@ -3891,17 +3892,17 @@ namespace Pachyderm_Acoustic
                 if (order == Ambisonics_Component_Order.ACN)
                 {
                     double[][] final = new double[filter.Length][];
-                    final[0] = filter[10];//25
-                    final[1] = filter[0];//26
-                    final[2] = filter[9];//27
-                    final[3] = filter[1];//28
-                    final[4] = filter[8];//29
-                    final[5] = filter[2];//30
-                    final[6] = filter[7];//31
-                    final[7] = filter[3];//32
+                    final[0] = filter[9];//25
+                    final[1] = filter[7];//26
+                    final[2] = filter[5];//27
+                    final[3] = filter[3];//28
+                    final[4] = filter[1];//29
+                    final[5] = filter[0];//30
+                    final[6] = filter[2];//31
+                    final[7] = filter[4];//32
                     final[8] = filter[6];//33
-                    final[9] = filter[4];//34
-                    final[10] = filter[5];//35
+                    final[9] = filter[8];//34
+                    final[10] = filter[10];//35
                     return final;
                 }
                 else return filter; //FuMa,SID
@@ -3913,19 +3914,19 @@ namespace Pachyderm_Acoustic
                 if (order == Ambisonics_Component_Order.ACN)
                 {
                     double[][] final = new double[filter.Length][];
-                    final[0] = filter[12];//36
-                    final[1] = filter[0];//37
-                    final[2] = filter[11];//38
-                    final[3] = filter[1];//39
-                    final[4] = filter[10];//40
-                    final[5] = filter[2];//41
-                    final[6] = filter[9];//42
-                    final[7] = filter[3];//43
-                    final[8] = filter[8];//44
-                    final[9] = filter[4];//45
-                    final[10] = filter[7];//46
-                    final[11] = filter[5];//47
-                    final[12] = filter[6];//48
+                    final[0] = filter[11];//36
+                    final[1] = filter[9];//37
+                    final[2] = filter[7];//38
+                    final[3] = filter[5];//39
+                    final[4] = filter[3];//40
+                    final[5] = filter[1];//41
+                    final[6] = filter[0];//42
+                    final[7] = filter[2];//43
+                    final[8] = filter[4];//44
+                    final[9] = filter[6];//45
+                    final[10] = filter[8];//46
+                    final[11] = filter[10];//47
+                    final[12] = filter[12];//48
                     return final;
                 }
                 else return filter; //FuMa,SID
@@ -3937,21 +3938,21 @@ namespace Pachyderm_Acoustic
                 if (order == Ambisonics_Component_Order.ACN)
                 {
                     double[][] final = new double[filter.Length][];
-                    final[0] = filter[14];//49
-                    final[1] = filter[0];//50
-                    final[2] = filter[13];//51
-                    final[3] = filter[1];//52
-                    final[4] = filter[12];//53
-                    final[5] = filter[2];//54
-                    final[6] = filter[11];//55
-                    final[7] = filter[3];//56
-                    final[8] = filter[10];//57
+                    final[0] = filter[13];//49
+                    final[1] = filter[11];//50
+                    final[2] = filter[9];//51
+                    final[3] = filter[7];//52
+                    final[4] = filter[5];//53
+                    final[5] = filter[3];//54
+                    final[6] = filter[1];//55
+                    final[7] = filter[0];//56
+                    final[8] = filter[2];//57
                     final[9] = filter[4];//58
-                    final[10] = filter[9];//59
-                    final[11] = filter[5];//60
-                    final[12] = filter[8];//61
-                    final[13] = filter[6];//62
-                    final[14] = filter[7];//63
+                    final[10] = filter[6];//59
+                    final[11] = filter[8];//60
+                    final[12] = filter[10];//61
+                    final[13] = filter[12];//62
+                    final[14] = filter[14];//63
                     return final;
                 }
                 else return filter; //FuMa,SID
@@ -4098,6 +4099,7 @@ namespace Pachyderm_Acoustic
                 }
                 return Histogram;
             }
+
             public static double[][] Aurfilter_HRTF(IEnumerable<Direct_Sound> Direct, IEnumerable<ImageSourceData> ISData, IEnumerable<Environment.Receiver_Bank> RTData, Audio.HRTF hrtf, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, List<int> SrcIDs, bool StartAtZero, double alt, double azi, bool degrees, bool flat, IProgressFeedback VB = null)
             {
                 //This version of the function achieves an HRTF filter by dividing up the 3 dimensional signal according to a set number of equidistant points on a sphere.

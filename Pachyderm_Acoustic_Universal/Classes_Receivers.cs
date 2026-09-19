@@ -1162,7 +1162,7 @@ namespace Pachyderm_Acoustic
                     if (sample >= Energy[Octave].Length) return;
                     if (sample < 0) return;
                     Energy[Octave][sample] += Energy_in;
-                    Pressure[Octave][sample] += Math.Sqrt(Energy_in);
+                    Pressure[Octave][sample] += Math.Sqrt(Math.Max(0, Energy_in) * Rho_C);
                 }
 
                 public virtual void Combine_Sample(int Sample, double Energy_in, double Pressure_in, Vector direction_pos, Vector direction_neg, int Octave)

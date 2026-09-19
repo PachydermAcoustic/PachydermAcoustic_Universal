@@ -331,7 +331,11 @@ namespace Pachyderm_Acoustic
                     int length = D.Io[i][oct].Length;
                     for (int s = 0; s < length; s++)
                     {
-                        if (s < Rec_List[i].Recs.SampleCT && (D.Validity[i] || D.Screen_atten)) Rec_List[i].Combine_Sample(s - tsample, D.EnergyValue(oct, s, i), Math.Sqrt(D.EnergyValue(oct, s, i)), dir, dir, oct);
+                        if (s < Rec_List[i].Recs.SampleCT && (D.Validity[i] || D.Screen_atten))
+                        {
+                            double directEnergy = D.EnergyValue(oct, s, i);
+                            Rec_List[i].Combine_Sample(s - tsample, directEnergy, Math.Sqrt(Math.Max(0, directEnergy) * D.Rho_C[i]), dir, dir, oct);
+                        }
                     }
                 }
             }

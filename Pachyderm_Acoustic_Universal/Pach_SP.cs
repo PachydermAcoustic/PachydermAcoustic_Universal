@@ -283,17 +283,19 @@ namespace Pachyderm_Acoustic
 
             public static double[] MaximumLengthSequence(int length)
             {
-                bool[] MLS = new bool[length];
+                if (length <= 0) return Array.Empty<double>();
+
                 double[] output = new double[length];
-                MLS[0] = true; MLS[1] = true; MLS[2] = false;
-                for (int n = 3; n < length; n++)
-                {
-                    MLS[n] = MLS[n - 3] ^ MLS[n - 1];
-                }
+                uint lfsr = 1u;
+                const uint tapMask = (1u << 30) | (1u << 27);
+
                 for (int n = 0; n < length; n++)
                 {
-                    output[n] = MLS[n] ? -1 : 1;
+                    output[n] = (lfsr & 1u) != 0 ? -1.0 : 1.0;
+                    uint lsb = lfsr & 1u;
+                    lfsr = (lfsr >> 1) ^ (lsb == 0 ? 0u : tapMask);
                 }
+
                 return output;
             }
             public static double[] MLS_Reverb(double length_s, double[] RT, int sampling_frequency, double[] magnitude)
@@ -306,7 +308,7 @@ namespace Pachyderm_Acoustic
                     signal = FIR_Bandpass(MLS, oct, sampling_frequency, 0);
                     for (int i = 0; i < signal.Length; i++)
                     {
-                        double slope = Math.Pow(10, ((-60d / RT[oct]) * ((double)i / sampling_frequency)) / 10);
+                        double slope = Math.Pow(10, ((-60d / RT[oct]) * ((double)i / sampling_frequency)) / 20);
                         output[i] += magnitude[oct] * signal[i] * slope;
                     }
                 }
