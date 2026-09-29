@@ -1288,9 +1288,9 @@ namespace Pachyderm_Acoustic
             double[] factor = new double[8];
             for(int i = 0; i < 8; i++) factor[i] = Utilities.AcousticalMath.Intensity_SPL(swl[i]) / Src.SoundPower[i];
             for (int i = 0; i < 8; i++) Src.SoundPower[i] = Utilities.AcousticalMath.Intensity_SPL(swl[i]);
-            for (int i = 0; i < this.Io.Length; i++) for (int j = 0; j < this.Io[i].Length-1; j++) for (int k = 0; k < this.Io[i][j].Length; k++) this.Io[i][j][k] *= factor[j];
+            for (int i = 0; i < this.Io.Length; i++) for (int j = 0; j < factor.Length; j++) for (int k = 0; k < this.Io[i][j].Length; k++) this.Io[i][j][k] *= factor[j];
 
-            for (int i = 0; i < Dir_Rec_Pos.Length; i++) for (int j = 0; j < Dir_Rec_Pos[i].Length; j++) for (int k = 0; k < Dir_Rec_Pos[i].GetLength(1); k++) for (int l = 0; l < Dir_Rec_Pos[i].GetLength(2); l++)
+            for (int i = 0; i < Dir_Rec_Pos.Length; i++) for (int j = 0; j < Dir_Rec_Pos[i].GetLength(0); j++) for (int k = 0; k < Dir_Rec_Pos[i].GetLength(1); k++) for (int l = 0; l < Dir_Rec_Pos[i].GetLength(2); l++)
                         {
                             Dir_Rec_Pos[i][j,k,l] *= (float)factor[j];
                             Dir_Rec_Neg[i][j,k,l] *= (float)factor[j];

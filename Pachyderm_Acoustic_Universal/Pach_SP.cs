@@ -47,7 +47,6 @@ namespace Pachyderm_Acoustic
             static fftw_plan[] IFFT_Plan16384;
             static object[] ifftlock16384;
 
-
             //For all others...
             static fftw_complexarray[] FFT_ArrayIn;
             static fftw_complexarray[] FFT_ArrayOut;

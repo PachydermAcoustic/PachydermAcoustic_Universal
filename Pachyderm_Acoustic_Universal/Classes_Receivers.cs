@@ -1190,7 +1190,6 @@ namespace Pachyderm_Acoustic
                         return null;
                     }
 
-
                     double[][] F = new double[1][] { Audio.Pach_SP.ETCToFilter(this.Pressure, SWL, this.SampleRate, 44100) };
                     Array.Resize(ref F[0], F[0].Length - 4096);
                     return F;
@@ -2014,7 +2013,7 @@ namespace Pachyderm_Acoustic
                 public override void Set_Power(double[] factor)
                 {
                     base.Set_Power(factor);
-                    for(int i = 0; i < Dir_Rec_Pos.Length; i++) for(int j = 0; j < Dir_Rec_Pos[i].Length; j++) for(int k = 0; k < Dir_Rec_Pos[i][j][k]; k++)
+                    for(int i = 0; i < Dir_Rec_Pos.Length; i++) for(int j = 0; j < Dir_Rec_Pos[i].Length; j++) for(int k = 0; k < Dir_Rec_Pos[i][j].Length; k++)
                             {
                                 Dir_Rec_Pos[i][j][k] *= factor[j];
                                 Dir_Rec_Neg[i][j][k] *= factor[j];

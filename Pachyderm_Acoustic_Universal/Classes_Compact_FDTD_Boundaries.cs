@@ -505,12 +505,13 @@ namespace Pachyderm_Acoustic
 
                     public override double g_b_term()
                     {
-                        return (lambda * lambda) * s[0] * M;
+                        // States already include lambda through x; admittance opposes the pressure change.
+                        return s.Length == 0 ? 0.0 : -M * s[0];
                     }
 
                     public override void Update(double Pnf, double Pn_1)
                     {
-                        if (Pnf == 0.0 && Pn_1 == 0.0 && s[0] == 0.0) return;
+                        if (s.Length == 0) return;
                         double x = lambda * (Pnf - Pn_1);
                         double y = b0 * x + s[0];
                         int N = s.Length;
