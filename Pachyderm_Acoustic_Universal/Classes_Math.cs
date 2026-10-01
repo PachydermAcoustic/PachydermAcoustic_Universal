@@ -1418,6 +1418,196 @@ namespace Pachyderm_Acoustic
                     Fnum++;
                 }
             }
+
+            /// <summary>
+            /// Different ways of calculating the center of a series of points with associated vectors - such as loudspeakers.
+            /// When aiming_center is false, the geometric centroid is returned.
+            /// When aiming_center is true, the least-squares convergence of the reverse
+            /// aiming rays is returned. Parallel or nearly parallel arrays fall back to
+            /// the geometric centroid.
+            /// </summary>
+            /// <param name="origins">Element origins.</param>
+            /// <param name="directions">Forward element aiming directions.</param>
+            /// <param name="aiming_center">Use reverse aiming-ray convergence rather than the geometric centroid.</param>
+            /// <param name="parallel_tolerance">Singular-value ratio below which the directions are considered parallel.</param>
+            public static Hare.Geometry.Point ArrayCenter(List<Hare.Geometry.Point> origins, List<Hare.Geometry.Vector> directions, bool aiming_center, double parallel_tolerance = 1E-6)
+            {
+                if (origins == null || origins.Count == 0)
+                {
+                    return new Hare.Geometry.Point(0, 0, 0);
+                }
+
+                double cx = 0;
+                double cy = 0;
+                double cz = 0;
+
+                for (int i = 0; i < origins.Count; i++)
+                {
+                    cx += origins[i].x;
+                    cy += origins[i].y;
+                    cz += origins[i].z;
+                }
+
+                Hare.Geometry.Point geometric_center = new Hare.Geometry.Point(
+                    cx / origins.Count,
+                    cy / origins.Count,
+                    cz / origins.Count);
+
+                if (!aiming_center ||
+                    directions == null ||
+                    directions.Count != origins.Count ||
+                    origins.Count < 2)
+                {
+                    return geometric_center;
+                }
+
+                Hare.Geometry.Vector[] reverse = new Hare.Geometry.Vector[directions.Count];
+                bool[] valid = new bool[directions.Count];
+
+                int valid_count = 0;
+
+                for (int i = 0; i < directions.Count; i++)
+                {
+                    double length = Math.Sqrt(
+                        directions[i].dx * directions[i].dx +
+                        directions[i].dy * directions[i].dy +
+                        directions[i].dz * directions[i].dz);
+
+                    if (length <= 1E-12)
+                    {
+                        continue;
+                    }
+
+                    reverse[i] = new Hare.Geometry.Vector(
+                        -directions[i].dx / length,
+                        -directions[i].dy / length,
+                        -directions[i].dz / length);
+
+                    valid[i] = true;
+                    valid_count++;
+                }
+
+                if (valid_count < 2)
+                {
+                    return geometric_center;
+                }
+
+                // For a ray, if the unconstrained closest point falls behind its
+                // origin, the closest point on that ray is the origin itself.
+                bool[] use_endpoint = new bool[origins.Count];
+
+                Hare.Geometry.Point result = geometric_center;
+
+                for (int pass = 0; pass < 8; pass++)
+                {
+                    MathNet.Numerics.LinearAlgebra.Matrix<double> M =
+                        MathNet.Numerics.LinearAlgebra.Double.DenseMatrix.Create(3, 3, 0);
+
+                    MathNet.Numerics.LinearAlgebra.Vector<double> b =
+                        MathNet.Numerics.LinearAlgebra.Double.DenseVector.Create(3, 0);
+
+                    for (int i = 0; i < origins.Count; i++)
+                    {
+                        if (!valid[i])
+                        {
+                            continue;
+                        }
+
+                        MathNet.Numerics.LinearAlgebra.Vector<double> p =
+                            MathNet.Numerics.LinearAlgebra.Double.DenseVector.OfArray(
+                                new double[]
+                                {
+                        origins[i].x,
+                        origins[i].y,
+                        origins[i].z
+                                });
+
+                        MathNet.Numerics.LinearAlgebra.Matrix<double> P;
+
+                        if (use_endpoint[i])
+                        {
+                            P =
+                                MathNet.Numerics.LinearAlgebra.Double.DenseMatrix
+                                .CreateIdentity(3);
+                        }
+                        else
+                        {
+                            MathNet.Numerics.LinearAlgebra.Vector<double> d =
+                                MathNet.Numerics.LinearAlgebra.Double.DenseVector.OfArray(
+                                    new double[]
+                                    {
+                            reverse[i].dx,
+                            reverse[i].dy,
+                            reverse[i].dz
+                                    });
+
+                            P =
+                                MathNet.Numerics.LinearAlgebra.Double.DenseMatrix
+                                .CreateIdentity(3) -
+                                d.OuterProduct(d);
+                        }
+
+                        M += P;
+                        b += P * p;
+                    }
+
+                    var svd = M.Svd(true);
+
+                    if (svd.S.Count < 3 ||
+                        svd.S[0] <= 1E-12 ||
+                        svd.S[svd.S.Count - 1] / svd.S[0] < parallel_tolerance)
+                    {
+                        return geometric_center;
+                    }
+
+                    MathNet.Numerics.LinearAlgebra.Vector<double> x = svd.Solve(b);
+
+                    if (double.IsNaN(x[0]) ||
+                        double.IsNaN(x[1]) ||
+                        double.IsNaN(x[2]) ||
+                        double.IsInfinity(x[0]) ||
+                        double.IsInfinity(x[1]) ||
+                        double.IsInfinity(x[2]))
+                    {
+                        return geometric_center;
+                    }
+
+                    result = new Hare.Geometry.Point(
+                        x[0],
+                        x[1],
+                        x[2]);
+
+                    bool changed = false;
+
+                    for (int i = 0; i < origins.Count; i++)
+                    {
+                        if (!valid[i])
+                        {
+                            continue;
+                        }
+
+                        double t =
+                            (result.x - origins[i].x) * reverse[i].dx +
+                            (result.y - origins[i].y) * reverse[i].dy +
+                            (result.z - origins[i].z) * reverse[i].dz;
+
+                        bool endpoint = t < 0;
+
+                        if (endpoint != use_endpoint[i])
+                        {
+                            use_endpoint[i] = endpoint;
+                            changed = true;
+                        }
+                    }
+
+                    if (!changed)
+                    {
+                        break;
+                    }
+                }
+
+                return result;
+            }
         }
         public class IR_Construction
         {
