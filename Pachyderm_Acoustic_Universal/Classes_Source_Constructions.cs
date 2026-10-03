@@ -1,4 +1,4 @@
-﻿using MathNet.Numerics;
+using MathNet.Numerics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -49,10 +49,10 @@ namespace Pachyderm_Acoustic
             ///
             /// The front baffle lies at Y = 0.
             ///
-            /// This implementation is first-order: the acoustic calculation uses
-            /// the four front-baffle edges. Width, height and driver position are
-            /// included directly. Depth is retained for the cabinet geometry and
-            /// for later higher-order front-edge -> rear-edge diffraction.
+            /// The four front-baffle edges drive the corresponding rear edges and
+            /// the four depth-running edges in a second distributed-edge integration.
+            /// Depth edges retain separate dipoles for the two incident cabinet faces.
+            /// This is a higher-order DED approximation, without a vertex term.
             /// </summary>
             public Cabinet_Diffraction(double width, double height, double depth, double sound_speed = 343.0)
             {
@@ -81,62 +81,40 @@ namespace Pachyderm_Acoustic
                 return 2.0 * MathNet.Numerics.SpecialFunctions.BesselJ(1, x) / x;
             }
 
-            private System.Numerics.Complex[] RearEdgeDrive(List<EdgeElement> edgeElements, double frequency, double driverDiameter)
+            private System.Numerics.Complex[] DrivenEdgeDrive(List<EdgeElement> edgeElements, List<EdgeElement> drivenElements, double frequency, double driverDiameter)
             {
-                System.Numerics.Complex[] rearDrive = new System.Numerics.Complex[edgeElements.Count];
-                if (Depth <= 1E-9) return rearDrive;
-
+                System.Numerics.Complex[] driven = new System.Numerics.Complex[drivenElements.Count];
                 double k = 2.0 * Math.PI * frequency / SoundSpeed;
-
-                //Pressure that drives the first-order front - edge distribution.
-                //theta = 90 degrees at the front edge.
-
                 double frontEdgeDrive = 0.5 * PistonFactor(frequency, 0, driverDiameter);
 
-                for (int j = 0; j < edgeElements.Count; j++)
+                for (int j = 0; j < drivenElements.Count; j++)
                 {
-                    EdgeElement rearElement = edgeElements[j];
-                    Hare.Geometry.Point rearPoint = new Hare.Geometry.Point(rearElement.Point.x, -Depth, rearElement.Point.z);
+                    EdgeElement element = drivenElements[j];
                     System.Numerics.Complex incident = System.Numerics.Complex.Zero;
 
-                    //Couple only front and rear edges belonging to the same cabinet side.
-                    //Top->top rear
-                    //Right -> right rear
-                    //Bottom->bottom rear
-                    //Left -> left rear
-                    //Cross - side paths would involve an additional corner event and should therefore not be included in this order.
-                     
+                    //Rear sides 0..3 and depth dipoles 4..7 are driven only by their incident face.
+                    //Each depth edge has two face-specific dipoles, rather than a point-corner source.
                     for (int i = 0; i < edgeElements.Count; i++)
                     {
                         EdgeElement frontElement = edgeElements[i];
-                        if (frontElement.Side != rearElement.Side) continue;
+                        if (frontElement.Side != element.Side % 4) continue;
 
-                        Hare.Geometry.Vector path = rearPoint - frontElement.Point;
+                        Hare.Geometry.Vector path = element.Point - frontElement.Point;
                         double r = path.Length();
                         if (r <= 1E-9) continue;
 
-                        //DED edge dipole axis remains perpendicular to the original front baffle(+Y).
-                        //Front edge->rear edge therefore lies in the rear hemisphere and has positive edge polarity.
-                        double cosTheta = path.dy / r;
-                        double F = -cosTheta;
-
-                        //The source - independent part of the front edge element.
-                        //Weight is dAlpha / 2pi, which is equivalent to dl/(2pi L) for a small element viewed from the driver.
+                        //The first-order front dipole axis is +Y; preserve its polarity and phase.
+                        double F = -path.dy / r;
                         System.Numerics.Complex frontStrength = frontEdgeDrive * frontElement.Weight * System.Numerics.Complex.FromPolarCoordinates(1, -k * frontElement.SourceDistance);
-
                         incident += frontStrength * F * System.Numerics.Complex.FromPolarCoordinates(1.0 / r, -k * r);
                     }
 
-                    //Apply the second DED edge integration.
-                    //Urban's elementary edge-source equation contains dl / (2 pi r)
-                    //so the rear edge source strength contains its actual physical segment length here.
-
-                    rearDrive[j] = incident * rearElement.Length / (2.0 * Math.PI);
+                    //Second DED integration uses physical dl, not the driver's projected dAlpha.
+                    driven[j] = incident * element.Length / (2.0 * Math.PI);
                 }
 
-                return rearDrive;
+                return driven;
             }
-
             /// <summary>
             /// Angle subtended by one elementary edge segment as viewed
             /// from the driver position in the baffle plane.
@@ -161,7 +139,7 @@ namespace Pachyderm_Acoustic
                 return Math.Abs(Math.Atan2(cross, dot));
             }
 
-            private void AddEdgeElements(List<EdgeElement> elements, Hare.Geometry.Point driver, Hare.Geometry.Point a, Hare.Geometry.Point b, double spacing, int side)
+            private void AddEdgeElements(List<EdgeElement> elements, Hare.Geometry.Point driver, Hare.Geometry.Point a, Hare.Geometry.Point b, double spacing, int side, bool driven = false)
             {
                 Hare.Geometry.Vector span = b - a;
                 double length = span.Length();
@@ -180,9 +158,9 @@ namespace Pachyderm_Acoustic
                     Hare.Geometry.Point p1 = a + span * t1;
                     Hare.Geometry.Point midpoint = (p0 + p1) / 2.0;
 
-                    double dAlpha = SubtendedAngle(driver, p0, p1);
+                    double dAlpha = driven ? 0 : SubtendedAngle(driver, p0, p1);
 
-                    if (dAlpha <= 0) continue;
+                    if (!driven && dAlpha <= 0) continue;
                     double sourceDistance = (midpoint - driver).Length();
                     if (sourceDistance <= 1E-12) continue;
                     elements.Add(new EdgeElement(midpoint, dAlpha / (2.0 * Math.PI), sourceDistance, dl, side));
@@ -195,7 +173,7 @@ namespace Pachyderm_Acoustic
             /// Edge spacing is frequency dependent. There is no need to use a
             /// single 8-kHz discretization for the lower octave bands.
             /// </summary>
-            private List<EdgeElement> EdgeElements(Hare.Geometry.Point driver, int octave)
+            private List<EdgeElement> EdgeElements(Hare.Geometry.Point driver, int octave, bool driven = false)
             {
                 octave = Math.Max(0, Math.Min( 7, octave));
 
@@ -240,10 +218,31 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
+                if (driven)
+                {
+                    if (Depth <= 1E-9) return new List<EdgeElement>();
+
+                    //Reuse the front discretization for the corresponding rear edges.
+                    for (int i = 0; i < elements.Count; i++)
+                    {
+                        EdgeElement e = elements[i];
+                        e.Point = new Hare.Geometry.Point(e.Point.x, -Depth, e.Point.z);
+                        elements[i] = e;
+                    }
+
+                    Hare.Geometry.Point[] corners = new Hare.Geometry.Point[]{ new Hare.Geometry.Point(x1, 0, z1), new Hare.Geometry.Point(x1, 0, z0), new Hare.Geometry.Point(x0, 0, z0), new Hare.Geometry.Point(x0, 0, z1) };
+                    for (int i = 0; i < corners.Length; i++)
+                    {
+                        Hare.Geometry.Point rear = new Hare.Geometry.Point(corners[i].x, -Depth, corners[i].z);
+                        AddEdgeElements(elements, driver, corners[i], rear, spacing, 4 + i, true);
+                        AddEdgeElements(elements, driver, corners[i], rear, spacing, 4 + (i + 1) % 4, true);
+                    }
+                }
+
                 return elements;
             }
 
-            private System.Numerics.Complex Pressure(Hare.Geometry.Point driver, Hare.Geometry.Vector direction, int octave, double driverDiameter, double distance, List<EdgeElement> edgeElements, System.Numerics.Complex[] rearDrive)
+            private System.Numerics.Complex Pressure(Hare.Geometry.Point driver, Hare.Geometry.Vector direction, int octave, double driverDiameter, double distance, List<EdgeElement> edgeElements, List<EdgeElement> drivenElements, System.Numerics.Complex[] driven)
             {
                 double length = direction.Length();
 
@@ -283,75 +282,73 @@ namespace Pachyderm_Acoustic
                     pressure += amplitude * System.Numerics.Complex.FromPolarCoordinates(1.0, -k * pathLength);
                 }
 
-                //SECOND-ORDER FRONT EDGE -> REAR EDGE DIFFRACTION
-                if (Depth > 1E-9 && rearDrive != null && rearDrive.Length == edgeElements.Count)
+                //SECOND-ORDER FRONT EDGE -> REAR/DEPTH EDGE DIFFRACTION
+                //A compact C1 taper across grazing replaces hard face visibility switches.
+                //0.1 in direction cosine gives a transition of about +/- 5.7 degrees.
+                double Exterior(double cosine)
                 {
-                    for (int i = 0; i < edgeElements.Count; i++)
-                    {
-                        EdgeElement element = edgeElements[i];
-
-                        if (rearDrive[i] == System.Numerics.Complex.Zero) continue;
-
-                        Hare.Geometry.Point rearPoint = new Hare.Geometry.Point(element.Point.x, -Depth, element.Point.z);
-                        Hare.Geometry.Vector toReceiver = receiver - rearPoint;
-                        double receiverDistance = toReceiver.Length();
-
-                        if (receiverDistance <= 1E-12) continue;
-
-                        bool visible;
-                        switch (element.Side)
-                        {
-                            // Top
-                            case 0:
-                                visible = toReceiver.dy <= 0 || toReceiver.dz >= 0;
-                                break;
-
-                            // Right
-                            case 1:
-                                visible = toReceiver.dy <= 0 || toReceiver.dx >= 0;
-                                break;
-
-                            // Bottom
-                            case 2:
-                                visible = toReceiver.dy <= 0 || toReceiver.dz <= 0;
-                                break;
-                     
-                            // Left
-                            case 3:
-                                visible = toReceiver.dy <= 0 || toReceiver.dx <= 0;
-                                break;
-
-                            default:
-                                visible = false;
-                                break;
-                        }
-
-                        if (!visible)
-                        {
-                            continue;
-                        }
-
-                        double F = -toReceiver.dy / receiverDistance; ;
-                        pressure += rearDrive[i] * F * System.Numerics.Complex.FromPolarCoordinates( 1.0 / receiverDistance, -k * receiverDistance);
-                    }
+                    double t = Math.Max(0, Math.Min(1, 0.5 + 5.0 * cosine));
+                    return t * t * (3.0 - 2.0 * t);
                 }
 
+                for (int i = 0; i < drivenElements.Count; i++)
+                {
+                    EdgeElement element = drivenElements[i];
+                    if (driven[i] == System.Numerics.Complex.Zero) continue;
+
+                    Hare.Geometry.Vector toReceiver = receiver - element.Point;
+                    double receiverDistance = toReceiver.Length();
+                    if (receiverDistance <= 1E-12) continue;
+
+                    double ux = toReceiver.dx / receiverDistance;
+                    double uy = toReceiver.dy / receiverDistance;
+                    double uz = toReceiver.dz / receiverDistance;
+                    double faceCosine;
+                    switch (element.Side % 4)
+                    {
+                        case 0: faceCosine = uz; break;
+                        case 1: faceCosine = ux; break;
+                        case 2: faceCosine = -uz; break;
+                        default: faceCosine = -ux; break;
+                    }
+
+                    double F;
+                    double visibility;
+                    if (element.Side < 4)
+                    {
+                        F = -uy;
+                        visibility = 1.0 - (1.0 - Exterior(-uy)) * (1.0 - Exterior(faceCosine));
+                    }
+                    else
+                    {
+                        //The depth dipole axis is the outward normal of its incident side face.
+                        //Both adjacent faces define the exterior of this longitudinal edge.
+                        F = -faceCosine;
+                        double xExterior = Exterior(element.Point.x >= 0 ? ux : -ux);
+                        double zExterior = Exterior(element.Point.z >= 0 ? uz : -uz);
+                        visibility = 1.0 - (1.0 - xExterior) * (1.0 - zExterior);
+                    }
+
+                    pressure += driven[i] * F * visibility * System.Numerics.Complex.FromPolarCoordinates(1.0 / receiverDistance, -k * receiverDistance);
+                }
                 return pressure;
             }
 
             /// <summary>
-            /// Returns the complex first-order cabinet field for one driver
+            /// Returns the complex direct and distributed-edge cabinet field for one driver
             /// in one direction.
             ///
             /// This overload is useful for diagnostics and polar plotting.
             /// </summary>
             public System.Numerics.Complex Pressure(Hare.Geometry.Point driver, Hare.Geometry.Vector direction, int octave, double driverDiameter, double distance)
             {
+                octave = Math.Max(0, Math.Min(7, octave));
                 List<EdgeElement> edgeElements = EdgeElements(driver, octave);
-                System.Numerics.Complex[] rearDrive = RearEdgeDrive(edgeElements, Frequencies[octave], driverDiameter);
+                List<EdgeElement> drivenElements = EdgeElements(driver, octave, true);
+                System.Numerics.Complex[] driven = DrivenEdgeDrive(edgeElements, drivenElements, Frequencies[octave], driverDiameter);
 
-                return Pressure(driver, direction, octave, driverDiameter, distance, edgeElements, rearDrive);
-}
+                return Pressure(driver, direction, octave, driverDiameter, distance, edgeElements, drivenElements, driven);
+            }
 
             /// <summary>
             /// Generates Pachyderm full-sphere balloon strings for one driver
@@ -374,7 +371,8 @@ namespace Pachyderm_Acoustic
                     double referenceDistance = Math.Max(1.0, Math.Max(10.0 * largestDimension, 2.0 * largestDimension * largestDimension / wavelength));
 
                     List<EdgeElement> edgeElements = EdgeElements(driver, octave);
-                    System.Numerics.Complex[] rearDrive = RearEdgeDrive(edgeElements, Frequencies[octave], driverDiameter);
+                    List<EdgeElement> drivenElements = EdgeElements(driver, octave, true);
+                    System.Numerics.Complex[] driven = DrivenEdgeDrive(edgeElements, drivenElements, Frequencies[octave], driverDiameter);
                     double[,] magnitude = new double[umax, vmax];
 
                     System.Threading.Tasks.Parallel.For(0, vmax, v =>
@@ -386,7 +384,7 @@ namespace Pachyderm_Acoustic
                                 double theta = Math.PI * u / (umax - 1);
                                 Hare.Geometry.Vector direction = new Hare.Geometry.Vector(Math.Sin(theta) * Math.Cos(phi), Math.Cos(theta), Math.Sin(theta) * Math.Sin(phi));
 
-                                System.Numerics.Complex p = Pressure(driver, direction, octave, driverDiameter, referenceDistance, edgeElements, rearDrive);
+                                System.Numerics.Complex p = Pressure(driver, direction, octave, driverDiameter, referenceDistance, edgeElements, drivenElements, driven);
 
                                 double value = p.Magnitude;
 
