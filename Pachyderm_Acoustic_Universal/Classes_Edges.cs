@@ -88,8 +88,11 @@ namespace Pachyderm_Acoustic
                 Normal[0] = Hare_math.Cross(_Tangents[0], Z_Norm);
                 Normal[1] = Hare_math.Cross(_Tangents[1], Z_Norm * -1);
 
-                if (Hare_math.Dot(Normal[0], Bisector) >= 0) Normal[0] *= -1;
-                if (Hare_math.Dot(Normal[0], Bisector) >= 0) Normal[0] *= -1;
+                if (Hare_math.Dot(Normal[0], Bisector) >= 0)
+                {
+                    Normal[0] *= -1;
+                    Normal[1] *= -1;
+                }
                 Z_limits = new Hare.Geometry.Point[2] { PtZ0, _PtZ };
 
             }
@@ -444,58 +447,6 @@ namespace Pachyderm_Acoustic
                 }
             }
 
-            //public double Apex_Solve(Hare.Geometry.Point src, Hare.Geometry.Point rec, ref double m, ref double l)
-            //{
-            //    double rr = 0, rs = 0, zr = 0, zs = 0, thetar = 0, thetas = 0;
-            //    int obtuse;
-            //    if (!Cyl_Coord(src, rec, ref rs, ref thetas, ref zs, ref rr, ref thetar, ref zr, out obtuse, out )) return 0;
-            //    m = Math.Sqrt(rs * rs + zs * zs);
-            //    l = Math.Sqrt(rr * rr + zr * zr);
-            //    double rho = Rho(rr, rs);
-            //    double R0 = m + l;//R_o(zr, zs, rr, rs);
-            //    double[] phi = Phi(thetas, thetar);
-            //    double sinpsi = this.sinpsi(rs, rr, R0);
-            //    double B1 = B_1(R0, rho, phi, obtuse);
-            //    double sqrt_B1_inv = 1 / Math.Sqrt(B1);
-            //    if (rho == 1 || zs == zr)
-            //    {
-            //        //symmetrical case
-            //        if ((zr - zr) / R0 == sincos45)
-            //        {
-            //            double B4 = B_4(phi, obtuse);
-            //            return -v_2pi[obtuse] * (B4 * sqrt_B1_inv) * Math.Atan(Z_Range * sqrt_B1_inv);
-            //        }
-            //        else
-            //        {
-            //            double B3 = B_3(R0, rho, sinpsi);
-            //            double sqrt_B3_inv = 1 / Math.Sqrt(B3);
-            //            double B0 = B_0(R0, rho, phi, rr, rs, sinpsi, obtuse);
-            //            return -v_2pi[obtuse] * (B0 / (B3 - B1)) * (sqrt_B1_inv * Math.Atan(Z_Range * sqrt_B1_inv) - sqrt_B3_inv * Math.Atan(Z_Range * sqrt_B3_inv));
-            //        }
-            //    }
-            //    //asymmetrical case
-            //    double rt1 = 1 + rho;
-            //    double cospsi = this.cospsi(zs, zr, R0);
-            //    if (sinpsi * sinpsi == 2 * rho / (rt1 * rt1))
-            //    {
-            //        double B5 = B_5(R0, rho, phi, cospsi, obtuse);
-            //        double B6 = B_6(R0, rho, cospsi);
-            //        double B6sqr = B6 * B6;
-            //        double ZRB6 = Z_Range + B6;
-            //        return v_2pi[obtuse] * (B5 * B5 / (B1 + B6sqr)) * (.5 * Math.Log(Math.Abs(B6sqr * (Z_dot + B1) / (B1 * (ZRB6 * ZRB6))), Math.E) - B6 * sqrt_B1_inv * Math.Atan(Z_Range * sqrt_B1_inv));
-            //    }
-            //    else
-            //    {
-            //        double B0 = B_0(R0, rho, phi, rs, rr, sinpsi, obtuse);
-            //        double B2 = B_2(R0, rho, sinpsi, cospsi);
-            //        double B3 = B_3(R0, rho, sinpsi);
-            //        double B2_2 = B2 * B2;
-            //        double B1_B3 = B1 - B3;
-            //        double F = this.F(B2, B3);
-            //        return v_2pi[obtuse] * (B0 * B2 / (B1 * B2_2 + B1_B3 * B1_B3)) * (0.5 * Math.Log(Math.Abs((B3 * (Z_dot + B1)) / B1 * (Z_dot + B2 * Z_Range + B3)), Math.E) + ((2 * B1_B3 - B2_2) * sqrt_B1_inv / B2) * Math.Atan(Z_Range * sqrt_B1_inv) + ((-2 * B1_B3 - B2_2) / (2 * B2)) * F);
-            //    }
-            //}
-
             public double Flex_Solve(Hare.Geometry.Point src, Hare.Geometry.Point rec, ref double m, ref double l, ref double[] dM, ref double[] dL)
             {
                 double zr = 0, zs = 0, thetar = 0, thetas = 0;
@@ -536,21 +487,6 @@ namespace Pachyderm_Acoustic
                 }
                 return Gen_Solve(Za, zs, zr, rs, rr, thetas, thetar, obtuse, ref m, ref l) * Z_Range;
             }
-
-            //public double Gen_Solve(Hare.Geometry.Point src, Hare.Geometry.Point rec, ref double m, ref double l)
-            //{
-            //    double rr = 0, rs = 0, zr = 0, zs = 0, thetar = 0, thetas = 0;
-            //    int obtuse;
-            //    if (!Cyl_Coord(src, rec, ref rs, ref thetas, ref zs, ref rr, ref thetar, ref zr, out obtuse)) return 0;
-            //    double Za = Z_apex(zs, zr, rs, rr);
-            //    double zl = Za - zs;
-            //    double zm = Za - zr;
-            //    m = Math.Sqrt((rs * rs) + (zl * zl));
-            //    l = Math.Sqrt((rr * rr) + (zm * zm));
-            //    double N = this.Aux_n(m + l, zs, zr, rs, rr, thetas, thetar);
-            //    double  Beta = Beta_i(thetas, thetar, N, obtuse);
-            //    return -v_4pi[obtuse] * Beta / (m * l);
-            //}
 
             public double Gen_Solve(double Za, double zs, double zr, double rs, double rr, double thetas, double thetar, int obtuse, ref double m, ref double l)
             {
