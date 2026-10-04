@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <NuGetAudit>false</NuGetAudit>
+    <HareAssembly Condition="'$(HareAssembly)' == ''">../../../../Hare/bin/Debug/net7.0/Hare.dll</HareAssembly>
+    <DefineConstants Condition="'$(BaselineSource)' != ''">$(DefineConstants);BASELINE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Pachyderm_Acoustic_Universal/Classes_Source_Constructions.cs" Link="Classes_Source_Constructions.cs" />
+    <Compile Include="../../Pachyderm_Acoustic_Universal/Classes_Cabinet_Numerical.cs" Link="Classes_Cabinet_Numerical.cs" />
+    <Compile Include="../../Pachyderm_Acoustic_Universal/Classes_Cabinet_Trihedral*.cs" />
+    <Compile Include="$(BaselineSource)" Link="Legacy.cs" Condition="'$(BaselineSource)' != ''" />
+    <Reference Include="Hare"><HintPath>$(HareAssembly)</HintPath></Reference>
+    <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
+  </ItemGroup>
+</Project>
