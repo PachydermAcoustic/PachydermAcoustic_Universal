@@ -27,39 +27,41 @@ namespace Pachyderm_Acoustic
 {
     namespace Environment
     {
-        public class VoxelGrid_PolyRefractive: Hare.Geometry.Voxel_Grid
+        public class VoxelGrid_PolyRefractive: Hare.Geometry.Voxel_Grid_Adaptive
         {
             public double[,,] Velocities;
             public double[] XPlane_sect;
             public double[] YPlane_sect;
             public double[] ZPlane_sect;
 
+            // Refraction follows cell velocity boundaries and must use the adaptive voxel class.
             public VoxelGrid_PolyRefractive(Topology[] T, int Domain)
-            :base(T, Domain)
+                : base(T, Domain)
             {
-                for (int x = 0; x < base.Voxel_Inv.GetUpperBound(0); x++)
-                {
-                    for (int y = 0; y < base.Voxel_Inv.GetUpperBound(1); y++)
-                    {
-                        for (int z = 0; z < base.Voxel_Inv.GetUpperBound(2); z++)
-                        {
-                                Velocities[x, y, z] = 1.0f;
-                        }
-                    }
-                }
-
-                XPlane_sect = new double[Domain - 1];
-                YPlane_sect = new double[Domain - 1];
-                ZPlane_sect = new double[Domain - 1];
-
-                for (int i = 0; i < Domain-1; i++)
-                {
-                    XPlane_sect[i] = OBox.Min_PT.x + VoxelDims.x * i;
-                    YPlane_sect[i] = OBox.Min_PT.y + VoxelDims.y * i;
-                    ZPlane_sect[i] = OBox.Min_PT.z + VoxelDims.z * i;
-                }
+                InitializeVelocityGrid();
             }
 
+            public VoxelGrid_PolyRefractive(Topology[] T, int MaxDomain, int Avg_polys)
+                : base(T, MaxDomain, Avg_polys)
+            {
+                InitializeVelocityGrid();
+            }
+
+            private void InitializeVelocityGrid()
+            {
+                Velocities = new double[VoxelCtX, VoxelCtY, VoxelCtZ];
+                for (int x = 0; x < VoxelCtX; x++)
+                    for (int y = 0; y < VoxelCtY; y++)
+                        for (int z = 0; z < VoxelCtZ; z++)
+                            Velocities[x, y, z] = 1.0;
+
+                XPlane_sect = new double[VoxelCtX - 1];
+                YPlane_sect = new double[VoxelCtY - 1];
+                ZPlane_sect = new double[VoxelCtZ - 1];
+                for (int i = 0; i < XPlane_sect.Length; i++) XPlane_sect[i] = OBox.Min_PT.x + VoxelDims.x * (i + 1);
+                for (int i = 0; i < YPlane_sect.Length; i++) YPlane_sect[i] = OBox.Min_PT.y + VoxelDims.y * (i + 1);
+                for (int i = 0; i < ZPlane_sect.Length; i++) ZPlane_sect[i] = OBox.Min_PT.z + VoxelDims.z * (i + 1);
+            }
             /// <summary>
             /// Fire a ray into the model.
             /// </summary>
