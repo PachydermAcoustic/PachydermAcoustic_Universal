@@ -429,22 +429,24 @@ namespace Pachyderm_Acoustic
 
                         (aY, bY) = mat.Estimate_IIR_Coefficients(sampleFrequency, sampleFrequency * Math.Sqrt(2) / 10, out f_axis);
 
-                        int order = Math.Max(aY.Length, bY.Length);
+                        aY = aY ?? new double[0];
+                        bY = bY ?? new double[0];
+                        int order = Math.Max(2, Math.Max(aY.Length, bY.Length));
                         if (aY.Length < order) Array.Resize(ref aY, order);
                         if (bY.Length < order) Array.Resize(ref bY, order);
 
                         b = (double[])bY.Clone();
                         a = (double[])aY.Clone();
 
-                        if (Math.Abs(a[0]) < 1e-12) a[0] = (a[0] < 0 ? -1e-12 : 1e-12);
-                        double inv_a0 = 1.0 / a[0];
+                        // Invalid leading coefficients are rejected by EnsurePassivity below.
+                        double a0 = a[0];
                         for (int i = 0; i < order; i++)
                         {
-                            b[i] *= inv_a0;
-                            a[i] *= inv_a0;
+                            b[i] /= a0;
+                            a[i] /= a0;
                         }
 
-                        EnsurePassivity(b, a, sampleFrequency, f_axis);
+                        EnsurePassivity(b, a, mat, sampleFrequency);
 
                         b0 = b[0];
 
@@ -453,48 +455,78 @@ namespace Pachyderm_Acoustic
                         s = new double[order-1]; // initialized to 0
                     }
 
-                    private static void EnsurePassivity(double[] b, double[] a, double fs, double[] f_axis)
+                    private static bool IsStable(double[] denominator)
                     {
-                        double peakMag = 0.0;
-                        int nFreq = 4096;
-
-                        if (b[0] < 0) for (int i = 0; i < b.Length; i++)
-                           {
-                                b[i] = 0;
-                           }
-
-                        for (int i = 0; i <= nFreq; i++)
+                        // Schur step-down tests z^N + a[1] z^(N-1) + ... + a[N].
+                        // Unlike numerator scaling, this rejects poles on/outside the unit circle.
+                        double[] polynomial = (double[])denominator.Clone();
+                        for (int n = polynomial.Length - 1; n > 0; n--)
                         {
-                            double w = Math.PI * i / nFreq; // 0 to π
-
-                            // Evaluate B(e^jw) and A(e^jw)
-                            double br = 0, bi_v = 0, ar = 0, ai = 0;
-                            for (int k = 0; k < b.Length; k++)
-                            {
-                                double angle = -k * w;
-                                br += b[k] * Math.Cos(angle);
-                                bi_v += b[k] * Math.Sin(angle);
-                            }
-                            for (int k = 0; k < a.Length; k++)
-                            {
-                                double angle = -k * w;
-                                ar += a[k] * Math.Cos(angle);
-                                ai += a[k] * Math.Sin(angle);
-                            }
-
-                            double denomA = ar * ar + ai * ai;
-                            if (denomA < 1e-30) continue;
-
-                            double magY = Math.Sqrt((br * br + bi_v * bi_v) / denomA);
-                            if (magY > peakMag) peakMag = magY;
+                            double reflection = polynomial[n] / polynomial[0];
+                            if (double.IsNaN(reflection) || Math.Abs(reflection) >= 1.0 - 1e-10) return false;
+                            double scale = 1.0 - reflection * reflection;
+                            double[] reduced = new double[n];
+                            for (int k = 0; k < n; k++)
+                                reduced[k] = (polynomial[k] - reflection * polynomial[n - k]) / scale;
+                            polynomial = reduced;
                         }
+                        return true;
+                    }
 
-                        if (peakMag > 0.99)
+                    private static void EnsurePassivity(double[] b, double[] a, Environment.Material mat, double fs)
+                    {
+                        bool valid = a[0] == 1.0 && b[0] >= 0.0;
+                        for (int k = 0; k < a.Length; k++)
+                            valid &= !double.IsNaN(a[k]) && !double.IsInfinity(a[k]) &&
+                                     !double.IsNaN(b[k]) && !double.IsInfinity(b[k]);
+                        valid = valid && IsStable(a);
+
+                        if (valid)
                         {
-                            double scale = 0.99 / peakMag;
-                            for (int i = 0; i < b.Length; i++)
-                                b[i] *= scale;
+                            // Re(Y) has the sign of Re(B * conjugate(A)). Represent the latter
+                            // as a cosine polynomial; bound interpolation error between samples
+                            // using |q''| <= sum(k^2 * |c[k]|), rather than trusting samples alone.
+                            double[] cosine = new double[a.Length];
+                            for (int j = 0; j < b.Length; j++)
+                                for (int k = 0; k < a.Length; k++)
+                                    cosine[Math.Abs(j - k)] += b[j] * a[k];
+                            double curvature = 0.0, magnitude = 0.0;
+                            for (int k = 0; k < cosine.Length; k++)
+                            {
+                                curvature += k * k * Math.Abs(cosine[k]);
+                                magnitude += Math.Abs(cosine[k]);
+                            }
+                            const int nFreq = 4096;
+                            double minimum = double.PositiveInfinity;
+                            for (int i = 0; i <= nFreq; i++)
+                            {
+                                double w = Math.PI * i / nFreq, q = 0.0;
+                                for (int k = 0; k < cosine.Length; k++) q += cosine[k] * Math.Cos(k * w);
+                                minimum = Math.Min(minimum, q);
+                            }
+                            double errorBound = curvature * Math.Pow(Math.PI / nFreq, 2) / 8.0;
+                            valid = !double.IsNaN(minimum) && !double.IsInfinity(magnitude) &&
+                                    minimum >= errorBound + 1e-12 * magnitude;
+                            // Exactly rigid (zero numerator) is passive, with stable state poles.
+                            if (magnitude == 0.0) valid = true;
                         }
+                        if (valid) return;
+
+                        // Conservative first-order low-pass based on normal-incidence absorption.
+                        // Keep an actual stable pole and state register, including for rigid walls.
+                        double gain = 0.0;
+                        var reflectionMagnitude = mat.Reflection_Narrow(fs * Math.Sqrt(2) / 20.0).Magnitude;
+                        if (!double.IsNaN(reflectionMagnitude) && !double.IsInfinity(reflectionMagnitude))
+                        {
+                            reflectionMagnitude = Math.Min(1.0, reflectionMagnitude);
+                            gain = (1.0 - reflectionMagnitude) / (1.0 + reflectionMagnitude);
+                        }
+                        Array.Clear(a, 0, a.Length);
+                        Array.Clear(b, 0, b.Length);
+                        a[0] = 1.0;
+                        a[1] = -0.5;
+                        b[0] = 0.5 * gain;
+                        System.Diagnostics.Trace.TraceWarning("FVM material admittance failed stability/passivity validation; using a conservative first-order boundary filter.");
                     }
 
                     public override void SetCourant(double newLambda)

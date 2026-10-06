@@ -539,8 +539,9 @@ namespace Pachyderm_Acoustic
                         {
                             y[n] += prev_re2;
 
-                            double next_re2 = gk * (prev_re2 * cosw - prev_im2 * sinw);
-                            double next_im2 = gk * (prev_re2 * sinw + prev_im2 * cosw);
+                            // The conjugate bin rotates at -w, preserving the original time direction.
+                            double next_re2 = gk * (prev_re2 * cosw + prev_im2 * sinw);
+                            double next_im2 = gk * (-prev_re2 * sinw + prev_im2 * cosw);
                             prev_re2 = next_re2;
                             prev_im2 = next_im2;
                         }

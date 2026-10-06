@@ -215,7 +215,7 @@ namespace Pachyderm_Acoustic
                         Random Rnd = new Random(x);
                         for (int y = 0; y < PFrame[x].Length; y++)
                         {
-                            PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt / 2) + yDimt % 2 * mod)];
+                            PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt / 2) + zDimt % 2 * mod)];
                             for (int z = 0; z < PFrame[x][y].Length; z++)
                             {
                                 List<Environment.Material> abs;
@@ -362,8 +362,8 @@ namespace Pachyderm_Acoustic
                     foreach (Vector V in Dir) V.Normalize();
 
                     int xDimt = xDim;
-                    int yDimt = yDim / 2;
-                    int zDimt = zDim / 2;
+                    int yDimt = yDim;
+                    int zDimt = zDim;
 
                     PFrame = new Node[xDimt][][];// yDim, zDim];                               //pressure scalar field initialisation
 
@@ -379,11 +379,11 @@ namespace Pachyderm_Acoustic
                             for (int x = (int)Math.Floor((double)((int)proc_id  * PFrame.Length) / threadct); x < Math.Floor((double)(((int)proc_id + 1) * PFrame.Length) / threadct); x++)
                             {
                                 int mod = x % 2;
-                                PFrame[x] = new Node[(int)(Math.Floor((double)yDimt) + yDimt % 2 * mod)][];
+                                PFrame[x] = new Node[(int)(Math.Floor((double)yDimt / 2) + yDimt % 2 * mod)][];
                                 Random Rnd = new Random(x);
                                 for (int y = 0; y < PFrame[x].Length; y++)
                                 {
-                                    PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt) + yDimt % 2 * mod)];
+                                    PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt / 2) + zDimt % 2 * mod)];
                                     for (int z = 0; z < PFrame[x][y].Length; z++)
                                     {
                                         Point Loc = Acoustic_Compact_FDTD.RDD_Location(MinPt, x, y, z, dx, dy, dz); //new Point(MinPt.x + 2 * (((double)x - 0.5) * dx), MinPt.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), MinPt.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
@@ -394,7 +394,7 @@ namespace Pachyderm_Acoustic
                                             if (z == 0)
                                             {
                                                 PFrame[x][y][z] = new Bound_Node_RDD(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, BDir);
-                                                Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
+                                                lock (Bound) Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
                                             }
                                             else
                                             {
@@ -414,7 +414,7 @@ namespace Pachyderm_Acoustic
                                             {
                                                 PFrame[x][y][z] = new Bound_Node_RDD_MaterialFilter(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, abs, BDir); //abs,
                                                 //PFrame[x][y][z] = new Bound_Node_RDD(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, BDir); //abs,
-                                                Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
+                                                lock (Bound) Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
                                             }
                                         }
                                     }
@@ -562,7 +562,7 @@ namespace Pachyderm_Acoustic
                         Random Rnd = new Random(x);
                         for (int y = 0; y < PFrame[x].Length; y++)
                         {
-                            PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt / 2) + yDimt % 2 * mod)];
+                            PFrame[x][y] = new Node[(int)(Math.Floor((double)zDimt / 2) + zDimt % 2 * mod)];
                             for (int z = 0; z < PFrame[x][y].Length; z++)
                             {
                                 List<Environment.Material> abs;
@@ -1034,18 +1034,18 @@ namespace Pachyderm_Acoustic
 
                     X_Event XPt = new X_Event();
 
-                    double dx2 = 2 * dx + double.Epsilon;
+                    double diagonalLength = Math.Sqrt(dx * dx + dy * dy + dz * dz);
 
                     XPt = new X_Event();
                     //new Vector(0, -1, 0)
-                    if (Rm.shoot(new Ray(Center, -1 * Dir[1], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
+                    if (Rm.shoot(new Ray(Center, -1 * Dir[1], 0, Rnd.Next()), 0, out XPt) && XPt.t < 2 * dy)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[1] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.AYPos);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[1], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
+                    if (Rm.shoot(new Ray(Center, Dir[1], 0, Rnd.Next()), 0, out XPt) && XPt.t < 2 * dy)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[1] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.AYNeg);
@@ -1054,14 +1054,14 @@ namespace Pachyderm_Acoustic
 
                     XPt = new X_Event();
                     //new Vector(0, 0, -1),
-                    if (Rm.shoot(new Ray(Center, -1 * Dir[2], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
+                    if (Rm.shoot(new Ray(Center, -1 * Dir[2], 0, Rnd.Next()), 0, out XPt) && XPt.t < 2 * dz)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[2] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.AZPos);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[2], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
+                    if (Rm.shoot(new Ray(Center, Dir[2], 0, Rnd.Next()), 0, out XPt) && XPt.t < 2 * dz)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[2] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.AZNeg);
@@ -1070,14 +1070,14 @@ namespace Pachyderm_Acoustic
 
                     XPt = new X_Event();
                     //new Vector(-dx, -dy, dz),
-                    if (Rm.shoot(new Ray(Center, Dir[9], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
+                    if (Rm.shoot(new Ray(Center, Dir[9], 0, Rnd.Next()), 0, out XPt) && XPt.t < diagonalLength)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[9] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXNegYNegZPos);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[9] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
+                    if (Rm.shoot(new Ray(Center, Dir[9] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < diagonalLength)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[9] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXPosYPosZNeg);
@@ -1086,14 +1086,14 @@ namespace Pachyderm_Acoustic
 
                     XPt = new X_Event();
                     //new Vector(dx, -dy, dz),
-                    if (Rm.shoot(new Ray(Center, Dir[10], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
+                    if (Rm.shoot(new Ray(Center, Dir[10], 0, Rnd.Next()), 0, out XPt) && XPt.t < diagonalLength)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[10] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXPosYNegZPos);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[10] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
+                    if (Rm.shoot(new Ray(Center, Dir[10] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < diagonalLength)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[10] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXNegYPosZNeg);
@@ -1102,14 +1102,14 @@ namespace Pachyderm_Acoustic
 
                     XPt = new X_Event();
                     //new Vector(dx, dy, dz),
-                    if (Rm.shoot(new Ray(Center, Dir[11], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
+                    if (Rm.shoot(new Ray(Center, Dir[11], 0, Rnd.Next()), 0, out XPt) && XPt.t < diagonalLength)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[11] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXPosYPosZPos);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[11] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
+                    if (Rm.shoot(new Ray(Center, Dir[11] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < diagonalLength)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[11] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXNegYNegZNeg);
@@ -1118,14 +1118,14 @@ namespace Pachyderm_Acoustic
 
                     XPt = new X_Event();
                     //new Vector(-dx, dy, dz)
-                    if (Rm.shoot(new Ray(Center, Dir[12], 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
+                    if (Rm.shoot(new Ray(Center, Dir[12], 0, Rnd.Next()), 0, out XPt) && XPt.t < diagonalLength)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[12] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXNegYPosZPos);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
                     }
                     XPt = new X_Event();
-                    if (Rm.shoot(new Ray(Center, Dir[12] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < dx2)
+                    if (Rm.shoot(new Ray(Center, Dir[12] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < diagonalLength)
                     {
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[12] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXPosYNegZNeg);
@@ -1336,7 +1336,6 @@ namespace Pachyderm_Acoustic
                         double p3 = 0;
                         foreach (P_Node node in Links3) p3 += node.P;
                         Pnf += p3 * (1.0 / 64.0);
-                        Pnf -= (9d / 8d) * Pn - Pn_1;
                         ////IISO
                         //Pnf = (.25) * (X + Y + Z) - Pn - Pn_1;
                         //double p2 = 0;
@@ -1369,8 +1368,8 @@ namespace Pachyderm_Acoustic
                         int mod = x % 2;
 
                         int xdim = Frame.Length - 1;
-                        int ydim = Frame[mod].Length - 1;
-                        int zdim = Frame[mod][0].Length - 1;
+                        int ydim = Frame[x].Length - 1;
+                        int zdim = Frame[x][y].Length - 1;
 
                         Links2 = new Node[12];
 
@@ -1393,18 +1392,18 @@ namespace Pachyderm_Acoustic
                         {
                             if (x < xdim)
                             {
-                                if (y < ydim && z < zdim) Links2[0] = Frame[x + 1][y + 1][z + 1]; else Links2[0] = new Null_Node();
-                                if (y > 0 && z > 0) Links2[1] = Frame[x + 1][y][z]; else Links2[1] = new Null_Node();
-                                if (y > 0 && z < zdim) Links2[2] = Frame[x + 1][y][z + 1]; else Links2[2] = new Null_Node();
-                                if (y < ydim && z > 0) Links2[3] = Frame[x + 1][y + 1][z]; else Links2[3] = new Null_Node();
+                                if (y + 1 < Frame[x + 1].Length && z + 1 < Frame[x + 1][y + 1].Length) Links2[0] = Frame[x + 1][y + 1][z + 1]; else Links2[0] = new Null_Node();
+                                if (y < Frame[x + 1].Length && z < Frame[x + 1][y].Length) Links2[1] = Frame[x + 1][y][z]; else Links2[1] = new Null_Node();
+                                if (y < Frame[x + 1].Length && z + 1 < Frame[x + 1][y].Length) Links2[2] = Frame[x + 1][y][z + 1]; else Links2[2] = new Null_Node();
+                                if (y + 1 < Frame[x + 1].Length && z < Frame[x + 1][y + 1].Length) Links2[3] = Frame[x + 1][y + 1][z]; else Links2[3] = new Null_Node();
                             }
                             else for (int i = 0; i < 4; i++) Links2[i] = new Null_Node();
                             if (x > 0)
                             {
-                                if (y < ydim && z < zdim) Links2[4] = Frame[x - 1][y + 1][z + 1]; else Links2[4] = new Null_Node();
-                                if (y > 0 && z > 0) Links2[5] = Frame[x - 1][y][z]; else Links2[5] = new Null_Node();
-                                if (y > 0 && z < zdim) Links2[6] = Frame[x - 1][y][z + 1]; else Links2[6] = new Null_Node();
-                                if (y < ydim && z > 0) Links2[7] = Frame[x - 1][y + 1][z]; else Links2[7] = new Null_Node();
+                                if (y + 1 < Frame[x - 1].Length && z + 1 < Frame[x - 1][y + 1].Length) Links2[4] = Frame[x - 1][y + 1][z + 1]; else Links2[4] = new Null_Node();
+                                if (y < Frame[x - 1].Length && z < Frame[x - 1][y].Length) Links2[5] = Frame[x - 1][y][z]; else Links2[5] = new Null_Node();
+                                if (y < Frame[x - 1].Length && z + 1 < Frame[x - 1][y].Length) Links2[6] = Frame[x - 1][y][z + 1]; else Links2[6] = new Null_Node();
+                                if (y + 1 < Frame[x - 1].Length && z < Frame[x - 1][y + 1].Length) Links2[7] = Frame[x - 1][y + 1][z]; else Links2[7] = new Null_Node();
                             }
                             else for (int i = 4; i < 8; i++) Links2[i] = new Null_Node();
                         }
@@ -1412,18 +1411,18 @@ namespace Pachyderm_Acoustic
                         {
                             if (x < xdim)
                             {
-                                if (y < ydim && z < zdim) Links2[0] = Frame[x + 1][y][z]; else Links2[0] = new Null_Node();
-                                if (y > 0 && z > 0) Links2[1] = Frame[x + 1][y - 1][z - 1]; else Links2[1] = new Null_Node();
-                                if (y > 0 && z < zdim) Links2[2] = Frame[x + 1][y - 1][z]; else Links2[2] = new Null_Node();
-                                if (y < ydim && z > 0) Links2[3] = Frame[x + 1][y][z - 1]; else Links2[3] = new Null_Node();
+                                if (y < Frame[x + 1].Length && z < Frame[x + 1][y].Length) Links2[0] = Frame[x + 1][y][z]; else Links2[0] = new Null_Node();
+                                if (y - 1 >= 0 && y - 1 < Frame[x + 1].Length && z - 1 >= 0 && z - 1 < Frame[x + 1][y - 1].Length) Links2[1] = Frame[x + 1][y - 1][z - 1]; else Links2[1] = new Null_Node();
+                                if (y - 1 >= 0 && y - 1 < Frame[x + 1].Length && z < Frame[x + 1][y - 1].Length) Links2[2] = Frame[x + 1][y - 1][z]; else Links2[2] = new Null_Node();
+                                if (y < Frame[x + 1].Length && z - 1 >= 0 && z - 1 < Frame[x + 1][y].Length) Links2[3] = Frame[x + 1][y][z - 1]; else Links2[3] = new Null_Node();
                             }
                             else for (int i = 0; i < 4; i++) Links2[i] = new Null_Node();
                             if (x > 0)
                             {
-                                if (y < ydim && z < zdim) Links2[4] = Frame[x - 1][y][z]; else Links2[4] = new Null_Node();
-                                if (y > 0 && z > 0) Links2[5] = Frame[x - 1][y - 1][z - 1]; else Links2[5] = new Null_Node();
-                                if (y > 0 && z < zdim) Links2[6] = Frame[x - 1][y - 1][z]; else Links2[6] = new Null_Node();
-                                if (y < ydim && z > 0) Links2[7] = Frame[x - 1][y][z - 1]; else Links2[7] = new Null_Node();
+                                if (y < Frame[x - 1].Length && z < Frame[x - 1][y].Length) Links2[4] = Frame[x - 1][y][z]; else Links2[4] = new Null_Node();
+                                if (y - 1 >= 0 && y - 1 < Frame[x - 1].Length && z - 1 >= 0 && z - 1 < Frame[x - 1][y - 1].Length) Links2[5] = Frame[x - 1][y - 1][z - 1]; else Links2[5] = new Null_Node();
+                                if (y - 1 >= 0 && y - 1 < Frame[x - 1].Length && z < Frame[x - 1][y - 1].Length) Links2[6] = Frame[x - 1][y - 1][z]; else Links2[6] = new Null_Node();
+                                if (y < Frame[x - 1].Length && z - 1 >= 0 && z - 1 < Frame[x - 1][y].Length) Links2[7] = Frame[x - 1][y][z - 1]; else Links2[7] = new Null_Node();
                             }
                             else for (int i = 4; i < 8; i++) Links2[i] = new Null_Node();
                         }
@@ -1715,10 +1714,10 @@ namespace Pachyderm_Acoustic
                             }
 
                             // Check X-Max face (right face)
-                            if (Loc[i].x < Inner_Bounds.Max_PT.x)
+                            if (Loc[i].x > Inner_Bounds.Max_PT.x)
                             {
                                 int minY = Math.Max(0, YIndex(Inner_Bounds.Min_PT.y, maxX));
-                                int maxY = Math.Min(Frame[minX].Length - 1, YIndex(Inner_Bounds.Max_PT.y, maxX));
+                                int maxY = Math.Min(Frame[maxX].Length - 1, YIndex(Inner_Bounds.Max_PT.y, maxX));
 
                                 // Loop only through valid y and z on this face
                                 for (int y = Math.Max(0, minY); y <= Math.Min(maxY, Frame[maxX].Length - 1); y++)
@@ -1726,7 +1725,7 @@ namespace Pachyderm_Acoustic
                                     int minZ = Math.Max(0, ZIndex(Inner_Bounds.Min_PT.z, maxX));
                                     int maxZ = Math.Min(Frame[maxX][y].Length - 1, ZIndex(Inner_Bounds.Max_PT.z, maxX));
 
-                                    for (int z = Math.Max(0, minZ); z <= Math.Min(maxZ, Frame[minX][y].Length - 1); z++)
+                                    for (int z = Math.Max(0, minZ); z <= Math.Min(maxZ, Frame[maxX][y].Length - 1); z++)
                                     {
                                         X.Add(maxX);
                                         Y.Add(y);
@@ -1768,7 +1767,7 @@ namespace Pachyderm_Acoustic
                             }
 
                             // Check Y-Max face (back face)
-                            if (Loc[i].y < Inner_Bounds.Min_PT.y)
+                            if (Loc[i].y > Inner_Bounds.Max_PT.y)
                             {
                                 for (int x = minX + 1; x <= maxX - 1; x++)
                                 {
@@ -1822,7 +1821,7 @@ namespace Pachyderm_Acoustic
                             }
 
                             // Check Z-Max face (top face)
-                            if (Loc[i].z < Inner_Bounds.Min_PT.z)
+                            if (Loc[i].z > Inner_Bounds.Max_PT.z)
                             {
                                 for (int x = minX + 1; x <= maxX - 1; x++)
                                 {
