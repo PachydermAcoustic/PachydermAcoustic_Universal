@@ -72,20 +72,8 @@ namespace Pachyderm_Acoustic
                     //Attenuation in intensity
                     //I = I0 * Power(10,-a*s)
 
-                    double T = Tk - 273.15;
-                    //double Psat = 101.325 * Math.Pow(10, (-6.8346 * Math.Pow((273.16 / Tk), 1.261) + 4.6151));
-                    //double Psat = hr * 6.1078 * Math.Pow(10, (7.5 * T) / (237.3 + T))/1000;
-                    //double h = (Psat / 101.325) / (Pa / 101.325);
-                    double h = hr * Math.Pow(10, -6.8346 * Math.Pow(273.16 / Tk, 1.261) + 4.6151) / (Pa / 101.325);
-
                     for (int oct = 0; oct < Freq.Length; oct++)
-                    {
-                        double frO = (Pa / 101.325) * (24 + 4.04 * Math.Pow(10, 4) * h * ((0.02 + h) / (0.391 + h)));
-                        double frN = (Pa / 101.325) * Math.Pow(Tk / 293.15, -1 / 2) * (9 + 280 * h * Math.Exp(-4.170 * (Math.Pow((Tk / 293.15), (-1 / 3)) - 1)));
-                        double z = 0.1068 * Math.Exp(-3352 / Tk) * Math.Pow((frN + Freq[oct] * Freq[oct] / frN), -1);
-                        double y = Math.Pow(Tk / 293.15, -5 / 2) * (0.01275 * Math.Exp(-2239.1 / Tk) * Math.Pow(frO + Freq[oct] * Freq[oct] / frO, -1) + z);
-                        Att_Coef[oct] = 8.686 * Freq[oct] * Freq[oct] * ((1.84 * Math.Pow(10, -11) * Math.Pow((Pa / 101.325), -1) * Math.Pow((Tk / 293.15), (1 / 2))) + y);//m-1         
-                    }
+                        Att_Coef[oct] = ISO9613_1_attencoef(Freq[oct], Tk, Pa, hr);
                 }
                 else if (Air_Choice == 1)
                 {
@@ -190,33 +178,23 @@ namespace Pachyderm_Acoustic
                 return Att_Coef;
             }
 
+            /// <summary>Pure-tone attenuation in dB/m; temperature in kelvins, pressure in kPa, relative humidity in percent.</summary>
             public static double ISO9613_1_attencoef(double Freq, double Tk, double Pa, double hr)
             {
                 double T = Tk - 273.15;
                 double h = hr * Math.Pow(10, -6.8346 * Math.Pow(273.16 / Tk, 1.261) + 4.6151) / (Pa / 101.325);
                 double frO = (Pa / 101.325) * (24 + 4.04 * Math.Pow(10, 4) * h * ((0.02 + h) / (0.391 + h)));
-                double frN = (Pa / 101.325) * Math.Pow(Tk / 293.15, -1 / 2) * (9 + 280 * h * Math.Exp(-4.170 * (Math.Pow((Tk / 293.15), (-1 / 3)) - 1)));
+                double frN = (Pa / 101.325) * Math.Pow(Tk / 293.15, -1.0 / 2) * (9 + 280 * h * Math.Exp(-4.170 * (Math.Pow((Tk / 293.15), (-1.0 / 3)) - 1)));
                 double z = 0.1068 * Math.Exp(-3352 / Tk) * Math.Pow((frN + Freq * Freq / frN), -1);
-                double y = Math.Pow(Tk / 293.15, -5 / 2) * (0.01275 * Math.Exp(-2239.1 / Tk) * Math.Pow(frO + Freq * Freq / frO, -1) + z);
-                return 8.686 * Freq * Freq * ((1.84 * Math.Pow(10, -11) * Math.Pow((Pa / 101.325), -1) * Math.Pow((Tk / 293.15), (1 / 2))) + y);
+                double y = Math.Pow(Tk / 293.15, -5.0 / 2) * (0.01275 * Math.Exp(-2239.1 / Tk) * Math.Pow(frO + Freq * Freq / frO, -1) + z);
+                return 8.686 * Freq * Freq * ((1.84 * Math.Pow(10, -11) * Math.Pow((Pa / 101.325), -1) * Math.Pow((Tk / 293.15), (1.0 / 2))) + y);
             }
 
+            /// <summary>Pure-tone attenuation in dB/m; temperature in kelvins, pressure in kPa, relative humidity in percent.</summary>
             public static double[] ISO9613_1_attencoef(double[] Freq, double Tk, double Pa, double hr)
             {
-                double T = Tk - 273.15;
-                double h = hr * Math.Pow(10, -6.8346 * Math.Pow(273.16 / Tk, 1.261) + 4.6151) / (Pa / 101.325);
-                Pa /= 10;
-                double frO = (Pa / 101.325) * (24 + 4.04 * Math.Pow(10, 4) * h * ((0.02 + h) / (0.391 + h)));
-                double frN = (Pa / 101.325) * Math.Pow(Tk / 293.15, -1 / 2) * (9 + 280 * h * Math.Exp(-4.170 * (Math.Pow((Tk / 293.15), (-1 / 3)) - 1)));
-
                 double[] Atten = new double[Freq.Length];
-
-                for (int i = 0; i < Atten.Length; i++)
-                {
-                    double z = 0.1068 * Math.Exp(-3352 / Tk) * Math.Pow((frN + Freq[i] * Freq[i] / frN), -1);
-                    double y = Math.Pow(Tk / 293.15, -5 / 2) * (0.01275 * Math.Exp(-2239.1 / Tk) * Math.Pow(frO + Freq[i] * Freq[i] / frO, -1) + z);
-                    Atten[i] = 8.686 * Freq[i] * Freq[i] * ((1.84 * Math.Pow(10, -11) * Math.Pow((Pa / 101.325), -1) * Math.Pow((Tk / 293.15), (1 / 2))) + y);
-                }
+                for (int i = 0; i < Freq.Length; i++) Atten[i] = ISO9613_1_attencoef(Freq[i], Tk, Pa, hr);
 
                 return Atten;
             }
@@ -244,21 +222,22 @@ namespace Pachyderm_Acoustic
 
             MathNet.Numerics.Interpolation.CubicSpline Spectrum;
             
+            /// <summary>Build the attenuation spectrum using pressure in hPa and temperature in kelvins.</summary>
             public void ISO9613_1_Spline(double Tk, double Pa, double Hr)
             {
                 double[] freq = new double[1024];
-                double df = 22050/1024;
+                double df = 22050.0 / 1024;
                 for (int i = 1; i < 1025; i++)
                 {
                     freq[i-1] = df * i;
                 }
 
-                Spectrum = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(freq, ISO9613_1_attencoef(freq, Tk, Pa, Hr));
+                Spectrum = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(freq, ISO9613_1_attencoef(freq, Tk, Pa / 10, Hr));
             }
 
             public override void AttenuationFilter(int no_of_elements, int sample_Frequency, double distance_meters, ref double[] Freq, ref double[] Atten, Hare.Geometry.Point pt)
             {
-                double df = sample_Frequency / no_of_elements;
+                double df = (double)sample_Frequency / no_of_elements;
 
                 Freq = new double[no_of_elements];
                 Atten = new double[no_of_elements];
@@ -279,13 +258,13 @@ namespace Pachyderm_Acoustic
             /// 
             /// </summary>a
             /// <param name="Air_Choice"></param>
-            /// <param name="Pa">in Pascals</param>
+            /// <param name="Pa">in hectopascals (hPa)</param>
             /// <param name="Tk">in kelvins</param>
             /// <param name="hr">in percent</param>
             /// <param name="EdgeCorrection"></param>
             public Uniform_Medium(int Air_Choice, double Pa, double Tk, double hr, bool EdgeCorrection)
             {
-                rho = Calculate_Density(Tk, Pa*100, hr); //note - (*100?)
+                rho = Calculate_Density(Tk, Pa * 100, hr); // hPa to Pa
                 Atten_Coef = Calculate_Attenuation(Air_Choice, Pa/10, Tk, hr, false, EdgeCorrection);
                 Atten_Coef_3rd = Calculate_Attenuation(Air_Choice, Pa / 10, Tk, hr, true, EdgeCorrection);
                 this.Pa = Pa;
@@ -396,21 +375,22 @@ namespace Pachyderm_Acoustic
                 }
             }
 
+            /// <summary>Build the attenuation spectrum using pressure in hPa and temperature in kelvins.</summary>
             public void ISO9613_1_Spline(double Tk, double Pa, double Hr, int code)
             {
                 double[] freq = new double[1024];
-                double df = 22050 / 1024;
+                double df = 22050.0 / 1024;
                 for (int i = 1; i < 1025; i++)
                 {
                     freq[i - 1] = df * i;
                 }
 
-                Spectrum[code] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(freq, ISO9613_1_attencoef(freq, Tk, Pa, Hr));
+                Spectrum[code] = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkima(freq, ISO9613_1_attencoef(freq, Tk, Pa / 10, Hr));
             }
 
             public override void AttenuationFilter(int no_of_elements, int sample_Frequency, double distance_meters, ref double[] Freq, ref double[] Atten, Hare.Geometry.Point pt)
             {
-                double df = sample_Frequency / no_of_elements;
+                double df = (double)sample_Frequency / no_of_elements;
                 int X = (int)Math.Floor((pt.x - MinX) / VdimX);
                 int Y = (int)Math.Floor((pt.y - MinY) / VdimY);
                 int Z = (int)Math.Floor((pt.z - MinZ) / VdimZ);

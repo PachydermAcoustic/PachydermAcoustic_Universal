@@ -63,7 +63,7 @@ namespace Pachyderm_Acoustic
             /// </summary>
             /// <param name="Temp">temperature in Celsius</param>
             /// <param name="hr">relative humidity in percent</param>
-            /// <param name="Pa">Pressure in Pascals</param>
+            /// <param name="Pa">Pressure in hectopascals (hPa)</param>
             /// <param name="Air_Choice"></param>
             /// <param name="EdgeCorrection"></param>
             /// <param name="IsAcoustic"></param>
@@ -72,36 +72,14 @@ namespace Pachyderm_Acoustic
                 Custom_Method = IsAcoustic;
                 Valid = false;
                 TempC_S = Temp;
-                Pa_S = Pa;          //TODO: Check that the pressure is in the correct units... hpa, kpa, pa.
+                Pa_S = Pa; // hPa, matching Uniform_Medium and existing scene callers.
                 hr_S = hr;
                 AC_S = Air_Choice;
                 EdgeFC = EdgeCorrection;
                 R_Seed = new Random();
 
                 double TK = Temp + 273.15;
-                //convert to Kelvins
-                //Psat = Pr * 10 ^ (-6.8346 * (To1 / T) ^ 1.261 + 4.6151)
-                double Psat = 101.325 * Math.Pow(10, (-6.8346 * Math.Pow((273.16 / TK), 1.261) + 4.6151));
-                //6.1121 * Math.Exp((18.678 - T / 234.5) * TC / (257.14 + T))
-                double h = hr * (Psat / Pa);
-
                 Env_Prop = new Uniform_Medium(Air_Choice, Pa, TK, hr, EdgeCorrection);
-
-                // Saturation water vapor pressure:
-                // psv = exp(aa(1,1)*T^2 + aa(2,1)*T + aa(3,1) + aa(4,1)/T); % Formula Giacomo
-                double psv = 101325 * Math.Pow(10, (4.6151 - 6.8346 * Math.Pow(((273.15 + 0.01) / (Temp + 273.15)), 1.261)));     // Formula ISO 9613-1:1993
-
-                // Enhancement factor:
-                double fpst = 1.00062 + 3.14e-8 * Atmospheric_Pressure + 5.6e-7 * Temp * Temp;
-
-                // Mole fraction of water vapor in air:
-                double xw = Relative_Humidity * psv * fpst / (100 * Atmospheric_Pressure);
-
-                // Compressibility factor:
-                double Z = 1 - Atmospheric_Pressure / (Temp + 273.15) * (1.58123e-6 + -2.9331e-8 * +1.1043e-10 * Temp * Temp + (5.707e-6 + -2.051e-8) * xw + (1.9898e-4 + -2.376e-6) * xw * xw) + Math.Pow((Atmospheric_Pressure / (Temp + 273.15)), 2) * (1.83e-11 + -0.765e-8 * xw * xw);
-
-                //// Density of air:
-                //rho = 3.48349 * 1e-3 * Atmospheric_Pressure / (Z * (Temp + 273.15)) * (1 - 0.3780 * xw);
             }
 
             public int EdgeCount
@@ -282,6 +260,7 @@ namespace Pachyderm_Acoustic
                 }
             }
 
+            /// <summary>Atmospheric pressure in hectopascals (hPa).</summary>
             public double Atmospheric_Pressure
             {
                 get

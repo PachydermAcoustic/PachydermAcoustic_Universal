@@ -701,45 +701,30 @@ namespace Pachyderm_Acoustic
                 return STI;
             }
 
+            // Inputs are energy/intensity curves, including squared pressure; pressure selects the existing 8192-sample origin offset.
             public static double Lateral_Parameter(double[][] Dir_ETC, double[] Total_ETC, double LowerBound_s, double UpperBound_s, double sample_f, double startTime, bool pressure)
             {
-                if (pressure) startTime += (double)8192 / sample_f;
-
-                double sum_Lateral = 0, sum_Total = 0;
-                int i = (int)Math.Floor(startTime * sample_f);
-                while (i < sample_f * (LowerBound_s + startTime))
-                {
-                    sum_Total += Total_ETC[i];
-                    i++;
-                }
-                while (i <= Math.Floor(sample_f * (UpperBound_s + startTime)))
-                {
-                    sum_Lateral += Dir_ETC[1][i];
-                    sum_Total += Total_ETC[i];
-                    i++;
-                }
-
-                return sum_Lateral / sum_Total;
+                if (Dir_ETC == null || Dir_ETC.Length < 2) throw new ArgumentException("A lateral channel is required.", nameof(Dir_ETC));
+                return Lateral_Parameter(Dir_ETC[1], Total_ETC, LowerBound_s, UpperBound_s, sample_f, startTime, pressure);
             }
 
             public static double Lateral_Parameter(double[] Lateral_ETC, double[] Total_ETC, double LowerBound_s, double UpperBound_s, double sample_f, double startTime, bool pressure)
             {
-                if (pressure) startTime += (double)8192 / sample_f;
+                if (Lateral_ETC == null || Total_ETC == null) throw new ArgumentNullException("Energy curves must not be null.");
+                if (!(sample_f > 0) || double.IsInfinity(sample_f)) throw new ArgumentOutOfRangeException(nameof(sample_f));
+                if (double.IsNaN(startTime) || double.IsInfinity(startTime) || LowerBound_s < 0 || UpperBound_s < LowerBound_s || double.IsNaN(LowerBound_s) || double.IsNaN(UpperBound_s) || double.IsInfinity(UpperBound_s)) throw new ArgumentException("Invalid lateral integration window.");
+                double origin = startTime * sample_f + (pressure ? 8192 : 0);
+                double start = Math.Floor(origin), end = Math.Floor(origin + UpperBound_s * sample_f);
+                double lateralStart = Math.Ceiling(origin + LowerBound_s * sample_f);
                 double sum_Lateral = 0, sum_Total = 0;
-                int i = (int)Math.Floor(startTime * sample_f);
-                while (i < sample_f * (LowerBound_s + startTime))
+                if (start >= Total_ETC.Length || end < 0) return double.NaN;
+                int first = (int)Math.Max(0, start), last = (int)Math.Min(Total_ETC.Length - 1, end);
+                for (int i = first; i <= last; i++)
                 {
                     sum_Total += Total_ETC[i];
-                    i++;
+                    if (i >= lateralStart && i < Lateral_ETC.Length) sum_Lateral += Math.Abs(Lateral_ETC[i]);
                 }
-                while (i <= Math.Floor(sample_f * (UpperBound_s + startTime)))
-                {
-                    sum_Lateral += Math.Abs(Lateral_ETC[i]);
-                    sum_Total += Total_ETC[i];
-                    i++;
-                }
-
-                return sum_Lateral / sum_Total;
+                return sum_Total > 0 ? sum_Lateral / sum_Total : double.NaN;
             }
 
             public static double Lateral_Fraction(double[][] ETC, double sample_f, double startTime, bool pressure)
@@ -1005,33 +990,27 @@ namespace Pachyderm_Acoustic
             }
 
             /// <summary>
-            /// Calculate Initial Time Delay Gap (ITDG). **Caution: Unbenchmarked**
+            /// Estimate Initial Time Delay Gap from the first two resolved peaks in a nonnegative energy time curve.
             /// </summary>
-            /// <param name="etc"></param>
-            /// <returns>ITDG in milliseconds</returns>
+            /// <param name="etc">Use the arrival-energy histogram, without pressure-filter ringing.</param>
+            /// <returns>Gap in milliseconds, or NaN when two arrivals cannot be resolved.</returns>
             public static double InitialTimeDelayGap(double[] etc, int Sample_Frequency)
             {
-                int t1 = 0, t2 = 0;
-                double maxdiff = 0, nextdiff = 0;
-                for (int t = 0; t < 100; t++)
+                if (etc == null) throw new ArgumentNullException(nameof(etc));
+                if (Sample_Frequency <= 0) throw new ArgumentOutOfRangeException(nameof(Sample_Frequency));
+                int first = -1;
+                for (int t = 0; t < etc.Length; t++)
                 {
-                    double diff = etc[t + 1] - etc[t];
-
-                    if (diff > maxdiff)
-                    {
-                        maxdiff = diff;
-                        t1 = t;
-                        continue;
-                    }
-
-                    if (diff > nextdiff)
-                    {
-                        nextdiff = diff;
-                        t2 = t;
-                    }
+                    if (double.IsNaN(etc[t]) || double.IsInfinity(etc[t]) || etc[t] < 0) throw new ArgumentException("ITDG requires a finite, nonnegative energy curve.", nameof(etc));
+                    if (etc[t] <= 0 || (t > 0 && etc[t] <= etc[t - 1])) continue;
+                    int end = t;
+                    while (end + 1 < etc.Length && etc[end + 1] == etc[t]) end++;
+                    if (end + 1 < etc.Length && etc[end + 1] > etc[t]) continue;
+                    if (first >= 0) return 1000.0 * (t - first) / Sample_Frequency;
+                    first = t;
+                    t = end;
                 }
-
-                return 1000 * (t2 - t1) / Sample_Frequency;
+                return double.NaN;
             }
 
             /// <summary>
