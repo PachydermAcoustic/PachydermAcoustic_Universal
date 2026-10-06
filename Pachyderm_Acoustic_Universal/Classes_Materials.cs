@@ -1476,7 +1476,7 @@ namespace Pachyderm_Acoustic
 
             public override System.Numerics.Complex Reflection_Narrow(double frequency, Hare.Geometry.Vector Dir, Hare.Geometry.Vector Normal)
             {
-                int a = (int)(Math.Abs(Hare.Geometry.Hare_math.Dot(Dir, Normal)) * 180 / Math.PI / 18);
+                int a = (int)(Math.Acos(Math.Abs(Hare.Geometry.Hare_math.Dot(Dir, Normal))) * 180 / Math.PI / 18);
                 return new System.Numerics.Complex(Transfer_FunctionR[a].Interpolate(frequency), Transfer_FunctionI[a].Interpolate(frequency));
             }
 
