@@ -96,7 +96,7 @@ namespace Pachyderm_Acoustic
                     fftlock16384[i] = new object();
                     IFFT_ArrayIn16384[i] = new fftw_complexarray(16384);
                     IFFT_ArrayOut16384[i] = new fftw_complexarray(16384);
-                    IFFT_Plan16384[i] = fftw_plan.dft_1d(16384, IFFT_ArrayIn16384[i], IFFT_ArrayOut16384[i], fftw_direction.Forward, fftw_flags.Estimate);
+                    IFFT_Plan16384[i] = fftw_plan.dft_1d(16384, IFFT_ArrayIn16384[i], IFFT_ArrayOut16384[i], fftw_direction.Backward, fftw_flags.Estimate);
                     ifftlock16384[i] = new object();
                     fftlock[i] = new object();
                     ifftlock[i] = new object();
@@ -182,6 +182,7 @@ namespace Pachyderm_Acoustic
 
             public static void Raised_Cosine_Window(ref double[] h)
             {
+                if (h == null || h.Any(v => double.IsNaN(v) || double.IsInfinity(v))) throw new ArgumentException("Window input must contain finite samples.", nameof(h));
                 double sum_before = 0;
                 double sum_after = 0;
 
@@ -208,12 +209,16 @@ namespace Pachyderm_Acoustic
                     sum_after += h[i] * h[i];
                 }
 
+                if (double.IsNaN(sum_before) || double.IsInfinity(sum_before) || double.IsNaN(sum_after) || double.IsInfinity(sum_after)) throw new ArithmeticException("Window energy is not finite.");
+                if (sum_after == 0) return;
                 double factor = Math.Sqrt(sum_before / sum_after);
+                if (double.IsInfinity(factor)) throw new ArithmeticException("Window normalization overflowed.");
                 for (int i = 0; i < h.Length; i++) h[i] *= factor;
             }
 
             public static void Raised_HCosine_Window(ref double[] h)
             {
+                if (h == null || h.Any(v => double.IsNaN(v) || double.IsInfinity(v))) throw new ArgumentException("Window input must contain finite samples.", nameof(h));
                 double sum_before = 0;
                 double sum_after = 0;
 
@@ -225,12 +230,16 @@ namespace Pachyderm_Acoustic
                     sum_after += h[i] * h[i];
                 }
 
+                if (double.IsNaN(sum_before) || double.IsInfinity(sum_before) || double.IsNaN(sum_after) || double.IsInfinity(sum_after)) throw new ArithmeticException("Window energy is not finite.");
+                if (sum_after == 0) return;
                 double factor = Math.Sqrt(sum_before / sum_after);
+                if (double.IsInfinity(factor)) throw new ArithmeticException("Window normalization overflowed.");
                 for (int i = 0; i < h.Length; i++) h[i] *= factor;
             }
 
             public static void Adaptive_RCosine_Window(ref double[] h, int sampleRate)
             {
+                if (h == null || h.Any(v => double.IsNaN(v) || double.IsInfinity(v))) throw new ArgumentException("Window input must contain finite samples.", nameof(h));
                 double sum_before = 0;
                 double sum_after = 0;
 
@@ -276,7 +285,10 @@ namespace Pachyderm_Acoustic
                 }
 
                 // Energy preservation
+                if (double.IsNaN(sum_before) || double.IsInfinity(sum_before) || double.IsNaN(sum_after) || double.IsInfinity(sum_after)) throw new ArithmeticException("Window energy is not finite.");
+                if (sum_after == 0) return;
                 double factor = Math.Sqrt(sum_before / sum_after);
+                if (double.IsInfinity(factor)) throw new ArithmeticException("Window normalization overflowed.");
                 for (int i = 0; i < h.Length; i++) h[i] *= factor;
             }
 
@@ -667,8 +679,17 @@ namespace Pachyderm_Acoustic
                 return h_filt;
             }
 
+            // threadid is a cache slot, not an operating-system thread ID.
+            private static void Validate_FFT_Thread(int threadid, object[] threadLocks)
+            {
+                if (threadLocks == null) throw new InvalidOperationException("Initialize_FFTW must be called before using FFT operations.");
+                if (threadid < 0 || threadid >= threadLocks.Length) throw new ArgumentOutOfRangeException(nameof(threadid), "FFT cache slot is outside the initialized range.");
+            }
+
             public static System.Numerics.Complex[] FFT16384(double[] Signal, int threadid)
             {
+                Validate_FFT_Thread(threadid, fftlock16384);
+                if (Signal == null || Signal.Length == 0) throw new ArgumentException("FFT input must not be null or empty.", nameof(Signal));
                 lock (fftlock16384[threadid])
                 {
                     //FFTW.Net Setup//
@@ -681,6 +702,8 @@ namespace Pachyderm_Acoustic
 
             public static double[] IFFT_Real16384(System.Numerics.Complex[] spectrum, int threadid)
             {
+                Validate_FFT_Thread(threadid, ifftlock16384);
+                if (spectrum == null || spectrum.Length == 0) throw new ArgumentException("FFT input must not be null or empty.", nameof(spectrum));
                 lock (ifftlock16384[threadid])
                 {
                     //FFTW.Net Setup//
@@ -693,6 +716,8 @@ namespace Pachyderm_Acoustic
 
             public static Complex[] IFFT16384(System.Numerics.Complex[] spectrum, int threadid)
             {
+                Validate_FFT_Thread(threadid, ifftlock16384);
+                if (spectrum == null || spectrum.Length == 0) throw new ArgumentException("FFT input must not be null or empty.", nameof(spectrum));
                 lock (ifftlock16384[threadid])
                 {
                     //FFTW.Net Setup//
@@ -705,6 +730,8 @@ namespace Pachyderm_Acoustic
 
             public static System.Numerics.Complex[] FFT_General(Complex[] Signal, int threadid)
             {
+                Validate_FFT_Thread(threadid, fftlock);
+                if (Signal == null || Signal.Length == 0) throw new ArgumentException("FFT input must not be null or empty.", nameof(Signal));
                 lock (fftlock[threadid])
                 {
                     if (FFT_Plan[threadid] == null || FFT_ArrayIn[threadid] == null || FFT_ArrayOut[threadid] == null || FFT_ArrayIn[threadid].Length != Signal.Length)
@@ -727,6 +754,8 @@ namespace Pachyderm_Acoustic
 
             public static System.Numerics.Complex[] FFT_General(double[] Signal, int threadid)
             {
+                Validate_FFT_Thread(threadid, fftlock);
+                if (Signal == null || Signal.Length == 0) throw new ArgumentException("FFT input must not be null or empty.", nameof(Signal));
                 lock (fftlock[threadid])
                 {
                     if (FFT_Plan[threadid] == null || FFT_ArrayIn[threadid] == null || FFT_ArrayOut[threadid] == null || FFT_ArrayIn[threadid].Length != Signal.Length)
@@ -766,12 +795,25 @@ namespace Pachyderm_Acoustic
 
             public static double[] IFFT_Real_General(System.Numerics.Complex[] spectrum, int threadid)
             {
+                Validate_FFT_Thread(threadid, ifftlock);
+                if (spectrum == null || spectrum.Length == 0) throw new ArgumentException("FFT input must not be null or empty.", nameof(spectrum));
                 lock (ifftlock[threadid])
                 {
-                    //FFTW.Net Setup//
-                    IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum);
-                    IFFT_ArrayOut[threadid] = new fftw_complexarray(spectrum.Length);
-                    IFFT_Plan[threadid] = fftw_plan.dft_1d(spectrum.Length, IFFT_ArrayIn[threadid], IFFT_ArrayOut[threadid], fftw_direction.Backward, fftw_flags.Estimate);
+                    if (IFFT_Plan[threadid] == null || IFFT_ArrayIn[threadid] == null || IFFT_ArrayOut[threadid] == null || IFFT_ArrayIn[threadid].Length != spectrum.Length)
+                    {
+                        IFFT_Plan[threadid]?.Dispose();
+                        IFFT_ArrayIn[threadid]?.Dispose();
+                        IFFT_ArrayOut[threadid]?.Dispose();
+                        IFFT_Plan[threadid] = null;
+                        IFFT_ArrayIn[threadid] = null;
+                        IFFT_ArrayOut[threadid] = null;
+
+                        IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum.Length);
+                        IFFT_ArrayOut[threadid] = new fftw_complexarray(spectrum.Length);
+                        IFFT_Plan[threadid] = fftw_plan.dft_1d(spectrum.Length, IFFT_ArrayIn[threadid], IFFT_ArrayOut[threadid], fftw_direction.Backward, fftw_flags.Estimate);
+                    }
+
+                    IFFT_ArrayIn[threadid].SetData(spectrum);
 
                     IFFT_Plan[threadid].Execute();
 
@@ -783,12 +825,25 @@ namespace Pachyderm_Acoustic
 
             public static Complex[] IFFT_General(System.Numerics.Complex[] spectrum, int threadid)
             {
+                Validate_FFT_Thread(threadid, ifftlock);
+                if (spectrum == null || spectrum.Length == 0) throw new ArgumentException("FFT input must not be null or empty.", nameof(spectrum));
                 lock (ifftlock[threadid])
                 {
-                    //FFTW.Net Setup//
-                    IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum);
-                    IFFT_ArrayOut[threadid] = new fftw_complexarray(spectrum.Length);
-                    IFFT_Plan[threadid] = fftw_plan.dft_1d(spectrum.Length, IFFT_ArrayIn[threadid], IFFT_ArrayOut[threadid], fftw_direction.Backward, fftw_flags.Estimate);
+                    if (IFFT_Plan[threadid] == null || IFFT_ArrayIn[threadid] == null || IFFT_ArrayOut[threadid] == null || IFFT_ArrayIn[threadid].Length != spectrum.Length)
+                    {
+                        IFFT_Plan[threadid]?.Dispose();
+                        IFFT_ArrayIn[threadid]?.Dispose();
+                        IFFT_ArrayOut[threadid]?.Dispose();
+                        IFFT_Plan[threadid] = null;
+                        IFFT_ArrayIn[threadid] = null;
+                        IFFT_ArrayOut[threadid] = null;
+
+                        IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum.Length);
+                        IFFT_ArrayOut[threadid] = new fftw_complexarray(spectrum.Length);
+                        IFFT_Plan[threadid] = fftw_plan.dft_1d(spectrum.Length, IFFT_ArrayIn[threadid], IFFT_ArrayOut[threadid], fftw_direction.Backward, fftw_flags.Estimate);
+                    }
+
+                    IFFT_ArrayIn[threadid].SetData(spectrum);
 
                     IFFT_Plan[threadid].Execute();
 
@@ -929,6 +984,10 @@ namespace Pachyderm_Acoustic
 
             public static double[] Magnitude_Spectrum(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
+                if (Octave_pressure == null || Octave_pressure.Length != 8 || Octave_pressure.Any(v => v < 0 || double.IsNaN(v) || double.IsInfinity(v))) throw new ArgumentException("Eight finite, nonnegative octave pressures are required.", nameof(Octave_pressure));
+                if (sample_frequency <= 0) throw new ArgumentOutOfRangeException(nameof(sample_frequency));
+                if (length_starttofinish < 2) throw new ArgumentOutOfRangeException(nameof(length_starttofinish));
+                if (Octave_pressure.All(v => v == 0)) return new double[length_starttofinish / 2];
                 double[] p_i = new double[length_starttofinish / 2];
                 double df = (double)(sample_frequency) / (double)length_starttofinish;
 
@@ -1328,6 +1387,8 @@ namespace Pachyderm_Acoustic
             public static System.Numerics.Complex[] Minimum_Phase_Spectrum(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
                 double[] M_spec = Magnitude_Spectrum(Octave_pressure, sample_frequency, length_starttofinish, threadid);
+                if (M_spec.Any(v => v < 0 || double.IsNaN(v) || double.IsInfinity(v))) throw new ArithmeticException("Magnitude spectrum is not finite and nonnegative.");
+                if (M_spec.All(v => v == 0)) return new Complex[length_starttofinish / 2];
 
                 System.Numerics.Complex[] logspec = new System.Numerics.Complex[M_spec.Length];
                 for (int i = 0; i < M_spec.Length; i++)
@@ -1359,6 +1420,8 @@ namespace Pachyderm_Acoustic
 
             public static double[] Minimum_Phase_Response(double[] M_spec, int sample_frequency, int threadid)
             {
+                if (M_spec == null || M_spec.Length != 8192 || M_spec.Any(v => v < 0 || double.IsNaN(v) || double.IsInfinity(v))) throw new ArgumentException("8192 finite, nonnegative magnitudes are required.", nameof(M_spec));
+                if (M_spec.All(v => v == 0)) return new double[16384];
                 System.Numerics.Complex[] logspec = new System.Numerics.Complex[M_spec.Length];
                 for (int i = 0; i < M_spec.Length; i++)
                 {
@@ -1387,16 +1450,15 @@ namespace Pachyderm_Acoustic
                 double[] Signal = IFFT_Real16384(ymspec, threadid);
                 Scale(ref Signal);
 
-                double[] S2 = new double[Signal.Length];
-                for (int i = 0; i < Signal.Length; i++) S2[i] = Signal[(Signal.Length + i + 1) % Signal.Length];
-                S2.Reverse();
-
-                return S2;
+                // The backward transform already places the causal response at sample zero.
+                return Signal;
             }
 
             public static double[] Minimum_Phase_Signal(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
                 double[] M_spec = Magnitude_Spectrum(Octave_pressure, sample_frequency, length_starttofinish, threadid);
+                if (M_spec.Any(v => v < 0 || double.IsNaN(v) || double.IsInfinity(v))) throw new ArithmeticException("Magnitude spectrum is not finite and nonnegative.");
+                if (M_spec.All(v => v == 0)) return new double[length_starttofinish];
 
                 double sum_start = 0;
                 for (int i = 0; i < M_spec.Length; i++) sum_start += M_spec[i] * M_spec[i];
@@ -1438,7 +1500,9 @@ namespace Pachyderm_Acoustic
                 //Scale(ref Signal);
                 double[] S2 = new double[Signal.Length];
                 double signalEnergy = Signal.Select(s => s * s).Sum();
+                if (!(signalEnergy > 0) || double.IsInfinity(signalEnergy) || double.IsNaN(sum_start) || double.IsInfinity(sum_start)) throw new ArithmeticException("Minimum-phase energy cannot be normalized.");
                 double scaleFactor = Math.Sqrt(sum_start / signalEnergy);
+                if (double.IsInfinity(scaleFactor)) throw new ArithmeticException("Minimum-phase normalization overflowed.");
                 for (int i = 0; i < Signal.Length; i++) S2[i] = Signal[i] * scaleFactor;
 
                 return S2;
@@ -1446,6 +1510,8 @@ namespace Pachyderm_Acoustic
 
             public static double[] Minimum_Phase_Complex(Complex[] H, int threadId)
             {
+                if (H == null || H.Length == 0 || H.Any(v => double.IsNaN(v.Magnitude) || double.IsInfinity(v.Magnitude))) throw new ArgumentException("A finite, nonempty spectrum is required.", nameof(H));
+                if (H.All(v => v == Complex.Zero)) return new double[H.Length];
                 int N = H.Length;
 
                 double sum_start = 0;
@@ -1480,7 +1546,9 @@ namespace Pachyderm_Acoustic
                 double[] Signal = IFFT_Real_General(ymspec, threadId);
 
                 double signalEnergy = Signal.Select(s => s * s).Sum();
+                if (!(signalEnergy > 0) || double.IsInfinity(signalEnergy) || double.IsNaN(sum_start) || double.IsInfinity(sum_start)) throw new ArithmeticException("Minimum-phase energy cannot be normalized.");
                 double scaleFactor = Math.Sqrt(sum_start / signalEnergy);
+                if (double.IsInfinity(scaleFactor)) throw new ArithmeticException("Minimum-phase normalization overflowed.");
                 for (int i = 0; i < Signal.Length; i++)
                     Signal[i] *= scaleFactor;
 
@@ -1658,11 +1726,11 @@ namespace Pachyderm_Acoustic
                 {
                     // Calculate air attenuation coefficients for 8 kHz and 16 kHz using ISO 9613-1
                     double tempK = 20 + 273.15; // Convert to Kelvin
-                    double pressurePa = 101.325 * 1000; // Convert kPa to Pa
+                    double pressurekPa = 101.325; // ISO9613_1_attencoef expects kPa
                     double humidity = 50.0; // Relative humidity in %
 
-                    double atten8kHz = Pachyderm_Acoustic.Environment.Medium_Properties.ISO9613_1_attencoef(8000.0, tempK, pressurePa, humidity);
-                    double atten16kHz = Pachyderm_Acoustic.Environment.Medium_Properties.ISO9613_1_attencoef(16000.0, tempK, pressurePa, humidity);
+                    double atten8kHz = Pachyderm_Acoustic.Environment.Medium_Properties.ISO9613_1_attencoef(8000.0, tempK, pressurekPa, humidity);
+                    double atten16kHz = Pachyderm_Acoustic.Environment.Medium_Properties.ISO9613_1_attencoef(16000.0, tempK, pressurekPa, humidity);
 
                     // Calculate additional attenuation per meter for 16 kHz relative to 8 kHz
                     double additionalAttenuation = atten16kHz - atten8kHz; // dB/m
@@ -1735,6 +1803,9 @@ namespace Pachyderm_Acoustic
             /// </summary>
             public static double[] ETCToFilter_Pulses(double[][] Octave_PRMS, double[] SWL, int sample_frequency_in = 44100, int sample_frequency_out = 44100)
             {
+                if (Octave_PRMS == null || Octave_PRMS.Length != 8 || Octave_PRMS[0] == null || Octave_PRMS.Any(b => b == null || b.Length != Octave_PRMS[0].Length)) throw new ArgumentException("Eight equal-length octave bands are required.", nameof(Octave_PRMS));
+                if (SWL == null || SWL.Length != 8) throw new ArgumentException("Eight source levels are required.", nameof(SWL));
+                if (sample_frequency_in <= 0 || sample_frequency_out <= 0) throw new ArgumentOutOfRangeException("Sample frequencies must be positive.");
                 int length = 16384;
                 double BW = (double)sample_frequency_out / (double)sample_frequency_in;
                 double[] IR = new double[(int)Math.Floor((double)(Octave_PRMS[0].Length * BW)) + (int)length];
@@ -1742,11 +1813,17 @@ namespace Pachyderm_Acoustic
                 double[] p_mod = new double[8];
                 for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
 
-                int proc = System.Environment.ProcessorCount;
+                int proc = Math.Min(System.Environment.ProcessorCount, Octave_PRMS[0].Length);
+                double[][] partialIR = new double[proc][];
+                int[] offsets = new int[proc];
                 Parallel.For(0, proc, p =>
                 {
-                    double[] pulse = new double[length];
-                    for (int t = p * Octave_PRMS[0].Length / proc; t < (p + 1) * Octave_PRMS[0].Length / proc; t++)
+                    int start = (int)((long)p * Octave_PRMS[0].Length / proc);
+                    int end = (int)((long)(p + 1) * Octave_PRMS[0].Length / proc);
+                    offsets[p] = (int)Math.Floor(start * BW);
+                    double[] localIR = new double[(int)Math.Floor((end - 1) * BW) + length - offsets[p]];
+                    double[] pulse;
+                    for (int t = start; t < end; t++)
                     {
                         // build per-time-slice octave pressures (pressure RMS)
                         double[] pr = new double[8];
@@ -1770,9 +1847,15 @@ namespace Pachyderm_Acoustic
 
                         //// Add to IR
                         int maxCopy = Math.Min(pulse.Length, IR.Length - i0);
-                        for (int k = 0; k < maxCopy; k++) IR[i0 + k] += pulse[k];
+                        int requiredLength = i0 - offsets[p] + maxCopy;
+                        if (requiredLength > localIR.Length) Array.Resize(ref localIR, requiredLength);
+                        for (int k = 0; k < maxCopy; k++) localIR[i0 - offsets[p] + k] += pulse[k];
                     }
+                    partialIR[p] = localIR;
                 });
+
+                for (int p = 0; p < proc; p++)
+                    for (int i = 0; i < partialIR[p].Length; i++) IR[offsets[p] + i] += partialIR[p][i];
 
                 return IR;
             }
@@ -2110,7 +2193,8 @@ namespace Pachyderm_Acoustic
                         signal[c] = new double[data[c].Length];
                         if (Normalize)
                         {   
-                            int max = Math.Max(data[c].Max(), Math.Abs(data[c].Min()));
+                            if (data[c].Length == 0) continue;
+                            long max = Math.Max((long)data[c].Max(), Math.Abs((long)data[c].Min()));
                             if (max == 0) continue;
                             for (int i = 0; i < data[c].Length; i++)
                             {
@@ -2131,24 +2215,14 @@ namespace Pachyderm_Acoustic
                 public static int[][] ReadtoInt(string Path, bool Normalize, out int Sample_Frequency, bool tryunsupported = false)
                 {
 
-                    int[][] data;
-
-                    try
-                    {
-                        data = ReadtoInt(Path, out Sample_Frequency, tryunsupported);
-                    }
-                    catch (Exception x)
-                    {
-                        MessageBox.Show(x.Message);
-                        Sample_Frequency = 44100;
-                        return new int[1][];
-                    }
+                    int[][] data = ReadtoInt(Path, out Sample_Frequency, tryunsupported);
 
                     if (Normalize)
                     {
                         for (int c = 0; c < data.Length; c++)
                         {
-                            int max = Math.Max(data[c].Max(), Math.Abs(data[c].Min()));
+                            if (data[c].Length == 0) continue;
+                            long max = Math.Max((long)data[c].Max(), Math.Abs((long)data[c].Min()));
                             if (max == 0) continue;
                             double mod = (double)int.MaxValue / max;
                             for (int i = 0; i < data[c].Length; i++)

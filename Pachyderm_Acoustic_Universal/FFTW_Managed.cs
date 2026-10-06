@@ -442,7 +442,7 @@ namespace FFTWSharp
         {
             this.length = length;
             this.handle = FFTW.malloc(this.length * 16);
-            GC.RemoveMemoryPressure((long)length * 16);
+            GC.AddMemoryPressure((long)length * 16);
 
         }
 
@@ -454,7 +454,7 @@ namespace FFTWSharp
         {
             this.length = data.Length / 2;
             this.handle = FFTW.malloc(this.length * 16);
-            GC.RemoveMemoryPressure((long)length * 16);
+            GC.AddMemoryPressure((long)length * 16);
 
             this.SetData(data);
         }
@@ -467,7 +467,7 @@ namespace FFTWSharp
         {
             this.length = data.Length;
             this.handle = FFTW.malloc(this.length * 16);
-            GC.RemoveMemoryPressure((long)length * 16);
+            GC.AddMemoryPressure((long)length * 16);
 
             this.SetData(data);
         }
