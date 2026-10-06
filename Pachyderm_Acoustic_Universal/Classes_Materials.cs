@@ -45,6 +45,19 @@ namespace Pachyderm_Acoustic
             public abstract double[] Coefficient_A_Broad();
             public abstract System.Numerics.Complex[] Reflection_Spectrum(int sample_frequency, int length, Hare.Geometry.Vector Normal, Hare.Geometry.Vector Dir, int threadid);
             public abstract (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0);
+            /// <summary>
+            /// Fits dimensional surface admittance as Y(s) = Y0 + Y2*s, s = sin(theta)^2.
+            /// The default is locally reacting; rho_c is the fluid characteristic impedance.
+            /// </summary>
+            public virtual (Complex Y0, Complex Y2, double RelativeError) Surface_Admittance(double frequency, double rho_c)
+            {
+                if (!(frequency > 0) || double.IsInfinity(frequency) || !(rho_c > 0) || double.IsInfinity(rho_c)) throw new ArgumentOutOfRangeException("Frequency and rho_c must be finite and positive.");
+                Complex R = Reflection_Narrow(frequency, new Hare.Geometry.Vector(0, 0, 1), new Hare.Geometry.Vector(0, 0, 1));
+                if ((1 + R).Magnitude < 1e-12) throw new InvalidOperationException("Pressure-release material requires a Dirichlet boundary condition.");
+                Complex Y = (1 - R) / (rho_c * (1 + R));
+                if (double.IsNaN(Y.Real) || double.IsNaN(Y.Imaginary) || double.IsInfinity(Y.Real) || double.IsInfinity(Y.Imaginary)) throw new InvalidOperationException("Material admittance is not finite.");
+                return (Y, Complex.Zero, 0);
+            }
             public virtual void ForceIIR(double[] a, double[] b, double fs, double max_freq = 0) { }
         }
 
@@ -1534,6 +1547,52 @@ namespace Pachyderm_Acoustic
                 }
             }
 
+            /// <summary>
+            /// Uses Z[angle][frequency] directly, retaining phase. Angles from the TMM are
+            /// signed degrees from the normal. This fit uses real propagating angles only.
+            /// </summary>
+            public override (Complex Y0, Complex Y2, double RelativeError) Surface_Admittance(double frequency, double rho_c)
+            {
+                if (!(frequency > 0) || double.IsInfinity(frequency) || !(rho_c > 0) || double.IsInfinity(rho_c)) throw new ArgumentOutOfRangeException("Frequency and rho_c must be finite and positive.");
+                if (this.frequency == null || this.frequency.Length < 2 || Angles == null || Z == null || Z.Length != Angles.Length) throw new InvalidOperationException("Smart material has no angular impedance data.");
+                for (int i = 0; i < this.frequency.Length; i++)
+                    if (double.IsNaN(this.frequency[i]) || double.IsInfinity(this.frequency[i]) || (i > 0 && this.frequency[i] <= this.frequency[i - 1])) throw new InvalidOperationException("Smart material frequencies must be finite and increasing.");
+                if (frequency < this.frequency[0] || frequency > this.frequency[this.frequency.Length - 1]) throw new ArgumentOutOfRangeException(nameof(frequency), "BEM frequency is outside the Smart_Material impedance samples.");
+                int upper = Array.BinarySearch(this.frequency, frequency);
+                if (upper < 0) upper = ~upper;
+                int lower = Math.Max(0, upper - 1);
+                double t = upper == lower ? 0 : (frequency - this.frequency[lower]) / (this.frequency[upper] - this.frequency[lower]);
+                List<double> s = new List<double>();
+                List<Complex> y = new List<Complex>();
+                double sumS = 0, sumSS = 0;
+                Complex sumY = 0, sumSY = 0;
+                Complex Invert(Complex impedance)
+                {
+                    if (double.IsNaN(impedance.Real) || double.IsNaN(impedance.Imaginary)) throw new InvalidOperationException("Smart material impedance contains NaN.");
+                    if (double.IsInfinity(impedance.Real) || double.IsInfinity(impedance.Imaginary)) return Complex.Zero;
+                    if (impedance.Magnitude < 1e-12) throw new InvalidOperationException("Zero impedance requires a Dirichlet boundary condition.");
+                    return Complex.One / impedance;
+                }
+                for (int a = 0; a < Angles.Length; a++)
+                {
+                    if (Math.Abs(Angles[a].Imaginary) > 1e-12) continue;
+                    double angle = Math.Abs(Angles[a].Real);
+                    if (double.IsNaN(angle) || angle > 90) continue;
+                    if (Z[a] == null || Z[a].Length != this.frequency.Length) throw new InvalidOperationException("Smart material impedance dimensions do not match its frequencies.");
+                    // Interpolate admittance, avoiding infinity-infinity for a rigid sample.
+                    Complex sample = (1 - t) * Invert(Z[a][lower]) + t * Invert(Z[a][upper]);
+                    double x = Math.Pow(Math.Sin(angle * Utilities.Numerics.Pi_180), 2);
+                    s.Add(x); y.Add(sample);
+                    sumS += x; sumSS += x * x; sumY += sample; sumSY += x * sample;
+                }
+                double determinant = s.Count * sumSS - sumS * sumS;
+                if (s.Count < 2 || determinant < 1e-12) throw new InvalidOperationException("Smart material needs at least two distinct real incidence angles for GIBC.");
+                Complex Y2 = (s.Count * sumSY - sumS * sumY) / determinant;
+                Complex Y0 = (sumY - Y2 * sumS) / s.Count;
+                double error = 0, scale = 0;
+                for (int a = 0; a < s.Count; a++) { error += Math.Pow((Y0 + Y2 * s[a] - y[a]).Magnitude, 2); scale += y[a].Magnitude * y[a].Magnitude; }
+                return (Y0, Y2, Math.Sqrt(error / Math.Max(scale, 1e-30)));
+            }
             public System.Numerics.Complex Admittance(double frequency)
             {
                 System.Numerics.Complex R = new System.Numerics.Complex(Transfer_FunctionR[17].Interpolate(frequency), Transfer_FunctionI[17].Interpolate(frequency));
