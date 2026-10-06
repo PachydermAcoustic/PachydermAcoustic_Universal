@@ -428,7 +428,7 @@ namespace Pachyderm_Acoustic
                 if (Mat.Count != Model.Length && Scat.Count != Model.Length) throw new Exception("The number of material codes must match the numer of objects in the model...");
                 if (IsCurved == null || Kurvatures == null || Frame_Axes == null)
                 {
-                    iscurved = new bool[Model.Length];
+                    if (IsCurved == null) IsCurved = new bool[Model.Length];
                     Kurvatures = new double[Model.Length][][];
                     Frame_Axes = new Vector[Model.Length][][];
                     for (int i = 0; i < Model.Length; i++)
