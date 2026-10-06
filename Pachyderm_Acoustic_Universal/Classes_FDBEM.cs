@@ -1,16 +1,20 @@
 ﻿using System;
 using System.Threading;
 using System.Collections.Generic;
-using Pachyderm_Acoustic.Environment;
 using System.Numerics;
-using System.Threading.Tasks;
-using Eto.Forms;
-using System.Configuration;
+using Pachyderm_Acoustic.Environment;
+using Hare.Geometry;
+using MathNet.Numerics.Integration;
+using MathNet.Numerics.LinearAlgebra.Complex;
+using Vector = Hare.Geometry.Vector;
 
 namespace Pachyderm_Acoustic.Simulation
 {
     /// <summary>
-    /// A simulation class implementing the Boundary Element Method (BEM) for acoustic analysis.
+    /// Constant-panel Helmholtz BEM with a surface-Laplacian admittance GIBC.
+    /// Uses exp(i*omega*t), G = exp(-i*k*r)/(4*pi*r), and scene normals INTO the fluid.
+    /// Absorbing velocity is opposite that normal: dp/dn = i*omega*rho*Y_Gamma*p.
+    /// Geometry is in metres; Results are total pressures for a unit monopole Green field.
     /// </summary>
     public class BoundaryElementSimulation_FreqDom : Simulation_Type
     {
@@ -20,483 +24,309 @@ namespace Pachyderm_Acoustic.Simulation
         private Thread SimulationThread;
         private string ProgressMessage;
         private AutoResetEvent SimulationResetEvent;
-        public Complex[][] Results;//Frequency, Receiver
         private double[] frequency;
+        private Dictionary<int, Complex>[] admittance;
+        private static readonly GaussLegendreRule Quadrature = new GaussLegendreRule(0, 1, 8);
+        public Complex[][] Results; // Frequency, receiver; NaN marks an unfinished/failed result.
+        public Exception Failure { get; private set; }
+        public double GIBC_Fit_Error { get; private set; }
+        public int MaximumElements { get; set; } = 3000;
+
         public BoundaryElementSimulation_FreqDom(Scene room, Source source, Receiver_Bank receivers, double[] freq)
         {
-            Room = (Polygon_Scene)room;
-            Source = source;
-            Receivers = receivers;
+            Room = room as Polygon_Scene ?? throw new ArgumentException("BEM requires a polygon scene.", nameof(room));
+            Source = source ?? throw new ArgumentNullException(nameof(source));
+            Receivers = receivers ?? throw new ArgumentNullException(nameof(receivers));
+            frequency = (double[])(freq ?? throw new ArgumentNullException(nameof(freq))).Clone();
+            foreach (double f in frequency) if (!(f > 0) || double.IsInfinity(f)) throw new ArgumentOutOfRangeException(nameof(freq), "BEM frequencies must be finite and positive.");
+            Results = new Complex[frequency.Length][];
+            for (int f = 0; f < frequency.Length; f++)
+            {
+                Results[f] = new Complex[Receivers.Count];
+                for (int r = 0; r < Receivers.Count; r++) Results[f][r] = new Complex(double.NaN, double.NaN);
+            }
             ProgressMessage = "Simulation not started.";
-            Results = new Complex[freq.Length][];
-            for(int i = 0; i < freq.Length; i++) Results[i] = new Complex[Receivers.Count];
             SimulationResetEvent = new AutoResetEvent(false);
-            frequency = freq;
         }
 
-        /// <summary>
-        /// Returns the simulation type as a string.
-        /// </summary>
-        /// <returns></returns>
-        public override string Sim_Type()
-        {
-            return "Boundary Element Method (Frequency Domain) Simulation";
-        }
-
-        /// <summary>
-        /// Begins the simulation process.
-        /// </summary>
+        public override string Sim_Type() { return "Boundary Element Method (Frequency Domain) Simulation"; }
+        public override string ProgressMsg() { return ProgressMessage; }
+        public override ThreadState ThreadState() { return SimulationThread == null ? System.Threading.ThreadState.Unstarted : SimulationThread.ThreadState; }
+        public override void Combine_ThreadLocal_Results() { }
         public override void Begin()
         {
-            if (SimulationThread != null && SimulationThread.ThreadState != System.Threading.ThreadState.Stopped)
-            {
-                ProgressMessage = "Simulation is already running.";
-                return;
-            }
-
-            SimulationThread = new Thread(new ThreadStart(Simulate));
-            SimulationThread.Start();
+            if (SimulationThread != null && SimulationThread.IsAlive) return;
+            Failure = null;
+            GIBC_Fit_Error = 0;
+            for (int f = 0; f < Results.Length; f++) for (int r = 0; r < Results[f].Length; r++) Results[f][r] = new Complex(double.NaN, double.NaN);
             ProgressMessage = "Simulation started.";
+            SimulationThread = new Thread(Simulate);
+            SimulationThread.Start();
         }
 
-        /// <summary>
-        /// Returns a progress message.
-        /// </summary>
-        /// <returns></returns>
-        public override string ProgressMsg()
+        private double ComputePolygonSize(Point[] vertices)
         {
-            return ProgressMessage;
+            double size = 0;
+            for (int i = 0; i < vertices.Length; i++) size = Math.Max(size, (vertices[i] - vertices[(i + 1) % vertices.Length]).Length());
+            return size;
         }
 
-        /// <summary>
-        /// Returns the current state of the simulation thread.
-        /// </summary>
-        /// <returns></returns>
-        public override ThreadState ThreadState()
-        {
-            if (SimulationThread != null)
-                return SimulationThread.ThreadState;
-            else
-                return System.Threading.ThreadState.Unstarted;
-        }
-
-        /// <summary>
-        /// Combines results from different threads (if multithreading is used).
-        /// </summary>
-        public override void Combine_ThreadLocal_Results()
-        {
-        }
-
-        /// <summary>
-        /// Computes the maximum edge length of the polygon.
-        /// </summary>
-        /// <param name="vertices">Vertices of the polygon.</param>
-        /// <returns>Maximum edge length.</returns>
-        private double ComputePolygonSize(Hare.Geometry.Point[] vertices)
-        {
-            double maxLength = 0.0;
-            int N = vertices.Length;
-            for (int i = 0; i < N; i++)
-            {
-                Hare.Geometry.Point p1 = vertices[i];
-                Hare.Geometry.Point p2 = vertices[(i + 1) % N]; // Wrap around to the first vertex
-                double edgeLength = (p1 - p2).Length();
-                if (edgeLength > maxLength)
-                    maxLength = edgeLength;
-            }
-            return maxLength;
-        }
-
-        /// <summary>
-        /// The main simulation method where BEM computations occur.
-        /// </summary>
         private void Simulate()
         {
             try
             {
-                ProgressMessage = "Initializing BEM simulation...";
-
-                // Step 1: Define boundary elements and collocation points
-                // Create boundary elements based on the room geometry.
-
+                double c = Room.Sound_speed(0), rho_c = Room.Rho_C(0);
+                if (!(c > 0) || !(rho_c > 0) || double.IsInfinity(c) || double.IsInfinity(rho_c)) throw new InvalidOperationException("BEM requires a finite homogeneous fluid.");
                 for (int f = 0; f < frequency.Length; f++)
                 {
-                    List<BoundaryElement> elements = new List<BoundaryElement>();
-
-                    // Calculate wavelength and maximum element size
-                    double wavelength = Room.Sound_speed(0) / frequency[f];
-                    double maxElementSize = wavelength / 6.0;
-
-                    double k = 2 * Math.PI * frequency[f] / Room.Sound_speed(0);
-                    Complex i_k = Complex.ImaginaryOne / k;
-
-                    for (int i = 0; i < Room.AbsorptionValue.Count; i++)
+                    double k = Utilities.Numerics.PiX2 * frequency[f] / c;
+                    Complex derivativeFactor = Complex.ImaginaryOne * k * rho_c;
+                    double maxSize = c / (6 * frequency[f]), size = 0;
+                    List<(Point[] Vertices, int Polygon)> triangles = new List<(Point[], int)>();
+                    for (int p = 0; p < Room.Count(); p++)
                     {
-                        // Obtain polygon vertices
-                        Hare.Geometry.Point[] vertices = Room.polygon(i);
-                        Hare.Geometry.Vector normal = Room.Normal(i);
-                        //Obtain material from room...
-                        Environment.Material m = Room.Surface_Material(i);
-                        Complex R = m.Reflection_Narrow(frequency[f], new Hare.Geometry.Vector(0, 0, 1), new Hare.Geometry.Vector(0, 0, 1));
-                        Complex Y = (1 - R) / (Room.Rho_C(0) * (1 + R));
-
-                        // Check the size of the polygon
-                        double polygonSize = ComputePolygonSize(vertices);
-
-                        if (polygonSize > maxElementSize)
+                        Point[] v = Room.polygon(p);
+                        if (v.Length < 3 || v.Length > 4) throw new NotSupportedException("BEM accepts triangles and planar convex quadrilaterals. Tessellate other faces first.");
+                        Vector n = Room.Normal(p);
+                        n = n / n.Length();
+                        for (int a = 0; a < v.Length; a++)
                         {
-                            // Subdivide the polygon
-                            List<Hare.Geometry.Point[]> subdividedPolygons = SubdividePolygon(vertices, maxElementSize);
-
-                            // Create boundary elements from subdivided polygons
-                            foreach (var subVertices in subdividedPolygons)
-                            {
-                                BoundaryElement element = new BoundaryElement(subVertices, Y, normal, elements.Count);
-                                elements.Add(element);
-                            }
+                            if (Hare_math.Dot(Hare_math.Cross(v[(a + 1) % v.Length] - v[a], v[(a + 2) % v.Length] - v[(a + 1) % v.Length]), n) <= 0) throw new InvalidOperationException("BEM face is degenerate, concave, or has inconsistent winding.");
+                            if (Math.Abs(Hare_math.Dot(v[a] - v[0], n)) > 1e-8 * Math.Max(1, ComputePolygonSize(v))) throw new InvalidOperationException("BEM quadrilaterals must be planar.");
                         }
-                        else
+                        for (int a = 1; a < v.Length - 1; a++)
                         {
-                            // Create boundary element without subdivision
-                            BoundaryElement element = new BoundaryElement(vertices, Y, normal, elements.Count);
-                            elements.Add(element);
+                            Point[] triangle = new Point[] { v[0], v[a], v[a + 1] };
+                            size = Math.Max(size, ComputePolygonSize(triangle));
+                            triangles.Add((triangle, p));
                         }
                     }
-                    ProgressMessage = $"Generated {elements.Count} boundary elements.";
-
-                    // Step 2: Assemble the system of equations
-                    ProgressMessage = "Assembling system of equations...";
+                    // A common refinement depth preserves shared edges on a conforming input mesh.
+                    int levels = 0;
+                    double count = triangles.Count;
+                    while (size > maxSize) { size *= .5; levels++; count *= 4; }
+                    if (count > MaximumElements) throw new InvalidOperationException($"BEM needs {count} panels; the dense solver limit is {MaximumElements}. Reduce frequency or geometry size, or raise MaximumElements with sufficient memory.");
+                    List<BoundaryElement> elements = new List<BoundaryElement>();
+                    List<int> polygons = new List<int>();
+                    foreach (var triangle in triangles)
+                        foreach (Point[] v in SubdividePolygon(triangle.Vertices, levels))
+                        {
+                            elements.Add(new BoundaryElement(v, Complex.Zero, Room.Normal(triangle.Polygon), elements.Count));
+                            polygons.Add(triangle.Polygon);
+                        }
+                    foreach (BoundaryElement element in elements) if (IsOnBoundary(Source.Origin, element)) throw new InvalidOperationException("BEM monopole sources must be off the boundary.");
                     int N = elements.Count;
-                    Complex[,] matrix = new Complex[N, N];
-                    Complex[] rhs = new Complex[N];
-
-                    // Fill the matrix with the integral equations coefficients
+                    ProgressMessage = $"Assembling {N} boundary elements at {frequency[f]} Hz...";
+                    var fits = new Dictionary<Environment.Material, (Complex Y0, Complex Y2, double RelativeError)>();
+                    admittance = new Dictionary<int, Complex>[N];
+                    Complex[] slope = new Complex[N];
                     for (int i = 0; i < N; i++)
                     {
-                        Hare.Geometry.Point receiverPoint = elements[i].CollocationPoint;
-                        Hare.Geometry.Vector Direct = (receiverPoint - Source.Origin);
-                        double distance = Direct.Length();
-                        Direct /= distance;
-
-                        //Burton-Miller Correction
-                        Complex BM_Derivative = ComputeNormalDerivative(receiverPoint, Source.Origin, elements[i].Normal, k);
-
-
-                        // Check if the source element is on the same side as the receiver
-                        double dot = Hare.Geometry.Hare_math.Dot(elements[i].Normal, Direct);
-                        //Temporary check for the case of a sphere. More sophisticated check will be needed for more complex geometries
-
-                        if (dot > 0 || distance == 0) rhs[i] = 0;
-                        else rhs[i] = (-((1 / (4 * Math.PI * distance)) * Complex.Exp(-1.0 * System.Numerics.Complex.ImaginaryOne * k * distance)) * elements[i].area) + i_k * BM_Derivative;
-
-
-                        for (int j = 0; j < N; j++)
+                        Environment.Material material = Room.Surface_Material(polygons[i]);
+                        if (!fits.TryGetValue(material, out var fit))
                         {
-                            BoundaryElement sourceElement = elements[j];
-
-                            // Check if the source element is on the same side as the receiver
-                            double dotl = Hare.Geometry.Hare_math.Dot(sourceElement.CollocationPoint - receiverPoint, elements[j].Normal);
-                            //Temporary check for the case of a sphere. More sophisticated check will be needed for more complex geometries
-
-                            if (i == j)
-                            {
-                                // Diagonal term (singular value)
-                                matrix[i, j] = (0.5 * elements[i].area + i_k * BM_Derivative) * elements[i].area;
-                            }
-                            else
-                            {
-                                // Compute the Green's function between collocation point i and source element j
-                                // Integrate over the source element to compute the Green's function effect
-                                Hare.Geometry.Point sourcePoint = sourceElement.CollocationPoint;
-                                double re = (receiverPoint - sourcePoint).Length();
-
-                                Complex G = 0;
-                                if (re != 0) G = ((1 / (4 * Math.PI * re)) * Complex.Exp(-1.0 * Complex.ImaginaryOne * k * re));
-                                matrix[i, j] = (G + i_k  * BM_Derivative) * sourceElement.area;
-                            }
-
-                            if (dotl < 0) matrix[i, j] = double.Epsilon;//*= -1;
+                            fit = material.Surface_Admittance(frequency[f], rho_c);
+                            fits.Add(material, fit);
+                            GIBC_Fit_Error = Math.Max(GIBC_Fit_Error, fit.RelativeError);
                         }
+                        admittance[i] = new Dictionary<int, Complex> { { i, fit.Y0 } };
+                        slope[i] = fit.Y2 / (k * k);
                     }
 
-                    // Step 3: Solve the system of equations
-                    Complex[] boundaryPressures = SolveMatrixIteratively(matrix, rhs);
-
-                    // Step 4: Compute pressures at receiver locations
-                    ProgressMessage = "Computing pressures at receiver locations...";
-                    ComputeReceiverPressures(elements, boundaryPressures, Receivers, f);
+                    // P1 cotangent stiffness K and lumped nodal mass M, projected onto panels:
+                    // L = P M^-1 K M^-1 P^T A, where P averages the three triangle nodes.
+                    // L approximates -Delta_Gamma, annihilates constants, and is A-self-adjoint.
+                    // Object/plane keys impose zero tangential flux at planar patch edges.
+                    // Curved scene objects share nodes across their tessellated facets.
+                    // Exact coordinate keys require welded, conforming input; no proximity welding.
+                    var nodeIDs = new Dictionary<(int Object, int Plane, double X, double Y, double Z), int>();
+                    List<double> mass = new List<double>();
+                    List<List<int>> incident = new List<List<int>>();
+                    List<Dictionary<int, double>> stiffness = new List<Dictionary<int, double>>();
+                    int[][] nodes = new int[N][];
+                    void AddStiffness(int a, int b, double value)
+                    {
+                        stiffness[a].TryGetValue(b, out double previous);
+                        stiffness[a][b] = previous + value;
+                    }
+                    for (int i = 0; i < N; i++)
+                    {
+                        nodes[i] = new int[3];
+                        for (int a = 0; a < 3; a++)
+                        {
+                            Point v = elements[i].Vertices[a];
+                            int objectID = Room.ObjectID(polygons[i]);
+                            var key = (objectID, Room.IsPlanar(objectID) ? Room.PlaneID(polygons[i]) : -1, v.x, v.y, v.z);
+                            if (!nodeIDs.TryGetValue(key, out int node))
+                            {
+                                node = mass.Count; nodeIDs.Add(key, node);
+                                mass.Add(0); incident.Add(new List<int>()); stiffness.Add(new Dictionary<int, double>());
+                            }
+                            nodes[i][a] = node; mass[node] += elements[i].area / 3; incident[node].Add(i);
+                        }
+                        for (int a = 0; a < 3; a++)
+                        {
+                            int b = (a + 1) % 3, d = (a + 2) % 3;
+                            double weight = Hare_math.Dot(elements[i].Vertices[b] - elements[i].Vertices[a], elements[i].Vertices[d] - elements[i].Vertices[a]) / (4 * elements[i].area);
+                            int nb = nodes[i][b], nd = nodes[i][d];
+                            AddStiffness(nb, nb, weight); AddStiffness(nd, nd, weight);
+                            AddStiffness(nb, nd, -weight); AddStiffness(nd, nb, -weight);
+                        }
+                    }
+                    for (int i = 0; i < N; i++)
+                    {
+                        if (slope[i] == Complex.Zero) continue;
+                        foreach (int a in nodes[i]) foreach (var entry in stiffness[a]) foreach (int j in incident[entry.Key])
+                        {
+                            double laplacian = entry.Value * elements[j].area / (9 * mass[a] * mass[entry.Key]);
+                            admittance[i].TryGetValue(j, out Complex previous);
+                            admittance[i][j] = previous + slope[i] * laplacian;
+                        }
+                    }
+                    // Interior trace with normals into the fluid: (1/2 I - D + S i*rho*omega*Y)p = p_inc.
+                    Complex[,] matrix = new Complex[N, N];
+                    Complex[] rhs = new Complex[N];
+                    for (int i = 0; i < N; i++)
+                    {
+                        Point observation = elements[i].CollocationPoint;
+                        rhs[i] = Green(observation, Source.Origin, k);
+                        matrix[i, i] = .5;
+                        for (int j = 0; j < N; j++)
+                        {
+                            var integral = IntegrateElement(observation, elements[j], k, i == j);
+                            matrix[i, j] -= integral.D;
+                            foreach (var entry in admittance[j]) matrix[i, entry.Key] += integral.G * derivativeFactor * entry.Value;
+                        }
+                    }
+                    Complex[] pressure = N == 0 ? new Complex[0] : SolveMatrix(matrix, rhs);
+                    ComputeReceiverPressures(elements, pressure, Receivers, f);
                 }
-
-                ProgressMessage = "Simulation completed successfully.";
-            }
-            catch (ThreadAbortException)
-            {
-                ProgressMessage = "Simulation aborted.";
+                ProgressMessage = $"Simulation completed successfully. Maximum relative angular GIBC fit RMS: {GIBC_Fit_Error:P2}.";
             }
             catch (Exception ex)
             {
+                Failure = ex;
                 ProgressMessage = $"Simulation failed: {ex.Message}";
             }
-            finally
-            {
-                SimulationResetEvent.Set();
-            }
+            finally { SimulationResetEvent.Set(); }
         }
 
-        private Complex[] SolveMatrixIteratively(Complex[,] matrix, Complex[] rhs)
+        private Complex[] SolveMatrix(Complex[,] matrix, Complex[] rhs)
         {
-            int N = rhs.Length;
-            Complex[] x = new Complex[N];
-            Complex[] r = new Complex[N];
-            Complex[] p = new Complex[N];
-            Complex[] Ap = new Complex[N];
-
-            // Initial guess x = 0
-            Array.Copy(rhs, r, N);
-            Array.Copy(r, p, N);
-
-            //compute dot product of the vector r:
-            Complex rsold = Complex.Zero;
-            for (int i = 0; i < r.Length; i++) rsold += r[i] * r[i];
-
-            for (int iter = 0; iter < N; iter++)
-            {
-                // Ap = A * p
-                Parallel.For(0, N, i =>
-                {
-                    Ap[i] = Complex.Zero;
-                    for (int j = 0; j < N; j++)
-                    {
-                        Ap[i] += matrix[i, j] * p[j];
-                    }
-                });
-
-                Complex dp = Complex.Zero;
-                for (int i = 0; i < p.Length; i++) dp += p[i] * Ap[i];
-                Complex alpha = rsold / dp;
-
-                Parallel.For(0, N, i =>
-                {
-                    x[i] += alpha * p[i];
-                    r[i] -= alpha * Ap[i];
-                });
-
-                Complex rsnew = Complex.Zero;
-                for (int i = 0; i < r.Length; i++) rsnew += r[i] * r[i];
-
-                if (Math.Sqrt(rsnew.Real) < 1e-10)
-                    break;
-
-                Parallel.For(0, N, i =>
-                {
-                    p[i] = r[i] + (rsnew / rsold) * p[i];
-                });
-
-                rsold = rsnew;
-            }
-
-            return x;
+            // The Helmholtz/GIBC matrix is neither Hermitian nor positive definite; use pivoted LU.
+            var A = DenseMatrix.OfArray(matrix);
+            var b = DenseVector.OfArray(rhs);
+            var solution = A.LU().Solve(b);
+            double relativeResidual = (A * solution - b).L2Norm() / Math.Max(b.L2Norm(), 1e-30);
+            if (double.IsNaN(relativeResidual) || double.IsInfinity(relativeResidual) || relativeResidual > 1e-8) throw new InvalidOperationException($"BEM solve failed its relative residual check ({relativeResidual:G3}).");
+            return solution.ToArray();
         }
 
-        /// <summary>
-        /// Subdivides a polygon into smaller polygons based on the maximum element size.
-        /// </summary>
-        /// <param name="vertices">Vertices of the polygon.</param>
-        /// <param name="maxSize">Maximum allowed size of an element.</param>
-        /// <returns>List of subdivided polygons.</returns>
-        private List<Hare.Geometry.Point[]> SubdividePolygon(Hare.Geometry.Point[] vertices, double maxSize)
+        private List<Point[]> SubdividePolygon(Point[] vertices, int levels)
         {
-            List<Hare.Geometry.Point[]> subdividedPolygons = new List<Hare.Geometry.Point[]>();
-            Queue<Hare.Geometry.Point[]> polygonsToSplit = new Queue<Hare.Geometry.Point[]>();
-            polygonsToSplit.Enqueue(vertices);
-
-            while (polygonsToSplit.Count > 0)
+            List<Point[]> panels = new List<Point[]> { vertices };
+            for (int level = 0; level < levels; level++)
             {
-                var currentPolygon = polygonsToSplit.Dequeue();
+                List<Point[]> refined = new List<Point[]>();
+                foreach (Point[] panel in panels) refined.AddRange(SplitPolygon(panel));
+                panels = refined;
+            }
+            return panels;
+        }
 
-                if (ComputePolygonSize(currentPolygon) <= maxSize)
+        private List<Point[]> SplitPolygon(Point[] v)
+        {
+            Point a = new Point((v[0].x + v[1].x) * .5, (v[0].y + v[1].y) * .5, (v[0].z + v[1].z) * .5), b = new Point((v[1].x + v[2].x) * .5, (v[1].y + v[2].y) * .5, (v[1].z + v[2].z) * .5), c = new Point((v[2].x + v[0].x) * .5, (v[2].y + v[0].y) * .5, (v[2].z + v[0].z) * .5);
+            return new List<Point[]> { new Point[] { v[0], a, c }, new Point[] { a, v[1], b }, new Point[] { c, b, v[2] }, new Point[] { a, b, c } };
+        }
+
+        private bool IsOnBoundary(Point point, BoundaryElement element)
+        {
+            double tolerance = 1e-10 * Math.Max(1, ComputePolygonSize(element.Vertices));
+            if (Math.Abs(Hare_math.Dot(point - element.Vertices[0], element.Normal)) > tolerance) return false;
+            for (int a = 0; a < element.Vertices.Length; a++)
+            {
+                Vector edge = element.Vertices[(a + 1) % element.Vertices.Length] - element.Vertices[a];
+                if (Hare_math.Dot(Hare_math.Cross(edge, point - element.Vertices[a]), element.Normal) < -tolerance * edge.Length()) return false;
+            }
+            return true;
+        }
+        private Complex Green(Point observation, Point source, double k)
+        {
+            double distance = (observation - source).Length();
+            if (!(distance > 0)) throw new InvalidOperationException("BEM observation coincides with a monopole or quadrature point.");
+            return Complex.Exp(-Complex.ImaginaryOne * k * distance) / (4 * Math.PI * distance);
+        }
+
+        private Complex ComputeNormalDerivative(Point observation, Point source, Vector normal, double k)
+        {
+            Vector delta = observation - source;
+            double distance = delta.Length();
+            return Green(observation, source, k) * (1 + Complex.ImaginaryOne * k * distance) * Hare_math.Dot(delta, normal) / (distance * distance);
+        }
+
+        private (Complex G, Complex D) IntegrateElement(Point observation, BoundaryElement element, double k, bool self)
+        {
+            Complex single = 0, dual = 0;
+            // Duffy radial mapping about the panel centroid removes the 1/r self singularity.
+            // This is regular Gauss quadrature for other panels; near-boundary receivers need refinement.
+            Point center = element.CollocationPoint;
+            for (int edge = 0; edge < element.Vertices.Length; edge++)
+            {
+                Vector a = element.Vertices[edge] - center, b = element.Vertices[(edge + 1) % element.Vertices.Length] - center;
+                double jacobian = Hare_math.Cross(a, b).Length();
+                for (int u = 0; u < Quadrature.Order; u++) for (int v = 0; v < Quadrature.Order; v++)
                 {
-                    subdividedPolygons.Add(currentPolygon);
-                }
-                else
-                {
-                    // Split the polygon
-                    var splitPolygons = SplitPolygon(currentPolygon);
-                    foreach (var poly in splitPolygons)
-                    {
-                        polygonsToSplit.Enqueue(poly);
-                    }
+                    double radial = Quadrature.GetAbscissa(u), transverse = Quadrature.GetAbscissa(v);
+                    Point point = center + (a * (1 - transverse) + b * transverse) * radial;
+                    double weight = jacobian * radial * Quadrature.GetWeight(u) * Quadrature.GetWeight(v);
+                    single += weight * Green(observation, point, k);
+                    if (!self) dual += weight * ComputeNormalDerivative(observation, point, element.Normal, k);
                 }
             }
-            return subdividedPolygons;
+            return (single, dual);
         }
 
-        /// <summary>
-        /// Splits a polygon into smaller polygons by dividing along the longest edge.
-        /// </summary>
-        /// <param name="vertices">Vertices of the polygon to split.</param>
-        /// <returns>List containing smaller polygons resulting from the split.</returns>
-        private List<Hare.Geometry.Point[]> SplitPolygon(Hare.Geometry.Point[] vertices)
+        private void ComputeReceiverPressures(List<BoundaryElement> elements, Complex[] pressure, Receiver_Bank receivers, int f)
         {
-            int N = vertices.Length;
-            List<Hare.Geometry.Point[]> newPolygons = new List<Hare.Geometry.Point[]>();
-
-            if (N == 3)
-            {
-                // Calculate midpoints of each edge
-                Hare.Geometry.Point midPoint1 = new Hare.Geometry.Point(
-                    (vertices[0].x + vertices[1].x) / 2.0,
-                    (vertices[0].y + vertices[1].y) / 2.0,
-                    (vertices[0].z + vertices[1].z) / 2.0
-                );
-
-                Hare.Geometry.Point midPoint2 = new Hare.Geometry.Point(
-                    (vertices[1].x + vertices[2].x) / 2.0,
-                    (vertices[1].y + vertices[2].y) / 2.0,
-                    (vertices[1].z + vertices[2].z) / 2.0
-                );
-
-                Hare.Geometry.Point midPoint3 = new Hare.Geometry.Point(
-                    (vertices[2].x + vertices[0].x) / 2.0,
-                    (vertices[2].y + vertices[0].y) / 2.0,
-                    (vertices[2].z + vertices[0].z) / 2.0
-                );
-
-                // Create four smaller triangles
-                newPolygons.Add(new Hare.Geometry.Point[] { vertices[0], midPoint1, midPoint3 });
-                newPolygons.Add(new Hare.Geometry.Point[] { midPoint1, vertices[1], midPoint2 });
-                newPolygons.Add(new Hare.Geometry.Point[] { midPoint3, midPoint2, vertices[2] });
-                newPolygons.Add(new Hare.Geometry.Point[] { midPoint1, midPoint2, midPoint3 });
-            }
-            else if (N == 4)
-            {
-                // Handle quadrilateral
-                Hare.Geometry.Point midPoint1 = new Hare.Geometry.Point(
-                    (vertices[0].x + vertices[1].x) / 2.0,
-                    (vertices[0].y + vertices[1].y) / 2.0,
-                    (vertices[0].z + vertices[1].z) / 2.0
-                );
-
-                Hare.Geometry.Point midPoint2 = new Hare.Geometry.Point(
-                    (vertices[1].x + vertices[2].x) / 2.0,
-                    (vertices[1].y + vertices[2].y) / 2.0,
-                    (vertices[1].z + vertices[2].z) / 2.0
-                );
-
-                Hare.Geometry.Point midPoint3 = new Hare.Geometry.Point(
-                    (vertices[2].x + vertices[3].x) / 2.0,
-                    (vertices[2].y + vertices[3].y) / 2.0,
-                    (vertices[2].z + vertices[3].z) / 2.0
-                );
-
-                Hare.Geometry.Point midPoint4 = new Hare.Geometry.Point(
-                    (vertices[3].x + vertices[0].x) / 2.0,
-                    (vertices[3].y + vertices[0].y) / 2.0,
-                    (vertices[3].z + vertices[0].z) / 2.0
-                );
-
-                // Calculate the centroid of the quadrilateral
-                Hare.Geometry.Point centroid = new Hare.Geometry.Point(
-                    (vertices[0].x + vertices[1].x + vertices[2].x + vertices[3].x) / 4.0,
-                    (vertices[0].y + vertices[1].y + vertices[2].y + vertices[3].y) / 4.0,
-                    (vertices[0].z + vertices[1].z + vertices[2].z + vertices[3].z) / 4.0
-                );
-
-                // Create four smaller quadrilaterals or triangles
-                newPolygons.Add(new Hare.Geometry.Point[] { vertices[0], midPoint1, centroid, midPoint4 });
-                newPolygons.Add(new Hare.Geometry.Point[] { midPoint1, vertices[1], midPoint2, centroid });
-                newPolygons.Add(new Hare.Geometry.Point[] { centroid, midPoint2, vertices[2], midPoint3 });
-                newPolygons.Add(new Hare.Geometry.Point[] { midPoint4, centroid, midPoint3, vertices[3] });
-            }
-
-            return newPolygons;
-        }
-
-        private Complex ComputeNormalDerivative(Hare.Geometry.Point observationPoint, Hare.Geometry.Point sourcePoint, Hare.Geometry.Vector boundaryNormal, double k)
-        {
-            // Vector from source to observation
-            double Rx = observationPoint.x - sourcePoint.x;
-            double Ry = observationPoint.y - sourcePoint.y;
-            double Rz = observationPoint.z - sourcePoint.z;
-
-            double re = Math.Sqrt(Rx * Rx + Ry * Ry + Rz * Rz);
-            if (re < 1e-12) return Complex.Zero;
-
-            // Dot product with boundary normal
-            double dotRn = (Rx * boundaryNormal.dx + Ry * boundaryNormal.dy + Rz * boundaryNormal.dz) / re;
-
-            // e^(i k r)/(4π r^3) * (i k r - 1) * [R ⋅ n]
-            Complex expTerm = Complex.Exp(-Complex.ImaginaryOne * k * re);
-            Complex factor = (expTerm / (4.0 * Math.PI * re * re * re)) * (Complex.ImaginaryOne * k * re - 1.0);
-            return factor * dotRn;
-        }
-
-        /// <summary>
-        /// Computes pressures at receiver locations using the solved boundary pressures.
-        /// </summary>
-        /// <param name="elements"></param>
-        /// <param name="boundaryPressures"></param>
-        /// <param name="receivers"></param>
-        private void ComputeReceiverPressures(List<BoundaryElement> elements, Complex[] boundaryPressures, Receiver_Bank receivers, int f)
-        {
-            double k = 2 * Math.PI * frequency[f] / Room.Sound_speed(0);
-
-            // Iterate over receivers and compute pressures
+            double k = Utilities.Numerics.PiX2 * frequency[f] / Room.Sound_speed(0);
+            Complex factor = Complex.ImaginaryOne * k * Room.Rho_C(0);
+            Complex[] derivative = new Complex[elements.Count];
+            for (int i = 0; i < elements.Count; i++) foreach (var entry in admittance[i]) derivative[i] += factor * entry.Value * pressure[entry.Key];
             for (int r = 0; r < receivers.Count; r++)
             {
-                Hare.Geometry.Point receiverPosition = receivers.Origin(r);
-                Complex pressure = 0.0;
-
+                Point observation = receivers.Origin(r);
+                Complex total = Green(observation, Source.Origin, k);
                 for (int i = 0; i < elements.Count; i++)
                 {
-                    double dot = Hare.Geometry.Hare_math.Dot(receiverPosition - elements[i].CollocationPoint, elements[i].Normal);
-                    if (dot < 0) continue;
-                    BoundaryElement element = elements[i];
-                    // Integrate over the source element to compute the Green's function effect
-                    Hare.Geometry.Point sourcePoint = element.CollocationPoint;
-                    double re = (receivers.Origin(r) - sourcePoint).Length();
-                    Complex G = re == 0 ? 0 : (1 / ((4 * Math.PI * re)) * Complex.Exp(-1.0 * Complex.ImaginaryOne * k * re));
-                    pressure += boundaryPressures[i] * G;
+                    if (IsOnBoundary(observation, elements[i])) throw new InvalidOperationException("BEM receivers must be off the boundary.");
+                    var integral = IntegrateElement(observation, elements[i], k, false);
+                    total += integral.D * pressure[i] - integral.G * derivative[i];
                 }
-
-                // Store or process the pressure value as needed
-                Results[f][r] = pressure;
+                Results[f][r] = total;
             }
         }
 
-        /// <summary>
-        /// Represents a boundary element in the BEM simulation.
-        /// </summary>
         public class BoundaryElement
         {
-            public Hare.Geometry.Point[] Vertices { get; private set; }
-            public Hare.Geometry.Point CollocationPoint { get; private set; }
+            public Point[] Vertices { get; private set; }
+            public Point CollocationPoint { get; private set; }
             public int ElementID { get; private set; }
             public double area = 0;
-            public Hare.Geometry.Vector Normal;
-            public BoundaryElement(Hare.Geometry.Point[] vertices, Complex Admittance, Hare.Geometry.Vector Normal, int id)
+            public Vector Normal;
+            public Complex Admittance { get; private set; }
+            public BoundaryElement(Point[] vertices, Complex Admittance, Vector Normal, int id)
             {
-                Vertices = vertices;
-                ElementID = id;
-                this.Normal = Normal;
-                CollocationPoint = ComputeCentroid(vertices);
-                for (int i = 1, j = 2, k = 0; j < Vertices.Length; i++, j++)
-                {
-                    area += .5 * Hare.Geometry.Hare_math.Cross(Vertices[i] - Vertices[k], Vertices[i] - Vertices[j]).Length();
-                }
-            }
-
-            private Hare.Geometry.Point ComputeCentroid(Hare.Geometry.Point[] vertices)
-            {
+                if (vertices == null || vertices.Length < 3) throw new ArgumentException("A boundary element needs at least three vertices.", nameof(vertices));
+                Vertices = vertices; ElementID = id; this.Admittance = Admittance;
+                double length = Normal.Length();
+                if (!(length > 0) || double.IsInfinity(length)) throw new ArgumentException("Boundary normal must be finite and nonzero.", nameof(Normal));
+                this.Normal = Normal / length;
                 double x = 0, y = 0, z = 0;
-                int N = vertices.Length;
-                foreach (var vertex in vertices)
-                {
-                    x += vertex.x;
-                    y += vertex.y;
-                    z += vertex.z;
-                }
-                return new Hare.Geometry.Point(x / N, y / N, z / N);
+                foreach (Point v in vertices) { x += v.x; y += v.y; z += v.z; }
+                CollocationPoint = new Point(x / vertices.Length, y / vertices.Length, z / vertices.Length);
+                for (int a = 1; a < vertices.Length - 1; a++) area += .5 * Hare_math.Cross(vertices[a] - vertices[0], vertices[a + 1] - vertices[0]).Length();
+                if (!(area > 0) || double.IsInfinity(area)) throw new ArgumentException("Boundary element has invalid area.", nameof(vertices));
             }
         }
     }
