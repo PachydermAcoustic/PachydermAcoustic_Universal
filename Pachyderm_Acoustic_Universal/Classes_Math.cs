@@ -264,6 +264,324 @@ namespace Pachyderm_Acoustic
                 }
             }
 
+            public class Mean_Free_Path_Statistics
+            {
+                public double[] Path_Length;
+                public double[] Path_Weight;
+
+                public int Surface_Samples;
+                public int Directions_Per_Sample;
+                public double Valid_Path_Fraction;
+
+                public double Surface_Area;
+                public double Volume;
+
+                // Classical diffuse-field value, where a valid room volume is available.
+                public double Cauchy_MFP;
+
+                // Sampled geometric path statistics.
+                public double Arithmetic_MFP;
+                public double Harmonic_MFP;
+                public double RMS_Path;
+                public double Standard_Deviation;
+                public double Relative_Variance;
+                public double Skewness;
+                public double Excess_Kurtosis;
+
+                public double P10;
+                public double P25;
+                public double Median;
+                public double P75;
+                public double P90;
+
+                // Acoustical time/rate forms.
+                public double Mean_Path_Time;
+                public double Mean_Collision_Frequency;
+                public double Mean_Collision_Time;
+
+                // Useful comparison where volume is known.
+                public double Geometric_to_Cauchy_Ratio;
+            }
+
+            ///<summary>
+            /// Geometric Mean Free Path estimated from random, area-weighted surface locations
+            /// and deterministic geodesic-hemisphere directional sampling.
+            ///</summary>
+            /// <param name="Room">Polygon scene containing the room geometry.</param>
+            /// <param name="TargetPathCount">Approximate minimum number of paths to sample.</param>
+            /// <param name="PathLength">Accepted individual path lengths, in meters.</param>
+            /// <param name="HitFraction">Fraction of geodesic directions for which at least one side intersects another surface.</param>
+            /// <param name="OppositeOverrideRatio">
+            /// </param>
+            /// <returns>Arithmetic mean of the accepted path lengths, in meters.</returns>
+            /// <remarks>
+            /// This is a geometric free-path statistic rather than the classical diffuse-field Cauchy/Kosten MFP (4V/S), or the reciprocal-path/collision statistic associated with reverberant decay.
+            /// See:
+            /// Cauchy, A.-L. (1850), Mém. Acad. Sci. Paris 22, 3-15.
+            /// Allred, J.C. & Newhouse, A. (1958), JASA 30.
+            /// Kosten, C.W. (1960), Acustica 10, 245-250.
+            /// Hunt, F.V. (1964), JASA 36, 556-564.
+            /// Batchelder, L. (1964), JASA 36, 551-555.
+            /// </remarks>
+            public static Mean_Free_Path_Statistics Mean_Free_Path(Environment.Polygon_Scene Room, int TargetPathCount = 100000, double Volume = double.NaN, double OppositeOverrideRatio = 0.25)
+            {
+                if (Room == null) throw new ArgumentNullException(nameof(Room));
+                if (TargetPathCount < 1) throw new ArgumentOutOfRangeException(nameof(TargetPathCount));
+                if (OppositeOverrideRatio <= 0 || OppositeOverrideRatio >= 1) throw new ArgumentOutOfRangeException(nameof(OppositeOverrideRatio));
+
+                Topology Model = Room.Hare_Data;
+                if (Model == null || Model.Polygon_Count < 1) throw new InvalidOperationException("No polygon geometry is available.");
+
+                if (!Room.Partitioned) Room.partition();
+
+                double[] Area = new double[Model.Polygon_Count];
+                double[] CumulativeArea = new double[Model.Polygon_Count];
+                double TotalArea = 0;
+
+                for (int i = 0; i < Model.Polygon_Count; i++)
+                {
+                    Area[i] = Model.Polygon_Area(i);
+                    if (Area[i] > 0) TotalArea += Area[i];
+                    CumulativeArea[i] = TotalArea;
+                }
+
+                if (TotalArea <= 0) throw new InvalidOperationException("The polygon scene has no measurable surface area.");
+
+                Topology Hemisphere = Utilities.Geometry.GeoHemiSphere(5, 1);
+                int DirectionCount = Hemisphere.Polygon_Count;
+                int SurfaceSamples = Math.Max(1, (int)Math.Ceiling(TargetPathCount / (double)DirectionCount));
+
+                Vector[] HDir = new Vector[DirectionCount];
+                double[] HWeight = new double[DirectionCount];
+                Vector HAxis = new Vector(0, 0, 0);
+
+                for (int i = 0; i < DirectionCount; i++)
+                {
+                    Point C = Hemisphere.Polygon_Centroid(i);
+                    Vector D = new Vector(C.x, C.y, C.z);
+                    D.Normalize();
+                    HDir[i] = D;
+
+                    // Exact solid angle of this triangular geodesic face.
+                    Point[] V = Hemisphere.Polygon_Vertices(i);
+                    Vector A = new Vector(V[0].x, V[0].y, V[0].z);
+                    Vector B = new Vector(V[1].x, V[1].y, V[1].z);
+                    Vector Cc = new Vector(V[2].x, V[2].y, V[2].z);
+                    A.Normalize();
+                    B.Normalize();
+                    Cc.Normalize();
+
+                    double Numerator = Math.Abs(Hare_math.Dot(A, Hare_math.Cross(B, Cc)));
+                    double Denominator = 1 + Hare_math.Dot(A, B) + Hare_math.Dot(B, Cc) + Hare_math.Dot(Cc, A);
+                    HWeight[i] = 2 * Math.Atan2(Numerator, Denominator);
+
+                    HAxis += D * HWeight[i];
+                }
+
+                HAxis.Normalize();
+
+                Vector HRef = Math.Abs(HAxis.dz) < 0.9 ? new Vector(0, 0, 1) : new Vector(1, 0, 0);
+                Vector HX = Hare_math.Cross(HRef, HAxis);
+                HX.Normalize();
+                Vector HY = Hare_math.Cross(HAxis, HX);
+                HY.Normalize();
+
+                for (int i = 0; i < DirectionCount; i++)
+                {
+                    Vector D = HDir[i];
+                    HDir[i] = new Vector(Hare_math.Dot(D, HX), Hare_math.Dot(D, HY), Hare_math.Dot(D, HAxis));
+                }
+
+                Point SceneCenter = (Room.Min() + Room.Max()) / 2;
+                Random Rnd = Room.R_Seed ?? new Random((int)DateTime.Now.ToFileTimeUtc());
+
+                List<double> Paths = new List<double>(SurfaceSamples * DirectionCount);
+                List<double> Weights = new List<double>(SurfaceSamples * DirectionCount);
+
+                double AttemptWeight = 0;
+                double ValidWeight = 0;
+
+                for (int s = 0; s < SurfaceSamples; s++)
+                {
+                    // Random boundary location, weighted by physical polygon area.
+                    double A = Rnd.NextDouble() * TotalArea;
+                    int Poly = Array.BinarySearch(CumulativeArea, A);
+                    if (Poly < 0) Poly = ~Poly;
+                    if (Poly >= Model.Polygon_Count) Poly = Model.Polygon_Count - 1;
+
+                    if (Area[Poly] <= 0)
+                    {
+                        s--;
+                        continue;
+                    }
+
+                    Point P = Model.Polys[Poly].GetRandomPoint(Rnd.NextDouble(), Rnd.NextDouble(), 0);
+
+                    // Bounding-box center gives the provisional inward side.
+                    Vector N = Model.Polys[Poly].Normal;
+                    N.Normalize();
+                    if (Hare_math.Dot(N, SceneCenter - P) < 0) N *= -1;
+
+                    Vector Ref = Math.Abs(N.dz) < 0.9 ? new Vector(0, 0, 1) : new Vector(1, 0, 0);
+                    Vector X = Hare_math.Cross(Ref, N);
+                    X.Normalize();
+                    Vector Y = Hare_math.Cross(N, X);
+                    Y.Normalize();
+
+                    for (int h = 0; h < DirectionCount; h++)
+                    {
+                        double Weight = HWeight[h];
+                        AttemptWeight += Weight;
+
+                        Vector H = HDir[h];
+                        Vector D = X * H.dx + Y * H.dy + N * H.dz;
+                        D.Normalize();
+
+                        X_Event X_In, X_Out;
+                        bool HitIn = Room.shoot(new Ray(P, D, 0, Rnd.Next()), 0, out X_In, Poly, -1) && X_In.t > 1E-8;
+                        bool HitOut = Room.shoot(new Ray(P, D * -1, 0, Rnd.Next()), 0, out X_Out, Poly, -1) && X_Out.t > 1E-8;
+
+                        if (!HitIn && !HitOut) continue;
+
+                        double Length;
+
+                        if (HitIn && !HitOut)
+                        {
+                            Length = X_In.t;
+                        }
+                        else if (!HitIn && HitOut)
+                        {
+                            Length = X_Out.t;
+                        }
+                        else
+                        {
+                            Length = X_In.t < X_Out.t * OppositeOverrideRatio ? X_Out.t : X_In.t;
+                        }
+
+                        Paths.Add(Length);
+                        Weights.Add(Weight);
+                        ValidWeight += Weight;
+                    }
+                }
+
+                if (Paths.Count < 1) throw new InvalidOperationException("No valid surface-to-surface paths were found.");
+
+                Mean_Free_Path_Statistics Result = new Mean_Free_Path_Statistics();
+                Result.Path_Length = Paths.ToArray();
+                Result.Path_Weight = Weights.ToArray();
+                Result.Surface_Samples = SurfaceSamples;
+                Result.Directions_Per_Sample = DirectionCount;
+                Result.Valid_Path_Fraction = ValidWeight / AttemptWeight;
+                Result.Surface_Area = TotalArea;
+                Result.Volume = Volume;
+
+                double W = 0;
+                double L1 = 0;
+                double L2 = 0;
+                double Reciprocal = 0;
+
+                for (int i = 0; i < Paths.Count; i++)
+                {
+                    double w = Weights[i];
+                    double l = Paths[i];
+
+                    W += w;
+                    L1 += w * l;
+                    L2 += w * l * l;
+                    Reciprocal += w / l;
+                }
+
+                Result.Arithmetic_MFP = L1 / W;
+                Result.Harmonic_MFP = W / Reciprocal;
+                Result.RMS_Path = Math.Sqrt(L2 / W);
+
+                double Variance = 0;
+                double M3 = 0;
+                double M4 = 0;
+
+                for (int i = 0; i < Paths.Count; i++)
+                {
+                    double d = Paths[i] - Result.Arithmetic_MFP;
+                    double wd = Weights[i];
+
+                    Variance += wd * d * d;
+                    M3 += wd * d * d * d;
+                    M4 += wd * d * d * d * d;
+                }
+
+                Variance /= W;
+                M3 /= W;
+                M4 /= W;
+
+                Result.Standard_Deviation = Math.Sqrt(Variance);
+                Result.Relative_Variance = Variance / (Result.Arithmetic_MFP * Result.Arithmetic_MFP);
+
+                if (Result.Standard_Deviation > 0)
+                {
+                    Result.Skewness = M3 / Math.Pow(Result.Standard_Deviation, 3);
+                    Result.Excess_Kurtosis = M4 / Math.Pow(Result.Standard_Deviation, 4) - 3;
+                }
+
+                double[] SortedPath = Result.Path_Length.ToArray();
+                double[] SortedWeight = Result.Path_Weight.ToArray();
+                Array.Sort(SortedPath, SortedWeight);
+
+                double Quantile(double q)
+                {
+                    double Target = q * W;
+                    double Cumulative = 0;
+
+                    for (int i = 0; i < SortedPath.Length; i++)
+                    {
+                        Cumulative += SortedWeight[i];
+                        if (Cumulative >= Target) return SortedPath[i];
+                    }
+
+                    return SortedPath[SortedPath.Length - 1];
+                }
+
+                Result.P10 = Quantile(0.10);
+                Result.P25 = Quantile(0.25);
+                Result.Median = Quantile(0.50);
+                Result.P75 = Quantile(0.75);
+                Result.P90 = Quantile(0.90);
+
+                double c = Room.Sound_speed(0);
+
+                if (c > 0 && !double.IsNaN(c) && !double.IsInfinity(c))
+                {
+                    Result.Mean_Path_Time = Result.Arithmetic_MFP / c;
+
+                    // Mean reciprocal path length gives the mean collision frequency.
+                    Result.Mean_Collision_Frequency = c * Reciprocal / W;
+                    Result.Mean_Collision_Time = 1 / Result.Mean_Collision_Frequency;
+                }
+                else
+                {
+                    Result.Mean_Path_Time = double.NaN;
+                    Result.Mean_Collision_Frequency = double.NaN;
+                    Result.Mean_Collision_Time = double.NaN;
+                }
+
+                if (Volume > 0 && !double.IsNaN(Volume) && !double.IsInfinity(Volume))
+                {
+                    Result.Cauchy_MFP = 4 * Volume / TotalArea;
+                    Result.Geometric_to_Cauchy_Ratio = Result.Arithmetic_MFP / Result.Cauchy_MFP;
+                }
+                else
+                {
+                    Result.Cauchy_MFP = double.NaN;
+                    Result.Geometric_to_Cauchy_Ratio = double.NaN;
+                }
+
+                return Result;
+            }
+
+            public static double Mean_Free_Path(double volume, double surfaceArea)
+            {
+                return 4 * volume / surfaceArea;
+            }
+
             /// <summary>
             /// The speed of sound in m/s.
             /// </summary>
