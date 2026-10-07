@@ -54,56 +54,43 @@ namespace Pachyderm_Acoustic
     {
         Hare.Geometry.Point Ctr;
         Voxel_Grid Sphere;
-        double[] alt, azi;
 
         public Sphere_Plot(Hare.Geometry.Point Center)
         {
             Sphere = Utilities.Geometry.GeoSphere(3);
             Ctr = Center;
-            alt = new double[Sphere.Model[0].Vertex_Count];
-            azi = new double[Sphere.Model[0].Vertex_Count];
-            for(int i = 0; i < Sphere.Model[0].Vertex_Count; i++)
-            {
-                alt[i] = Math.Asin(Sphere.Model[0][i].z);
-                azi[i] = Math.Atan2(Sphere.Model[0][i].y, Sphere.Model[0][i].x);
-            }
         }
 
         public Hare.Geometry.Topology Output(IEnumerable<double> magnitude, double Min = double.PositiveInfinity, double Max = 0, double Diameter = .3)
         {
-            int vert_ct = Sphere.Model[0].Vertex_Count;
-            if (magnitude.Count() != vert_ct) throw new Exception("Invalid data input to spherical plot...");
-            Hare.Geometry.Point[] points = new Hare.Geometry.Point[vert_ct];
+            if (magnitude == null) throw new ArgumentNullException(nameof(magnitude));
+            double[] levels = magnitude.ToArray();
+            int count = Sphere.Model[0].Vertex_Count;
+            if (levels.Length != count) throw new ArgumentException("Invalid data input to spherical plot...", nameof(magnitude));
+            if (Max == 0)
+                Max = levels.Where(level => !double.IsNaN(level) && !double.IsInfinity(level)).DefaultIfEmpty(0).Max();
+            if (double.IsPositiveInfinity(Min)) Min = Max - 30;
 
-            if (Max == 0) Max = magnitude.Max();
-            if (Min == double.PositiveInfinity) Min = Max - 30;
-
-            for (int i = 0; i < magnitude.Count(); i++)
+            Hare.Geometry.Topology output = Utilities.Geometry.GeoSphere(3).Model[0];
+            for (int i = 0; i < count; i++)
             {
-                double mag = (magnitude.ElementAt(i));
-                if (double.IsInfinity(mag)) mag = 0;
-                mag = Math.Max(mag, Min);
-                mag = Math.Min(mag, Max);
-                mag -= Min;
-                mag /= (Max - Min);
-                mag = Math.Max(0, mag);
-                mag *= Diameter;
-                points[i] = mag * Sphere.Model[0][i] + Ctr;
+                double radius = 0;
+                if (!double.IsNaN(levels[i]) && !double.IsInfinity(levels[i]) && Max > Min)
+                    radius = Math.Max(0, Math.Min(1, (levels[i] - Min) / (Max - Min))) * Diameter;
+                output.Set_Vertex(i, radius * Sphere.Model[0][i] + Ctr);
             }
-            Hare.Geometry.Topology T = Utilities.Geometry.GeoSphere(3).Model[0];
-
-            for (int i = 0; i < T.Vertex_Count; i++) T.Set_Vertex(i, points[i]);
-            T.Finish_Topology();
-            return T;
+            output.Finish_Topology();
+            return output;
         }
-        
+
+
         // Window indices use the 44.1 kHz display timebase; the end is exclusive.
         public IEnumerable<double> SPL_From_IR(int receiver_id, int octave, int sample_start, int sample_end, Direct_Sound[] Ds, ImageSourceData[] IS = null, Receiver_Bank[] R = null)
         {
             double[] values = new double[Sphere.Model[0].Vertex_Count];
             sample_start = Math.Max(0, sample_start);
             if (receiver_id < 0 || octave < 0 || octave > 8 || sample_end <= sample_start)
-                return AcousticalMath.SPL_Intensity_Signal(values);
+                return DirectionalLevels(values);
 
             int sourceCount = Math.Max(Ds == null ? 0 : Ds.Length,
                 Math.Max(IS == null ? 0 : IS.Length, R == null ? 0 : R.Length));
@@ -149,41 +136,47 @@ namespace Pachyderm_Acoustic
                 int samples = endSample - startSample;
                 if (samples <= 0) continue;
 
-                double[][] directions = new double[6][];
-                for (int d = 0; d < 6; d++) directions[d] = new double[samples];
-                for (int t = 0; t < samples; t++)
+                // The histogram stores signed component sums, not individual rays.
+                // Estimate octant lobes directly in world coordinates. Independent
+                // sign weights retain opposing arrivals without cancelling them.
+                for (int t = startSample; t < endSample; t++)
                 {
-                    int sample = startSample + t;
-                    Vector pos = receiver.Directions_Pos(octave, sample);
-                    Vector neg = receiver.Directions_Neg(octave, sample);
-                    directions[0][t] = pos.dx;
-                    directions[1][t] = neg.dx;
-                    directions[2][t] = pos.dy;
-                    directions[3][t] = neg.dy;
-                    directions[4][t] = pos.dz;
-                    directions[5][t] = neg.dz;
-                }
+                    Vector pos = receiver.Directions_Pos(octave, t);
+                    Vector neg = receiver.Directions_Neg(octave, t);
+                    double xPos = Math.Abs(pos.dx), xNeg = Math.Abs(neg.dx);
+                    double yPos = Math.Abs(pos.dy), yNeg = Math.Abs(neg.dy);
+                    double zPos = Math.Abs(pos.dz), zNeg = Math.Abs(neg.dz);
+                    double x = xPos + xNeg, y = yPos + yNeg, z = zPos + zNeg;
+                    double length = new Vector(x, y, z).Length();
+                    if (length <= 0 || double.IsNaN(length) || double.IsInfinity(length)) continue;
+                    double intensity = receiver.Energy(t, octave);
+                    if (double.IsNaN(intensity) || double.IsInfinity(intensity)) continue;
+                    if (intensity <= 0) intensity = length;
 
-                for (int i = 0; i < values.Length; i++)
-                {
-                    // Rotation returns one six-component row per sample.
-                    double[][] rotated = PachTools.Rotate_Vector_Rose(directions, -azi[i], -alt[i], false);
-                    for (int t = 0; t < samples; t++)
+                    for (int octant = 0; octant < 8; octant++)
                     {
-                        double yPos = Math.Abs(rotated[t][2]), yNeg = Math.Abs(rotated[t][3]);
-                        double zPos = Math.Abs(rotated[t][4]), zNeg = Math.Abs(rotated[t][5]);
-                        Vector comp = new Vector(rotated[t][0],
-                            yPos > yNeg ? yPos : -yNeg, zPos > zNeg ? zPos : -zNeg);
-                        double length = comp.Length();
-                        if (length <= 0 || double.IsNaN(length) || double.IsInfinity(length)) continue;
-                        double intensity = Math.Pow(rotated[t][0] / length, 16) * length;
-                        if (!double.IsNaN(intensity) && !double.IsInfinity(intensity))
-                            values[i] += intensity;
+                        bool nx = (octant & 1) != 0, ny = (octant & 2) != 0, nz = (octant & 4) != 0;
+                        double wx = x > 0 ? (nx ? xNeg : xPos) / x : (nx ? 0 : 1);
+                        double wy = y > 0 ? (ny ? yNeg : yPos) / y : (ny ? 0 : 1);
+                        double wz = z > 0 ? (nz ? zNeg : zPos) / z : (nz ? 0 : 1);
+                        double weight = wx * wy * wz;
+                        if (weight <= 0) continue;
+                        Vector direction = new Vector(nx ? -x : x, ny ? -y : y, nz ? -z : z) / length;
+                        AccumulateDirection(values, direction, intensity * weight);
                     }
                 }
+
             }
-            return AcousticalMath.SPL_Intensity_Signal(values);
+            return DirectionalLevels(values);
         }
+
+        private static double[] DirectionalLevels(double[] values)
+        {
+            // Silence must stay below the relative display floor, even when
+            // the largest valid level is below 30 dB or below 0 dB.
+            return values.Select(value => value > 0 ? 10 * Math.Log10(value / 1E-12) : double.NegativeInfinity).ToArray();
+        }
+
 
         private void AccumulateDirectionalEnergy(double[] values, Vector[] energy, int start, int end, bool reverse)
         {
@@ -192,16 +185,22 @@ namespace Pachyderm_Acoustic
                 double length = energy[t].Length();
                 if (length <= 0 || double.IsNaN(length) || double.IsInfinity(length)) continue;
                 Vector direction = energy[t] / (reverse ? -length : length);
-                for (int i = 0; i < values.Length; i++)
-                {
-                    double dot = Hare_math.Dot(new Vector(Sphere.Model[0][i]), direction);
-                    if (dot <= 0) continue;
-                    double intensity = Math.Pow(dot, 16) * length;
-                    if (!double.IsNaN(intensity) && !double.IsInfinity(intensity))
-                        values[i] += intensity;
-                }
+                AccumulateDirection(values, direction, length);
             }
         }
+
+        private void AccumulateDirection(double[] values, Vector direction, double energy)
+        {
+            for (int i = 0; i < values.Length; i++)
+            {
+                double dot = Hare_math.Dot(new Vector(Sphere.Model[0][i]), direction);
+                if (dot <= 0) continue;
+                double intensity = Math.Pow(Math.Min(1, dot), 16) * energy;
+                if (!double.IsNaN(intensity) && !double.IsInfinity(intensity))
+                    values[i] += intensity;
+            }
+        }
+
 
     }
 }
