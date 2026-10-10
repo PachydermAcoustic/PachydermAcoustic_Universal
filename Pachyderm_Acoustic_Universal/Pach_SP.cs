@@ -335,9 +335,9 @@ namespace Pachyderm_Acoustic
                     Array.Resize(ref h, (int)Math.Pow(2, Math.Ceiling(Math.Log(h.Length, 2)) + 1));
                 }
 
-                double ctr = 50 * Math.Pow(2, (double)octave_index / 3.0);
-                double freq_l = 1.09 * ctr / Utilities.Numerics.rt2;
-                double freq_u = 0.92 * ctr * Utilities.Numerics.rt2;
+                double ctr = Utilities.AcousticalMath.ThirdOctaveCenters()[octave_index];
+                double freq_l = ctr / Math.Pow(2, 1.0 / 6);
+                double freq_u = ctr * Math.Pow(2, 1.0 / 6);
                 //int idl = (int)Math.Round((h.Length * freq_l) / (Sample_Freq));
                 //int idu = (int)Math.Round((h.Length * freq_u) / (Sample_Freq));
 
@@ -553,8 +553,8 @@ namespace Pachyderm_Acoustic
 
             public static double[] Filter2Signal(double[] Filter_in, double[] OctaveSWL, int SampleFrequency, int threadid)
             {
-                double[] octave_Pressure = new double[8];
-                for (int i = 0; i < 8; i++) octave_Pressure[i] = Math.Pow(10, (OctaveSWL[i]) / 20); //Math.Pow(10,(SWL[5] - SWL[i])/20);
+                double[] octave_Pressure = new double[OctaveSWL.Length];
+                for (int i = 0; i < OctaveSWL.Length; i++) octave_Pressure[i] = Math.Pow(10, (OctaveSWL[i]) / 20); //Math.Pow(10,(SWL[5] - SWL[i])/20);
 
                 int length = 16384;
                 double[] pulse = (Audio.Pach_SP.Filter is Audio.Pach_SP.Linear_Phase_System) ? Audio.Pach_SP.Minimum_Phase_Signal(octave_Pressure, SampleFrequency, length, threadid) : Audio.Pach_SP.Linear_Phase_Signal_Centered(octave_Pressure, SampleFrequency, length, threadid);//
@@ -581,7 +581,7 @@ namespace Pachyderm_Acoustic
 
             public static double[] FIR_Third_Lowpass(double[] h, int third_octave_index, int Sample_Freq, int thread)
             {
-                double ctr = 50 * Math.Pow(2, (double)third_octave_index / 3.0);
+                double ctr = Utilities.AcousticalMath.ThirdOctaveCenters()[third_octave_index];
                 double freq_c = 1.09 * ctr * Utilities.Numerics.rt2;
                 return FIR_Lowpass(h, freq_c, Sample_Freq, thread);
             }
@@ -630,7 +630,7 @@ namespace Pachyderm_Acoustic
 
             public static double[] FIR_Third_Highpass(double[] h, int third_octave_index, int Sample_Freq, int thread)
             {
-                double ctr = 50 * Math.Pow(2, (double)third_octave_index / 3.0);
+                double ctr = Utilities.AcousticalMath.ThirdOctaveCenters()[third_octave_index];
                 double freq_c = 0.92 * ctr / Utilities.Numerics.rt2;
                 return FIR_Highpass(h, freq_c, Sample_Freq, thread);
             }
@@ -985,19 +985,22 @@ namespace Pachyderm_Acoustic
 
             public static double[] Magnitude_Spectrum(double[] Octave_pressure, int sample_frequency, int length_starttofinish, int threadid)
             {
-                if (Octave_pressure == null || Octave_pressure.Length != 8 || Octave_pressure.Any(v => v < 0 || double.IsNaN(v) || double.IsInfinity(v))) throw new ArgumentException("Eight finite, nonnegative octave pressures are required.", nameof(Octave_pressure));
+                if (Octave_pressure == null || (Octave_pressure.Length != 8 && Octave_pressure.Length != 24) || Octave_pressure.Any(v => v < 0 || double.IsNaN(v) || double.IsInfinity(v))) throw new ArgumentException("Eight or 24 finite, nonnegative band pressures are required.", nameof(Octave_pressure));
                 if (sample_frequency <= 0) throw new ArgumentOutOfRangeException(nameof(sample_frequency));
                 if (length_starttofinish < 2) throw new ArgumentOutOfRangeException(nameof(length_starttofinish));
                 if (Octave_pressure.All(v => v == 0)) return new double[length_starttofinish / 2];
+                int bandCount = Octave_pressure.Length;
+                double[] centers = bandCount == 24 ? Utilities.AcousticalMath.ThirdOctaveCenters() : null;
+                double edge = bandCount == 24 ? Math.Pow(2, 1.0 / 6) : Utilities.Numerics.rt2;
                 double[] p_i = new double[length_starttofinish / 2];
                 double df = (double)(sample_frequency) / (double)length_starttofinish;
 
                 int oct = 0;
                 ///////////////////////////////////////////////////////////////////
                 ///Do the bottom frequencies
-                double ctr = 62.5 * Math.Pow(2, oct);
-                double freq_l = ctr / Utilities.Numerics.rt2;
-                double freq_u = ctr * Utilities.Numerics.rt2;
+                double ctr = centers == null ? 62.5 * Math.Pow(2, oct) : centers[oct];
+                double freq_l = ctr / edge;
+                double freq_u = ctr * edge;
                 int idl = 0;
                 int idu = (int)Math.Round(freq_u / df);
                 int ctr_id = ((idu + (int)Math.Round(freq_l / df)) / 2);
@@ -1053,21 +1056,21 @@ namespace Pachyderm_Acoustic
                 }
 
                 ///Do the top frequencies...
-                oct = 7;
-                ctr = 62.5 * Math.Pow(2, oct);
-                freq_l = ctr / Utilities.Numerics.rt2;
-                freq_u = ctr * Utilities.Numerics.rt2;
+                oct = bandCount - 1;
+                ctr = centers == null ? 62.5 * Math.Pow(2, oct) : centers[oct];
+                freq_l = ctr / edge;
+                freq_u = ctr * edge;
                 idl = (int)Math.Round(freq_l / df);
                 idu = (int)Math.Round(freq_u / df);
                 ctr_id = (idu + idl) / 2;
                 l = Math.Sqrt(idu - idl) * Math.Sqrt(2);
                 length = (int)(length_starttofinish / 2) - idl;
-                if (Octave_pressure[6] == 0)
+                if (Octave_pressure[oct - 1] == 0)
                 {
                     //do nothing. boundaries stay as they are...
                     length = (idu - idl);
                 }
-                else if (Octave_pressure[6] * .25 / Octave_pressure[7] > 0.019572846)
+                else if (Octave_pressure[oct - 1] * .25 / Octave_pressure[oct] > 0.019572846)
                 {
                     ///Use default overflow... 
                     /// TODO: Default Overflow is incorrect...
@@ -1076,7 +1079,7 @@ namespace Pachyderm_Acoustic
                 else
                 {
                     //calculate how much overflow  can be tolerated...
-                    double ph = RCos_Integral.Integrate(Octave_pressure[6] * .25 / Octave_pressure[7]);
+                    double ph = RCos_Integral.Integrate(Octave_pressure[oct - 1] * .25 / Octave_pressure[oct]);
                     //Idu is at ph. end of total bin is 0 to idu + ph.
                     int add = (int)((idu - idl) / (1 - ph)) - (idu - idl);
                     length += add;
@@ -1111,13 +1114,13 @@ namespace Pachyderm_Acoustic
                 }
 
                 //////////////////////////////////////////////////////////////////
-                for (oct = 1; oct < 7; oct++)
+                for (oct = 1; oct < bandCount - 1; oct++)
                 {
                     if (Octave_pressure[oct] == 0) continue;
 
-                    ctr = 62.5 * Math.Pow(2, oct);
-                    freq_l = ctr / Utilities.Numerics.rt2;
-                    freq_u = ctr * Utilities.Numerics.rt2;
+                    ctr = centers == null ? 62.5 * Math.Pow(2, oct) : centers[oct];
+                    freq_l = ctr / edge;
+                    freq_u = ctr * edge;
                     idl = (int)Math.Round(freq_l / df);
                     idu = (int)Math.Round(freq_u / df);
                     l = Math.Sqrt(idu - idl) * Math.Sqrt(2);
@@ -1246,7 +1249,7 @@ namespace Pachyderm_Acoustic
                     pr.Add(Octave_pressure[0] * 0.0001);
                     for (int oct = 0; oct < 24; oct++)
                     {
-                        f.Add(20 * Math.Pow(2, 1 + oct / 3.0));
+                        f.Add(Utilities.AcousticalMath.ThirdOctaveCenters()[oct]);
                         pr.Add(Octave_pressure[oct]);
                     }
                     f.Add(sample_frequency / 2.0);
@@ -1334,11 +1337,12 @@ namespace Pachyderm_Acoustic
                 double[] samplep = new double[spec_length];
                 double fs_l = sample_frequency / spec_length;
 
-                for (int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < Octave_pressure.Length; oct++)
                 {
-                    double f = 62.5 * Math.Pow(2, oct);
-                    double fl = 1.1 * f / Utilities.Numerics.rt2;
-                    double fu = .9 * f * Utilities.Numerics.rt2;
+                    double f = Octave_pressure.Length == 24 ? Utilities.AcousticalMath.ThirdOctaveCenters()[oct] : 62.5 * Math.Pow(2, oct);
+                    double edge = Octave_pressure.Length == 24 ? Math.Pow(2, 1.0 / 6) : Utilities.Numerics.rt2;
+                    double fl = (Octave_pressure.Length == 24 ? 1.0 : 1.1) * f / edge;
+                    double fu = (Octave_pressure.Length == 24 ? 1.0 : .9) * f * edge;
                     samplep = Audio.Pach_SP.IIR_Design.Butter_FreqResponse(10, fl, fu, sample_frequency, spec_length);
                     //double m = samplep.Max();
                     for (int i = 0; i < spec_length; i++)
@@ -1463,6 +1467,9 @@ namespace Pachyderm_Acoustic
 
                 double sum_start = 0;
                 for (int i = 0; i < M_spec.Length; i++) sum_start += M_spec[i] * M_spec[i];
+                // Third-octave synthesis targets both spectral halves; retain the legacy octave calibration.
+                if (Octave_pressure.Length == 24)
+                    sum_start = 2 * sum_start - M_spec[0] * M_spec[0] + M_spec[M_spec.Length - 1] * M_spec[M_spec.Length - 1];
 
                 System.Numerics.Complex[] logspec = new System.Numerics.Complex[M_spec.Length];
 
@@ -1675,30 +1682,50 @@ namespace Pachyderm_Acoustic
             /// with a deterministic band-limited carrier (noise inside that octave). No Transfer_Function,
             /// no per-slice synthesis. Carriers have RMS=1 so envelope scaling maps directly to pressure.
             /// </summary>
-            /// <param name="Octave_PRMS">[8][T] per-band pressure-RMS echograms</param>
-            /// <param name="SWL">Source weighting (8)</param>
-            /// <param name="sample_frequency">Sampling frequency (must be 44100 here)</param>
-            /// <param name="carrierLength">Length of each band carrier (power-of-two recommended)</param>
+            /// <param name="Octave_PRMS">[8 or 24][T] per-band pressure echograms</param>
+            /// <param name="SWL">Source weighting matching the pressure band count</param>
+            /// <param name="sample_frequency">Input pressure-histogram sampling frequency</param>
+            /// <param name="sample_frequency_out">Output waveform sampling frequency</param>
             /// <param name="reuseEdgeForOutside">If true, below 63 Hz and above 8 kHz energy just follows band 0 / 7 carriers</param>
             public static double[] ETCToFilter(double[][] Octave_PRMS, double[] SWL, int sample_frequency = 44100, int sample_frequency_out = 44100, bool reuseEdgeForOutside = true)
             {
-                int carrierLength = 16384;
-                if (Octave_PRMS == null || Octave_PRMS.Length != 8)
-                    throw new ArgumentException("Octave_PRMS must be 8 bands.");
+                if (sample_frequency <= 0 || sample_frequency_out <= 0) throw new ArgumentOutOfRangeException("Sample frequencies must be positive.");
+                if (Octave_PRMS == null || (Octave_PRMS.Length != 8 && Octave_PRMS.Length != 24))
+                    throw new ArgumentException("Pressure histograms must contain 8 or 24 bands.");
+                int bands = Octave_PRMS.Length;
+                if (SWL == null || SWL.Length != bands) throw new ArgumentException("Source spectrum and histogram band counts differ.");
+                if (Octave_PRMS[0] == null) throw new ArgumentException("Pressure bands must not be null.");
                 int T = Octave_PRMS[0].Length;
-                for (int b = 1; b < 8; b++)
-                    if (Octave_PRMS[b].Length != T) throw new ArgumentException("Inconsistent band lengths.");
+                for (int b = 1; b < bands; b++)
+                    if (Octave_PRMS[b] == null || Octave_PRMS[b].Length != T) throw new ArgumentException("Inconsistent band lengths.");
 
-                double[] p_mod = new double[8];
-                for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20.0);
+                if (sample_frequency != sample_frequency_out)
+                {
+                    double ratio = (double)sample_frequency_out / sample_frequency;
+                    int outputSamples = (int)Math.Ceiling(T * ratio);
+                    double[][] resampled = new double[bands][];
+                    for (int band = 0; band < bands; band++)
+                    {
+                        resampled[band] = new double[outputSamples];
+                        for (int time = 0; time < T; time++)
+                            resampled[band][Math.Min(outputSamples - 1, (int)Math.Round(time * ratio))] += Octave_PRMS[band][time];
+                    }
+                    return ETCToFilter(resampled, SWL, sample_frequency_out, sample_frequency_out, reuseEdgeForOutside);
+                }
+                int carrierLength = 16384;
+
+                double[] p_mod = new double[bands];
+                for (int i = 0; i < bands; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20.0);
 
                 // Precompute carriers
-                double[][] carriers = new double[8][];
-                for (int b = 0; b < 8; b++)
+                double[][] carriers = new double[bands][];
+                for (int b = 0; b < bands; b++)
                 {
-                    double fc = 62.5 * Math.Pow(2, b);
-                    double fl = fc / Utilities.Numerics.rt2;
-                    double fu = fc * Utilities.Numerics.rt2;
+                    double fc = bands == 24 ? Utilities.AcousticalMath.ThirdOctaveCenters()[b] : 62.5 * Math.Pow(2, b);
+                    double edge = bands == 24 ? Math.Pow(2, 1.0 / 6) : Utilities.Numerics.rt2;
+                    double fl = fc / edge;
+                    double fu = bands == 24 ? Math.Min(fc * edge, sample_frequency * .5) : fc * edge;
+                    if (fl >= fu) { carriers[b] = new double[carrierLength]; continue; }
                     carriers[b] = GenerateBandLimitedSincPulse(carrierLength, sample_frequency, fl, fu);
                 }
 
@@ -1709,13 +1736,13 @@ namespace Pachyderm_Acoustic
                 double Inv_N = 1.0;// carrierLength;//Octave_PRMS[0].Length;
 
                 // Convolve each band envelope with its carrier (FFT convolution)
-                for (int b = 0; b < 8; b++)
+                for (int b = 0; b < bands; b++)
                 {
                     double[] env = new double[T];
                     double scale = p_mod[b];
                     var src = Octave_PRMS[b];
                     for (int t = 0; t < T; t++)
-                        env[t] = Math.Abs(src[t]) * scale;
+                        env[t] = src[t] * scale;
 
                     double[] bandIR = FFT_Convolution_double(env, carriers[b], 0);
                     int copyLen = Math.Min(outLen, bandIR.Length);
@@ -1723,7 +1750,8 @@ namespace Pachyderm_Acoustic
                         IR[i] += bandIR[i] * Inv_N;
                 }
 
-                // Add 16 kHz band based on 8 kHz band with additional air attenuation
+                // Preserve legacy octave-only extension; third-octave output uses its measured spectrum.
+                if (bands == 8)
                 {
                     // Calculate air attenuation coefficients for 8 kHz and 16 kHz using ISO 9613-1
                     double tempK = 20 + 273.15; // Convert to Kelvin
@@ -1759,7 +1787,7 @@ namespace Pachyderm_Acoustic
                         double attenuationFactor = Math.Pow(10, -additionalAttenuation * estimatedDistance / 20.0);
 
                         // Apply additional attenuation to 8 kHz data to get 16 kHz data
-                        env16k[t] = Math.Abs(src8k[t]) * scale16k * attenuationFactor;
+                        env16k[t] = src8k[t] * scale16k * attenuationFactor;
                     }
 
                     // Convolve 16 kHz envelope with its carrier
@@ -1804,15 +1832,15 @@ namespace Pachyderm_Acoustic
             /// </summary>
             public static double[] ETCToFilter_Pulses(double[][] Octave_PRMS, double[] SWL, int sample_frequency_in = 44100, int sample_frequency_out = 44100)
             {
-                if (Octave_PRMS == null || Octave_PRMS.Length != 8 || Octave_PRMS[0] == null || Octave_PRMS.Any(b => b == null || b.Length != Octave_PRMS[0].Length)) throw new ArgumentException("Eight equal-length octave bands are required.", nameof(Octave_PRMS));
-                if (SWL == null || SWL.Length != 8) throw new ArgumentException("Eight source levels are required.", nameof(SWL));
+                if (Octave_PRMS == null || (Octave_PRMS.Length != 8 && Octave_PRMS.Length != 24) || Octave_PRMS[0] == null || Octave_PRMS.Any(b => b == null || b.Length != Octave_PRMS[0].Length)) throw new ArgumentException("Eight or 24 equal-length spectral bands are required.", nameof(Octave_PRMS));
+                if (SWL == null || SWL.Length != Octave_PRMS.Length) throw new ArgumentException("Source levels must match the histogram band count.", nameof(SWL));
                 if (sample_frequency_in <= 0 || sample_frequency_out <= 0) throw new ArgumentOutOfRangeException("Sample frequencies must be positive.");
                 int length = 16384;
                 double BW = (double)sample_frequency_out / (double)sample_frequency_in;
                 double[] IR = new double[(int)Math.Floor((double)(Octave_PRMS[0].Length * BW)) + (int)length];
 
-                double[] p_mod = new double[8];
-                for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
+                double[] p_mod = new double[Octave_PRMS.Length];
+                for (int i = 0; i < Octave_PRMS.Length; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
 
                 int proc = Math.Min(System.Environment.ProcessorCount, Octave_PRMS[0].Length);
                 double[][] partialIR = new double[proc][];
@@ -1827,9 +1855,9 @@ namespace Pachyderm_Acoustic
                     for (int t = start; t < end; t++)
                     {
                         // build per-time-slice octave pressures (pressure RMS)
-                        double[] pr = new double[8];
+                        double[] pr = new double[Octave_PRMS.Length];
                         double sum = 0;
-                        for (int oct = 0; oct < 8; oct++)
+                        for (int oct = 0; oct < Octave_PRMS.Length; oct++)
                         {
                             pr[oct] = Math.Abs(Octave_PRMS[oct][t]) * p_mod[oct];
                             sum += pr[oct];
@@ -1876,14 +1904,14 @@ namespace Pachyderm_Acoustic
                 double df = (half > 0) ? ny / half : ny; // k in [0..half] -> f = k*df
 
                 // ISO octave centers and bounds
-                double[] fc = new double[8];
-                double[] fl = new double[8];
-                double[] fu = new double[8];
-                for (int b = 0; b < 8; b++)
+                double[] fc = new double[octavePressure.Length];
+                double[] fl = new double[octavePressure.Length];
+                double[] fu = new double[octavePressure.Length];
+                for (int b = 0; b < octavePressure.Length; b++)
                 {
-                    fc[b] = 62.5 * Math.Pow(2, b);
-                    fl[b] = fc[b] / Utilities.Numerics.rt2;
-                    fu[b] = fc[b] * Utilities.Numerics.rt2;
+                    fc[b] = octavePressure.Length == 24 ? Utilities.AcousticalMath.ThirdOctaveCenters()[b] : 62.5 * Math.Pow(2, b);
+                    fl[b] = fc[b] / (octavePressure.Length == 24 ? Math.Pow(2, 1.0 / 6) : Utilities.Numerics.rt2);
+                    fu[b] = fc[b] * (octavePressure.Length == 24 ? Math.Pow(2, 1.0 / 6) : Utilities.Numerics.rt2);
                 }
 
                 // Winner-takes-all ownership using ISO bounds only (no IIRs)
@@ -1897,7 +1925,7 @@ namespace Pachyderm_Acoustic
 
                     int bestBand = -1;
                     double bestDist = double.MaxValue;
-                    for (int b = 0; b < 8; b++)
+                    for (int b = 0; b < octavePressure.Length; b++)
                     {
                         if (f < fl[b] || f > fu[b]) continue;
                         double d = Math.Abs(Math.Log(f / fc[b]) / Math.Log(2.0)); // |log2(f/fc)|
@@ -1907,11 +1935,11 @@ namespace Pachyderm_Acoustic
                 }
 
                 // Targets (pressure^2)
-                double[] Et = new double[8];
-                for (int b = 0; b < 8; b++) Et[b] = octavePressure[b] * octavePressure[b];
+                double[] Et = new double[octavePressure.Length];
+                for (int b = 0; b < octavePressure.Length; b++) Et[b] = octavePressure[b] * octavePressure[b];
 
                 // Measure current per-band energy from owned bins (Parseval)
-                double[] Em = new double[8];
+                double[] Em = new double[octavePressure.Length];
 
                 // DC (only if owned; typically not, since fl0 > 0)
                 if (owner[0] >= 0)
@@ -1938,7 +1966,7 @@ namespace Pachyderm_Acoustic
                     Em[bh] += mh * mh;
                 }
 
-                for (int b = 0; b < 8; b++) Em[b] /= N; // time-domain energy
+                for (int b = 0; b < octavePressure.Length; b++) Em[b] /= N; // time-domain energy
 
                 // Per-band gains with safety clamps
                 const double maxBoostDb = 24.0;  // +24 dB
@@ -1947,8 +1975,8 @@ namespace Pachyderm_Acoustic
                 double sMin = Math.Pow(10.0, maxCutDb / 20.0);
                 double epsE = 1e-24;
 
-                double[] sb = new double[8];
-                for (int b = 0; b < 8; b++)
+                double[] sb = new double[octavePressure.Length];
+                for (int b = 0; b < octavePressure.Length; b++)
                 {
                     if (Et[b] <= 0) { sb[b] = 0.0; continue; } // true zero band
                     double Emb = Math.Max(Em[b], epsE);

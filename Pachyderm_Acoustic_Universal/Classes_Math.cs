@@ -1514,6 +1514,21 @@ namespace Pachyderm_Acoustic
                 return SEL_dB - 10.0 * Math.Log10(Math.Max(1e-12, term));
             }
 
+            /// <summary>Convert linear band energies, conserving the sum of each octave.</summary>
+            public static double[] ConvertBandEnergy(double[] energy, bool thirdOctave)
+            {
+                if (energy == null || (energy.Length != 8 && energy.Length != 24))
+                    throw new ArgumentException("Expected 8 or 24 spectral energies.", nameof(energy));
+                int count = thirdOctave ? 24 : 8;
+                if (energy.Length == count) return (double[])energy.Clone();
+                double[] output = new double[count];
+                for (int o = 0; o < 8; o++)
+                    if (thirdOctave)
+                        for (int t = 0; t < 3; t++) output[3 * o + t] = energy[o] / 3.0;
+                    else output[o] = energy[3 * o] + energy[3 * o + 1] + energy[3 * o + 2];
+                return output;
+            }
+
             /// <summary>
             /// Standard octave band center frequencies, 63 Hz to 8000 Hz (8 bands).
             /// </summary>
@@ -1530,15 +1545,7 @@ namespace Pachyderm_Acoustic
             /// </summary>
             public static double[] ThirdOctaveCenters()
             {
-                double[] c = new double[24];
-                for (int oct = 1; oct <= 8; oct++)
-                {
-                    for (int third = 1; third <= 3; third++)
-                    {
-                        c[3 * oct + third - 4] = 20 * Math.Pow(2, oct + (double)third / 3.0);
-                    }
-                }
-                return c;
+                return new double[] { 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000 };
             }
 
             /// <summary>
@@ -1908,8 +1915,64 @@ namespace Pachyderm_Acoustic
         }
         public class IR_Construction
         {
+            // Standardized room-acoustic metrics use octave energies even when the stored simulation has 24 bands.
+            /// <summary>Reject mixed spectral resolutions before combining simulation results.</summary>
+            private static int SimulationBandCount(Direct_Sound[] direct, ImageSourceData[] images, Receiver_Bank[] receivers, List<int> sources)
+            {
+                int bandCount = 0;
+                foreach (int source in sources)
+                {
+                    int directCount = direct != null && direct[source] != null ? direct[source].BandCount : 0;
+                    int imageCount = images != null && images[source] != null ? (images[source].ThirdOctave ? 24 : 8) : 0;
+                    int receiverCount = receivers != null && receivers[source] != null ? (receivers[source].Third_Oct ? 24 : 8) : 0;
+                    int sourceCount = Math.Max(directCount, Math.Max(imageCount, receiverCount));
+                    if ((directCount != 0 && directCount != sourceCount) ||
+                        (imageCount != 0 && imageCount != sourceCount) ||
+                        (receiverCount != 0 && receiverCount != sourceCount) ||
+                        (bandCount != 0 && sourceCount != 0 && bandCount != sourceCount))
+                        throw new ArgumentException("Octave and third-octave simulation results cannot be combined.");
+                    if (sourceCount != 0) bandCount = sourceCount;
+                }
+                return bandCount == 0 ? 8 : bandCount;
+            }
+
+            public static double[] ETCurveOctave(Direct_Sound[] Direct, ImageSourceData[] ISData, Receiver_Bank[] RTData, double cutoff, int rate, int octave, int receiver, int source, bool zero)
+            {
+                return ETCurveOctave(Direct, ISData, RTData, cutoff, rate, octave, receiver, new List<int> { source }, zero);
+            }
+
+            public static double[] ETCurveOctave(Direct_Sound[] Direct, ImageSourceData[] ISData, Receiver_Bank[] RTData, double cutoff, int rate, int octave, int receiver, List<int> sources, bool zero)
+            {
+                if (octave < 0 || octave > 8) throw new ArgumentOutOfRangeException(nameof(octave));
+                bool thirds = SimulationBandCount(Direct, ISData, RTData, sources) == 24;
+                if (octave == 8) return ETCurve(Direct, ISData, RTData, cutoff, rate, thirds ? 24 : 8, receiver, sources, zero);
+                if (!thirds) return ETCurve(Direct, ISData, RTData, cutoff, rate, octave, receiver, sources, zero);
+                double[] result = ETCurve(Direct, ISData, RTData, cutoff, rate, 3 * octave, receiver, sources, zero);
+                for (int sub = 1; sub < 3; sub++)
+                {
+                    double[] component = ETCurve(Direct, ISData, RTData, cutoff, rate, 3 * octave + sub, receiver, sources, zero);
+                    for (int t = 0; t < Math.Min(result.Length, component.Length); t++) result[t] += component[t];
+                }
+                return result;
+            }
+
+            public static double[][] ETCurveOctave_1d(Direct_Sound[] Direct, ImageSourceData[] ISData, Receiver_Bank[] RTData, double cutoff, int rate, int octave, int receiver, List<int> sources, bool zero, double alt, double azi, bool degrees, bool tight = false)
+            {
+                if (octave < 0 || octave > 8) throw new ArgumentOutOfRangeException(nameof(octave));
+                bool thirds = SimulationBandCount(Direct, ISData, RTData, sources) == 24;
+                int first = thirds ? (octave == 8 ? 24 : 3 * octave) : octave;
+                double[][] result = tight ? ETCurve_1d_Tight(Direct, ISData, RTData, cutoff, rate, first, receiver, sources, zero, alt, azi, degrees) : ETCurve_1d(Direct, ISData, RTData, cutoff, rate, first, receiver, sources, zero, alt, azi, degrees);
+                if (thirds && octave < 8) for (int sub = 1; sub < 3; sub++)
+                {
+                    double[][] component = tight ? ETCurve_1d_Tight(Direct, ISData, RTData, cutoff, rate, first + sub, receiver, sources, zero, alt, azi, degrees) : ETCurve_1d(Direct, ISData, RTData, cutoff, rate, first + sub, receiver, sources, zero, alt, azi, degrees);
+                    for (int d = 0; d < result.Length; d++) for (int t = 0; t < Math.Min(result[d].Length, component[d].Length); t++) result[d][t] += component[d][t];
+                }
+                return result;
+            }
+
             public static double[] ETCurve(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, List<int> SrcIDs, bool StartAtZero)
             {
+                SimulationBandCount(Direct, ISData, RTData, SrcIDs);
                 //TODO: Make provisions for specifying source delays...
                 if (Direct == null) Direct = new Direct_Sound[SrcIDs[SrcIDs.Count - 1] + 1];
                 if (ISData == null) ISData = new ImageSourceData[SrcIDs[SrcIDs.Count - 1] + 1];
@@ -2004,16 +2067,8 @@ namespace Pachyderm_Acoustic
                     for (int i = 0; i < Direct[Src_ID].Io[Rec_ID][0].Length; i++)
                     {
                         double DirectValue = 0;
-                        switch (Octave)
-                        {
-                            case 8:
-                                DirectValue = Direct[Src_ID].EnergySum(Rec_ID, i);
-                                break;
-                            default:
-                                DirectValue = Direct[Src_ID].EnergyValue(Octave, Rec_ID)[i];
-                                break;
-                        }
-                        Histogram[D_Start + i] += DirectValue;
+                        DirectValue = Octave >= Direct[Src_ID].BandCount ? Direct[Src_ID].EnergySum(Rec_ID, i) : Direct[Src_ID].EnergyValue(Octave, i, Rec_ID);
+                        if (D_Start + i >= 0 && D_Start + i < Histogram.Length) Histogram[D_Start + i] += DirectValue;
                     }
                 }
 
@@ -2085,9 +2140,10 @@ namespace Pachyderm_Acoustic
 
             public static double[][] ETCurve_1d_Tight(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, bool Start_at_Zero, double alt, double azi, bool degrees)
             {
+                int bandCount = Direct != null ? Direct.BandCount : RTData != null && RTData.Third_Oct ? 24 : ISData != null && ISData.ThirdOctave ? 24 : 8;
                 double[][] Histogram = new double[3][];
 
-                if (Octave < 8)
+                if (Octave < bandCount)
                 {
                     //Get Power...
                     double power = 0;
@@ -2125,7 +2181,7 @@ namespace Pachyderm_Acoustic
                         Hare.Geometry.Vector[] DirectValue;
                         switch (Octave)
                         {
-                            case 8:
+                            case 8 when bandCount == 8:
                                 DirectValue = Direct.Dir_Energy_Sum(Rec_ID, alt, azi, degrees);
                                 break;
                             default:
@@ -2133,7 +2189,7 @@ namespace Pachyderm_Acoustic
                                 break;
                         }
 
-                        for (int i = 0; i < DirectValue.Length; i++)
+                        for (int i = 0; i < DirectValue.Length && D_Start + i < Histogram[0].Length; i++)
                         {
                             Histogram[0][D_Start + i] += DirectValue[i].dx;// * DirectValue[i].x / E);
                             Histogram[1][D_Start + i] += DirectValue[i].dy;// * DirectValue[i].y / E);
@@ -2145,7 +2201,7 @@ namespace Pachyderm_Acoustic
                     {
                         switch (Octave)
                         {
-                            case 8:
+                            case 8 when bandCount == 8:
                                 foreach (Deterministic_Reflection value in ISData.Paths[Rec_ID])
                                 {
                                     if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
@@ -2191,7 +2247,7 @@ namespace Pachyderm_Acoustic
                 else
                 {
                     //Take Sum
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < bandCount; oct++)
                     {
                         double[][] Hist = ETCurve_1d_Tight(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, oct, Rec_ID, Start_at_Zero, alt, azi, degrees);
                         if (Histogram[0] == null) for (int d = 0; d < 3; d++) Histogram[d] = new double[Hist[d].Length];
@@ -2252,10 +2308,11 @@ namespace Pachyderm_Acoustic
 
             public static double[][] ETCurve_1d(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, bool Start_at_Zero, double alt, double azi, bool degrees)
             {
+                int bandCount = Direct != null ? Direct.BandCount : RTData != null && RTData.Third_Oct ? 24 : ISData != null && ISData.ThirdOctave ? 24 : 8;
 
                 double[][] Histogram = new double[3][];
 
-                if (Octave < 8)
+                if (Octave < bandCount)
                 {
                     //Get Power...
                     double power = 0;
@@ -2296,7 +2353,7 @@ namespace Pachyderm_Acoustic
                         Hare.Geometry.Vector[] DirectValue;
                         switch (Octave)
                         {
-                            case 8:
+                            case 8 when bandCount == 8:
                                 DirectValue = Direct.Dir_Energy_Sum(Rec_ID, alt, azi, degrees);
                                 break;
                             default:
@@ -2304,7 +2361,7 @@ namespace Pachyderm_Acoustic
                                 break;
                         }
 
-                        for (int i = 0; i < DirectValue.Length; i++)
+                        for (int i = 0; i < DirectValue.Length && D_Start + i < Histogram[0].Length; i++)
                         {
                             Histogram[0][D_Start + i] += Math.Abs(DirectValue[i].dx);
                             Histogram[1][D_Start + i] += Math.Abs(DirectValue[i].dy);
@@ -2316,7 +2373,7 @@ namespace Pachyderm_Acoustic
                     {
                         switch (Octave)
                         {
-                            case 8:
+                            case 8 when bandCount == 8:
                                 foreach (Deterministic_Reflection value in ISData.Paths[Rec_ID])
                                 {
                                     if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
@@ -2353,7 +2410,7 @@ namespace Pachyderm_Acoustic
                 else
                 {
                     //Take Sum
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < bandCount; oct++)
                     {
                         double[][] Hist = ETCurve_1d(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, oct, Rec_ID, Start_at_Zero, alt, azi, degrees);
                         if (Histogram[0] == null) for (int d = 0; d < 3; d++) Histogram[d] = new double[Hist[d].Length];
@@ -2406,8 +2463,9 @@ namespace Pachyderm_Acoustic
 
             public static double[] ETCurve_Directional(Direct_Sound Direct, ImageSourceData ISData, Receiver_Bank RTData, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, bool Start_at_Zero, double alt, double azi, bool degrees)
             {
+                int bandCount = Direct != null ? Direct.BandCount : RTData != null && RTData.Third_Oct ? 24 : ISData != null && ISData.ThirdOctave ? 24 : 8;
                 double[] Histogram = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency)];
-                if (Octave < 8)
+                if (Octave < bandCount)
                 {
                     //Get Power...
                     double power = 0;
@@ -2452,7 +2510,7 @@ namespace Pachyderm_Acoustic
                         Hare.Geometry.Vector[] DirectValue;
                         switch (Octave)
                         {
-                            case 8:
+                            case 8 when bandCount == 8:
                                 DirectValue = Direct.Dir_Energy_Sum(Rec_ID, alt, azi, degrees);
                                 break;
                             default:
@@ -2460,7 +2518,7 @@ namespace Pachyderm_Acoustic
                                 break;
                         }
 
-                        for (int i = 0; i < DirectValue.Length; i++)
+                        for (int i = 0; i < DirectValue.Length && D_Start + i < Histogram.Length; i++)
                         {
                             if (DirectValue[i].dx > 0) Histogram[D_Start + i] += Math.Abs(DirectValue[i].dx);
                         }
@@ -2470,7 +2528,7 @@ namespace Pachyderm_Acoustic
                     {
                         switch (Octave)
                         {
-                            case 8:
+                            case 8 when bandCount == 8:
                                 foreach (Deterministic_Reflection value in ISData.Paths[Rec_ID])
                                 {
                                     if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram.Length - 1)
@@ -2505,7 +2563,7 @@ namespace Pachyderm_Acoustic
                 else
                 {
                     //Take Sum
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < bandCount; oct++)
                     {
                         double[] Hist = ETCurve_Directional(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, oct, Rec_ID, Start_at_Zero, alt, azi, degrees);
                         if (Histogram == null) Histogram = new double[Hist.Length];
@@ -2539,7 +2597,7 @@ namespace Pachyderm_Acoustic
                 }
                 else
                 {
-                    F = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency)];
+                    F = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency) + 16384];
                 }
 
                 if (Direct[Src_ID] != null && Direct[Src_ID].IsOccluded(Rec_ID))
@@ -2549,7 +2607,8 @@ namespace Pachyderm_Acoustic
 
                     double[] Filter = flat ? Direct[Src_ID].Get_Filter(Rec_ID, Sampling_Frequency)[0] : Direct[Src_ID].Create_Filter(Direct[Src_ID].SWL, Rec_ID, 0, Sampling_Frequency);
 
-                    for (int i = 0; i < Filter.Length; i++)
+                    int end = Math.Min(Filter.Length, F.Length - D_Start);
+                    for (int i = Math.Max(0, -D_Start); i < end; i++)
                     {
                         F[D_Start + i] += Filter[i];
                     }
@@ -4722,7 +4781,7 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public static string Version()
             {
-                System.Reflection.Assembly me = System.Reflection.Assembly.Load("Pachyderm_Acoustic");
+                System.Reflection.Assembly me = typeof(PachTools).Assembly;
                 return me.GetName().Version.ToString();
             }
 
@@ -5359,7 +5418,7 @@ namespace Pachyderm_Acoustic
             public static string EncodeAcoustics(double[] Absorption, double[] Scattering, double[] Transparency)
             {
                 string Code = "";
-                for (int q = 0; q < 8; q++)
+                for (int q = 0; q < Absorption.Length; q++)
                 {
                     int abs = (int)(Absorption[q] * 10);
                     string Temp = null;
@@ -5443,7 +5502,7 @@ namespace Pachyderm_Acoustic
                             Absorption[q] = Double.Parse(Temp) / 100;
                         }
                     }
-                    else if (Code.Length == 56 || Code.Length == 40)
+                    else if (Code.Length == 56 || Code.Length == 40 || Code.Length == 88 || Code.Length == 104)
                     {
                         string Temp = string.Concat(Code[3 * q], Code[3 * q + 1], Code[3 * q + 2]);
                         if (Temp == "xxx")
@@ -5454,7 +5513,7 @@ namespace Pachyderm_Acoustic
                         {
                             Absorption[q] = Double.Parse(Temp) / 1000;
                         }
-                        mod = 8;
+                        mod = 3 * abslength - 16;
                     }
                 }
                 for (int q = 0; q < 8; q++)
@@ -5469,7 +5528,7 @@ namespace Pachyderm_Acoustic
                         Scattering[q] = Double.Parse(Temp) / 100;
                     }
                 }
-                if (Code.Length == 48 || Code.Length == 56)
+                if (Code.Length == 48 || Code.Length == 56 || Code.Length == 104)
                 {
                     for (int q = 0; q < 8; q++)
                     {
@@ -5495,9 +5554,9 @@ namespace Pachyderm_Acoustic
             public static double[] DecodeSourcePower(string code)
             {
                 if (code == null) return new double[] { 120, 120, 120, 120, 120, 120, 120, 120 };
-                string[] SWLCodes = code.Split(";".ToCharArray());
-                if (SWLCodes.Length < 8) return new double[] { 120, 120, 120, 120, 120, 120, 120, 120 };
-                double[] SWL = new double[SWLCodes.Length - 1];
+                string[] SWLCodes = code.Split(new char[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                if (SWLCodes.Length != 8 && SWLCodes.Length != 24) return new double[] { 120, 120, 120, 120, 120, 120, 120, 120 };
+                double[] SWL = new double[SWLCodes.Length];
                 for (int i = 0; i < SWL.Length; i++)
                 {
                     SWL[i] = double.Parse(SWLCodes[i]);
@@ -5508,8 +5567,8 @@ namespace Pachyderm_Acoustic
             public static double[] DecodeTransmissionLoss(string code)
             {
                 if (string.IsNullOrEmpty(code)) return new double[] { 0, 0, 0, 0, 0, 0, 0, 0 };
-                string[] TLCodes = code.Split(";".ToCharArray());
-                if (TLCodes.Length < 8) return new double[] { 0, 0, 0, 0, 0, 0, 0, 0 };
+                string[] TLCodes = code.Split(new char[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                if (TLCodes.Length != 8 && TLCodes.Length != 24) return new double[] { 0, 0, 0, 0, 0, 0, 0, 0 };
                 double[] TL = new double[TLCodes.Length];
                 for (int i = 0; i < TL.Length; i++)
                 {
@@ -5525,7 +5584,7 @@ namespace Pachyderm_Acoustic
                 {
                     code += TL[i].ToString() + ";";
                 }
-                code += TL[7].ToString();
+                code += TL[TL.Length - 1].ToString();
                 return code;
             }
 

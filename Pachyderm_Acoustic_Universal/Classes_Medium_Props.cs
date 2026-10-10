@@ -50,7 +50,7 @@ namespace Pachyderm_Acoustic
 
             protected double[] Calculate_Attenuation(int Air_Choice, double Pa, double Tk, double hr, bool Third_Octave, bool EdgeCorrection)
             {
-                double[] Freq = Third_Octave ? new double[23] { 50, 62.5, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 3150, 4000, 5000, 6300, 8000, 10000 } : new double[8] { 62.5, 125, 250, 500, 1000, 2000, 4000, 8000 };
+                double[] Freq = Third_Octave ? Utilities.AcousticalMath.ThirdOctaveCenters() : Utilities.AcousticalMath.OctaveCenters();
                 double[] Att_Coef = new double[Freq.Length];
 
                 if (Air_Choice == 0)
@@ -82,7 +82,7 @@ namespace Pachyderm_Acoustic
                     //'rh = relative humidity in %
                     //'m = (85 / rh)* f^2 * 0.0001 in Np/m
 
-                    for (int q = 0; q <= 7; q++)
+                    for (int q = 0; q < Freq.Length; q++)
                     {
                         Att_Coef[q] = ((85 / hr) * (Math.Pow((Freq[q] / 1000), 2) * 0.0001)) / 8.7;
                         Att_Coef[q] -= 0.04 * (Tk - 273.15 - 20) * Att_Coef[q];// Np/m
@@ -175,6 +175,17 @@ namespace Pachyderm_Acoustic
                         }
                     }
                 }
+                if (Third_Octave && Air_Choice == 2)
+                {
+                    double[] octave = Calculate_Attenuation(Air_Choice, Pa, Tk, hr, false, EdgeCorrection);
+                    for (int b = 0; b < 24; b++)
+                    {
+                        double position = Math.Max(0, Math.Min(7, Math.Log(Freq[b] / 62.5, 2)));
+                        int lo = (int)Math.Floor(position), hi = Math.Min(7, lo + 1);
+                        Att_Coef[b] = octave[lo] * (hi - position) + octave[hi] * (position - lo);
+                        if (lo == hi) Att_Coef[b] = octave[lo];
+                    }
+                }
                 return Att_Coef;
             }
 
@@ -199,6 +210,16 @@ namespace Pachyderm_Acoustic
                 return Atten;
             }
 
+            public virtual double[] Attenuation_Coef(int arg, bool thirdOctave)
+            {
+                if (!thirdOctave) return Attenuation_Coef(arg);
+                return Calculate_Attenuation(0, Pa / 10, Tk, hr, true, false);
+            }
+            public virtual double[] Attenuation_Coef(Hare.Geometry.Point pt, bool thirdOctave)
+            {
+                if (!thirdOctave) return Attenuation_Coef(pt);
+                return Calculate_Attenuation(0, Pa / 10, Tk, hr, true, false);
+            }
             public abstract double[] Attenuation_Coef(int arg);
             public abstract double[] Attenuation_Coef(Hare.Geometry.Point pt);
             public abstract double Attenuation_Coef(int arg, int octave);
@@ -277,6 +298,8 @@ namespace Pachyderm_Acoustic
                 ISO9613_1_Spline(Tk, Pa, hr);
             }
 
+            public override double[] Attenuation_Coef(int arg, bool thirdOctave) { return thirdOctave ? Atten_Coef_3rd : Atten_Coef; }
+            public override double[] Attenuation_Coef(Hare.Geometry.Point pt, bool thirdOctave) { return thirdOctave ? Atten_Coef_3rd : Atten_Coef; }
             public override double[] Attenuation_Coef(int not)
             {
                 return Atten_Coef;
@@ -350,6 +373,7 @@ namespace Pachyderm_Acoustic
                 Zdom = Pa.GetLength(2);
                 XYTot = Xdom * Ydom;
                 Atten_Coef = new double[Xdom * Ydom * Zdom][];
+                Atten_Coef_3rd = new double[Xdom * Ydom * Zdom][];
                 C_Sound = new double[Xdom * Ydom * Zdom];
                 rho = new double[Xdom * Ydom * Zdom];
                 Zmed = new double[Xdom * Ydom * Zdom];
@@ -363,7 +387,7 @@ namespace Pachyderm_Acoustic
                         {
                             int code = XYTot * z + Ydom * x + y;
                             Atten_Coef[code] = Calculate_Attenuation(Air_Choice, Pa[x,y,z], TC[x,y,z], hr[x,y,z], false, EdgeCorrection);
-                            Atten_Coef[code] = Calculate_Attenuation(Air_Choice, Pa[x, y, z], TC[x, y, z], hr[x, y, z], true, EdgeCorrection);
+                            Atten_Coef_3rd[code] = Calculate_Attenuation(Air_Choice, Pa[x, y, z], TC[x, y, z], hr[x, y, z], true, EdgeCorrection);
                             rho[code] = Calculate_Density(TC[x,y,z], Pa[x,y,z], hr[x,y,z]);//TODO - check input
                             C_Sound[code] = Utilities.AcousticalMath.SoundSpeed(TC[x,y,z] - 273.15);
                             Zmed[code] = rho[code] * C_Sound[code];
@@ -402,6 +426,12 @@ namespace Pachyderm_Acoustic
                 }
             }
             
+            public override double[] Attenuation_Coef(int arg, bool thirdOctave) { return thirdOctave ? Atten_Coef_3rd[arg] : Atten_Coef[arg]; }
+            public override double[] Attenuation_Coef(Hare.Geometry.Point pt, bool thirdOctave)
+            {
+                int X = (int)Math.Floor((pt.x - MinX) / VdimX), Y = (int)Math.Floor((pt.y - MinY) / VdimY), Z = (int)Math.Floor((pt.z - MinZ) / VdimZ);
+                return Attenuation_Coef(XYTot * Z + Ydom * X + Y, thirdOctave);
+            }
             public override double[] Attenuation_Coef(int voxelCode)
             {
                 return Atten_Coef[voxelCode];

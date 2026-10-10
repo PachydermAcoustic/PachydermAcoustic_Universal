@@ -51,19 +51,35 @@ namespace Pachyderm_Acoustic
             public SurfaceSource(Hare.Geometry.Point[] samples, Topology T_in, String CodeList, double area, int el_m, int SrcID, bool Third_Octave)
             : base(new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 }, new Hare.Geometry.Point(0, 0, 0), SrcID, Third_Octave)
             {
-                //TODO: Accommodate third octave.
                 T = T_in;
 
                 samplespermeter = el_m;
                 Samples = samples;
 
-                for (int i = 0; i < Samples.Length; i++)
-                {
-                    DomainLevel = Utilities.PachTools.DecodeSourcePower(CodeList);
-                    DomainPower = new double[8];
-                    double PowerMod = area;
-                    for (int oct = 0; oct < 8; oct++) DomainPower[oct] = 1E-12 * Math.Pow(10, .1 * DomainLevel[oct]) / PowerMod;
-                }
+                double[] levels = Utilities.PachTools.DecodeSourcePower(CodeList);
+                double[] energy = levels.Select(level => 1E-12 * Math.Pow(10, .1 * level)).ToArray();
+                DomainPower = Utilities.AcousticalMath.ConvertBandEnergy(energy, Third_Octave);
+                DomainLevel = DomainPower.Select(power => 10 * Math.Log10(power / 1E-12)).ToArray();
+                SourcePower = (double[])DomainPower.Clone();
+                SPL = (double[])DomainLevel.Clone();
+                for (int band = 0; band < DomainPower.Length; band++) DomainPower[band] /= area;
+
+            }
+
+            internal override Source ForBandResolution(bool thirdOctave)
+            {
+                SurfaceSource copy = (SurfaceSource)base.ForBandResolution(thirdOctave);
+                copy.SetBandResolution(thirdOctave);
+                return copy;
+            }
+
+            public override void SetBandResolution(bool thirdOctave)
+            {
+                base.SetBandResolution(thirdOctave);
+                if (DomainPower == null) return;
+                DomainPower = Utilities.AcousticalMath.ConvertBandEnergy(DomainPower, thirdOctave);
+                double[] energy = Utilities.AcousticalMath.ConvertBandEnergy(DomainLevel.Select(level => 1E-12 * Math.Pow(10, .1 * level)).ToArray(), thirdOctave);
+                DomainLevel = energy.Select(power => 10 * Math.Log10(power / 1E-12)).ToArray();
             }
 
             public override string Type()
@@ -82,20 +98,20 @@ namespace Pachyderm_Acoustic
             public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
                 BroadRay Ray = Directions(thread, ref random);
-                //Ray.Octaves = Octaves;
+                Ray.Freq_Bands = (int[])Octaves.Clone();
                 return Ray;
             }
 
             public override BroadRay Directions(int thread, ref Random random)
             {
-                int i = (int)(random.Next() * (double)T.Polygon_Count);
+                int i = random.Next(T.Polygon_Count);
                 Point P = T.Polys[i].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
                 double Theta = random.NextDouble() * 2 * System.Math.PI;
                 double Phi = random.NextDouble() * 2 * System.Math.PI;
                 Hare.Geometry.Vector Direction = new Hare.Geometry.Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
                 
-                //return new BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, DomainPower, 0, S_ID);
-                return BroadRayPool.Instance.new_BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, DomainPower, 0, S_ID);
+                //return new BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, (double[])DomainPower.Clone(), 0, S_ID);
+                return BroadRayPool.Instance.new_BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, (double[])DomainPower.Clone(), 0, S_ID);
             }
         }
     }

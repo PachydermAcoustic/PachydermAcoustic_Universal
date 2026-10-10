@@ -63,7 +63,6 @@ namespace Pachyderm_Acoustic
             public LineSource(Hare.Geometry.Point[] samples, double length, string Code, double el_m, int SrcID, bool Third_Octave)
                 : base(new double[8] { 60, 49, 41, 35, 31, 28, 26, 24 }, new Point(0, 0, 0), SrcID, Third_Octave)
             {
-                //TODO: Accommodate third octave
                 samplespermeter = el_m;
 
                 //Divide curve up in ~equal length segments.
@@ -71,13 +70,14 @@ namespace Pachyderm_Acoustic
                 D = new Simple();
 
                 Level = new double[1][] { Utilities.PachTools.DecodeSourcePower(Code) };
-                Power = new double[1][] { new double[8] };
+                Power = new double[1][] { new double[Level[0].Length] };
 
                 // Calculate bounding box for all samples
                 CalculateBoundingBox();
 
                 double PowerMod = length / (double)Samples.Length;
-                for (int oct = 0; oct < 8; oct++) Power[0][oct] = 1E-12 * Math.Pow(10, .1 * Level[0][oct]) * PowerMod;
+                for (int oct = 0; oct < Level[0].Length; oct++) Power[0][oct] = 1E-12 * Math.Pow(10, .1 * Level[0][oct]) * PowerMod;
+                SetBandResolution(Third_Octave);
             }
 
             /// <summary>
@@ -152,17 +152,17 @@ namespace Pachyderm_Acoustic
                 Power = new double[num_heights][];
                 for (int h = 0; h < num_heights; h++)
                 {
-                    Power[h] = new double[8];
+                    Power[h] = new double[Level[0].Length];
                 }
 
                 double PowerMod = length / (double)Samples[0].Length;
 
                 for(int h = 0; h < num_heights; h++)
                 {
-                    Power[h] = new double[8];
-                    for (int oct = 0; oct < 8; oct++)
+                    Power[h] = new double[Level[0].Length];
+                    for (int oct = 0; oct < Level[0].Length; oct++)
                     {
-                        Power[h][oct] = 1E-12 * Math.Pow(10, .1 * Level[h][oct]) * PowerMod;
+                        Power[h][oct] = 1E-12 * Math.Pow(10, .1 * Level[0][oct]) * PowerMod;
                     }
                 }
 
@@ -191,6 +191,7 @@ namespace Pachyderm_Acoustic
 
                 // Calculate bounding box for all samples
                 CalculateBoundingBox();
+                SetBandResolution(Third_Octave);
             }
 
             /// <summary>
@@ -357,12 +358,13 @@ namespace Pachyderm_Acoustic
                 D = new Aircraft(aircraft_category, engine_type, flight_phase, speed_kts, path_angle_deg, flight_direction);
 
                 Level = new double[][] { Utilities.PachTools.DecodeSourcePower(Code) };
-                Power = new double[8][];
+                Power = new double[1][] { new double[Level[0].Length] };
 
                 // Calculate bounding box (same as original implementation)
                 CalculateBoundingBox();
                 double PowerMod = length / (double)Samples.Length;
-                for (int oct = 0; oct < 8; oct++) Power[0][oct] = 1E-12 * Math.Pow(10, .1 * Level[0][oct]) * PowerMod;
+                for (int oct = 0; oct < Level[0].Length; oct++) Power[0][oct] = 1E-12 * Math.Pow(10, .1 * Level[0][oct]) * PowerMod;
+                SetBandResolution(Third_Octave);
             }
 
             //public LineSource(Hare.Geometry.Point[] samples, double length, double _velocity, double _delta, string Code, int el_m, int SrcID, bool Third_Octave)
@@ -399,10 +401,38 @@ namespace Pachyderm_Acoustic
                 }
             }
 
+            internal override Source ForBandResolution(bool thirdOctave)
+            {
+                LineSource copy = (LineSource)base.ForBandResolution(thirdOctave);
+                copy.Power = Power == null ? null : (double[][])Power.Clone();
+                copy.Level = Level == null ? null : (double[][])Level.Clone();
+                copy.SetBandResolution(thirdOctave);
+                return copy;
+            }
+
+            public override void SetBandResolution(bool thirdOctave)
+            {
+                base.SetBandResolution(thirdOctave);
+                if (Power == null) return;
+                for (int group = 0; group < Power.Length; group++)
+                    if (Power[group] != null) Power[group] = Utilities.AcousticalMath.ConvertBandEnergy(Power[group], thirdOctave);
+                if (Level != null) for (int group = 0; group < Level.Length; group++)
+                {
+                    double[] energy = Utilities.AcousticalMath.ConvertBandEnergy(Level[group].Select(level => 1E-12 * Math.Pow(10, .1 * level)).ToArray(), thirdOctave);
+                    Level[group] = energy.Select(power => 10 * Math.Log10(power / 1E-12)).ToArray();
+                }
+                if (thirdOctave)
+                {
+                    SourcePower = new double[24];
+                    foreach (double[] group in Power) for (int band = 0; band < 24; band++) SourcePower[band] += group[band];
+                    SPL = SourcePower.Select(power => 10 * Math.Log10(power / 1E-12)).ToArray();
+                }
+            }
+
             public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
                 BroadRay B = Directions(thread, ref random);
-                //B.Octaves = Octaves;
+                B.Freq_Bands = (int[])Octaves.Clone();
                 return B;
             }
 
@@ -444,8 +474,8 @@ namespace Pachyderm_Acoustic
                     double Phi = random.NextDouble() * 2 * System.Math.PI;
                     Vector Direction = new Hare.Geometry.Vector(Math.Sin(Theta) * Math.Cos(Phi), Math.Sin(Theta) * Math.Sin(Phi), Math.Cos(Theta));
 
-                    //return new BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, DomainPower, 0, S_ID);
-                    return BroadRayPool.Instance.new_BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, DomainPower, 0, S_ID);
+                    //return new BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, (double[])DomainPower.Clone(), 0, S_ID);
+                    return BroadRayPool.Instance.new_BroadRay(P.x, P.y, P.z, Direction.dx, Direction.dy, Direction.dz, random.Next(), thread, (double[])DomainPower.Clone(), 0, S_ID);
                 }
 
                 public override double[] DirPower(Vector Direction, ref Hare.Geometry.Point[] samples, int i, ref double[] DomainPower)
@@ -580,8 +610,8 @@ namespace Pachyderm_Acoustic
                     double doppler_factor = Math.Pow(1.0 - mach_number * cos_angle, -2.0);
 
                     // Apply directivity and Doppler corrections to domain power
-                    double[] directional_power = new double[8];
-                    for (int oct = 0; oct < 8; oct++)
+                    double[] directional_power = new double[base_power.Length];
+                    for (int oct = 0; oct < base_power.Length; oct++)
                     {
                         if (base_power[oct] == 0)
                         {
@@ -589,7 +619,7 @@ namespace Pachyderm_Acoustic
                         }
                         else
                         {
-                            double freq_factor = GetFrequencyDirectivity(oct);
+                            double freq_factor = GetFrequencyDirectivity(base_power.Length == 24 ? oct / 3 : oct);
                             double total_factor = elevation_factor * azimuth_factor * doppler_factor * freq_factor;
                             directional_power[oct] = base_power[oct] * total_factor;
                         }

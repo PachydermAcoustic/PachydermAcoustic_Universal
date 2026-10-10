@@ -48,6 +48,7 @@ namespace Pachyderm_Acoustic
         public TimeSpan _ts;
         private int h_oct;
         private int[] _octaves;
+        private readonly int bandStart, bandEnd, bandsPerOctave;
         private Convergence_Check[] check;
         private bool conclude = false;
         I_Conv_Progress Vis_Feedback;
@@ -62,7 +63,7 @@ namespace Pachyderm_Acoustic
         /// <param name="roomIn"></param>
         /// <param name="cutOffLengthIn"></param>
         /// <param name="rayCountIn"></param>
-        /// <param name="octaveRange">Two values - the lowest octave to be calculated and the highest octave to be calculated - 0 being 62.5, and 7 being 8k.</param>
+        /// <param name="octaveRange">Inclusive spectral band indices: 0–7 in octave mode, or 0–23 in third-octave mode. Geometric rays remain grouped by octave.</param>
         /// <param name="isOrderIn">The highest order for which image source was calcualted. If no Image Source, then enter 0.</param>
         /// <param name="partitionedReceiver">Is the receiver partitioned... i.e., did you use a mapping receiver bank?</param>
         public SplitRayTracer(Source sourceIn, Receiver_Bank receiverIn, Scene roomIn, double cutoffTime, int[] octaveRange, int isOrderIn, int rayCountIn, I_Conv_Progress Vis_Feedback)
@@ -78,35 +79,43 @@ namespace Pachyderm_Acoustic
             Room = roomIn;
             RecMain = receiverIn;
             Raycount = rayCountIn;
-            _octaves = new int[octaveRange[1] - octaveRange[0] + 1];
-            for (int o = octaveRange[0]; o <= octaveRange[1]; o++) _octaves[o - octaveRange[0]] = o;
-            COTime = cutoffTime / Room.Sound_speed(0);
-            Source = sourceIn;
-            double[] totalAbs = new double[8];
-            this.Vis_Feedback = Vis_Feedback;
 
+            COTime = cutoffTime / Room.Sound_speed(0);
+            Source = sourceIn.ForBandResolution(receiverIn.Third_Oct);
+            int no_of_bands = Source.BandCount;
+            if (octaveRange == null || octaveRange.Length != 2 || octaveRange[0] < 0 || octaveRange[1] >= no_of_bands || octaveRange[0] > octaveRange[1])
+                throw new ArgumentOutOfRangeException(nameof(octaveRange), "Provide an inclusive band range from 0 through " + (no_of_bands - 1) + ".");
+            bandStart = octaveRange[0]; bandEnd = octaveRange[1];
+            bandsPerOctave = no_of_bands / 8;
+            int firstOctave = bandStart / bandsPerOctave;
+            _octaves = Enumerable.Range(firstOctave, bandEnd / bandsPerOctave - firstOctave + 1).ToArray();
+            double[] selectedPower = (double[])Source.SoundPower.Clone();
+            for (int band = 0; band < selectedPower.Length; band++) if (band < bandStart || band > bandEnd) selectedPower[band] = 0;
+            double[] groupPower = AcousticalMath.ConvertBandEnergy(selectedPower, false);
+            double[] totalAbs = new double[no_of_bands];
             for (int s = 0; s < Room.Count(); s++)
             {
                 double area = Room.SurfaceArea(s);
-                foreach (int o in _octaves)
-                {
-                    totalAbs[o] += area * Room.AbsorptionValue[s].Coefficient_A_Broad(o);
-                }
+                for (int band = bandStart; band <= bandEnd; band++)
+                    totalAbs[band] += area * Room.AbsorptionValue[s].Coefficient_A_Broad(band, bandsPerOctave == 3);
             }
+            this.Vis_Feedback = Vis_Feedback;
 
             double min = double.PositiveInfinity;
             double octpower = 0;
-            foreach (int o in _octaves) if (Source.SoundPower[o] > octpower) { octpower = Source.SoundPower[o]; }
+            foreach (int o in _octaves) if (groupPower[o] > octpower) { octpower = groupPower[o]; }
 
-            foreach (int o in _octaves)
+            int convergenceBand = bandStart;
+            for (int band = bandStart; band <= bandEnd; band++)
             {
-                if (Source.SoundPower[o] < octpower * 1E-6) continue;
-                if (min > totalAbs[o])
+                if (selectedPower[band] < octpower * 1E-6) continue;
+                if (min > totalAbs[band])
                 {
-                    min = totalAbs[o];
-                    h_oct = o;
+                    min = totalAbs[band];
+                    convergenceBand = band;
                 }
             }
+            h_oct = convergenceBand / bandsPerOctave;
 
             if (Raycount < 1)
             {
@@ -170,8 +179,8 @@ namespace Pachyderm_Acoustic
                         }
                     }
                 }
-                check = (rayCountIn < 0) ? new Convergence_Check[2] { T_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, T_id, h_oct, 0, Vis_Feedback), F_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, F_id, h_oct, 1, Vis_Feedback) }
-                : new Convergence_Check[2] { T_id < 0 ? null : new SpecMin_Convergence_Check(this.Source, this.Room, receiverIn, T_id, h_oct, 0, Vis_Feedback), F_id < 0 ? null : new SpecMin_Convergence_Check(this.Source, this.Room, receiverIn, F_id, h_oct, 1, Vis_Feedback) };
+                check = (rayCountIn < 0) ? new Convergence_Check[2] { T_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, T_id, convergenceBand, 0, Vis_Feedback), F_id < 0 ? null : new Minimum_Convergence_Check(this.Source, this.Room, receiverIn, F_id, convergenceBand, 1, Vis_Feedback) }
+                : new Convergence_Check[2] { T_id < 0 ? null : new SpecMin_Convergence_Check(this.Source, this.Room, receiverIn, T_id, convergenceBand, 0, Vis_Feedback), F_id < 0 ? null : new SpecMin_Convergence_Check(this.Source, this.Room, receiverIn, F_id, convergenceBand, 1, Vis_Feedback) };
             }
             else check = null;
         }
@@ -208,6 +217,7 @@ namespace Pachyderm_Acoustic
         /// </summary>
         public override void Begin()
         {
+            conclude = false;
             _st = DateTime.Now;
             Random Rnd = new Random((int)DateTime.Now.ToFileTimeUtc());
             _processorCt = System.Environment.ProcessorCount;
@@ -221,14 +231,13 @@ namespace Pachyderm_Acoustic
                     if (P_I == _processorCt - 1) end = Raycount;
                     else end = (int)Math.Floor((double)(P_I + 1) * Raycount / _processorCt);
                     Calc_Params T = new Calc_Params(Room, start, end, P_I, Rnd.Next());
-                    ValueTask t = new ValueTask(Task.Run(() => Calculate(T)));
+                    ValueTask t = new ValueTask(Task.Run(async () => await Calculate(T)));
                     MainRays.Add(t);
                 }
 
                 Task.Run(async () => 
                 {   
-                    while (_currentRay[0] < Raycount) { await Task.Delay(1500); }
-                    for (int i = 0; i < MainRays.Count; i++) if (MainRays[i].IsCompletedSuccessfully);
+                    for (int i = 0; i < MainRays.Count; i++) await MainRays[i];
                     conclude = true;
                     _ts = DateTime.Now - _st;
                 });
@@ -346,13 +355,15 @@ namespace Pachyderm_Acoustic
             BroadRay R;
 
             R = Source.Directions(ThreadID, ref Rnd, _octaves);
+            // Mask spectral components while retaining their absolute indices and geometric octave groups.
+            for (int band = 0; band < R.Energy.Length; band++) if (band < bandStart || band > bandEnd) R.Energy[band] = 0;
 
-            lock (initlock) { for (int j = 0; j < 8; j++) _eInit += R.Energy[j]; }
-            Threshold_Power_1 = R.Energy[h_oct] * 1E-2; //1E-3
+            lock (initlock) { for (int j = 0; j < R.Energy.Length; j++) _eInit += R.Energy[j]; }
+            Threshold_Power_1 = R.OctaveEnergy(h_oct) * 1E-2; //1E-3
             foreach (int o in _octaves)
             {
-                Threshold_Power_2[o] = R.Energy[o] * thr2_template;//Cease splitting at 45 dB down.
-                Threshold_Power_3[o] = R.Energy[o] * 1E-9;//-10;//Finish 3 digits (more than generous) under 60 dB of decay.
+                Threshold_Power_2[o] = R.OctaveEnergy(o) * thr2_template;//Cease splitting at 45 dB down.
+                Threshold_Power_3[o] = R.OctaveEnergy(o) * 1E-9;//-10;//Finish 3 digits (more than generous) under 60 dB of decay.
             }
             R.Decimation = Threshold_Power_3;
             int order = 0;
@@ -369,7 +380,7 @@ namespace Pachyderm_Acoustic
                         RecMain.CheckBroadbandRay(R, new Point(R.x + R.dx * 1000000, R.y + R.dy * 1000000, R.z + R.dz * 1000000));
                     lock (lostlock)
                     {
-                        for (int j = 0; j < 8; j++) _lost += R.Energy[j];
+                        for (int j = 0; j < R.Energy.Length; j++) _lost += R.Energy[j];
                     }
                     BroadRayPool.Instance.release();
                     goto Do_Scattered;
@@ -380,14 +391,6 @@ namespace Pachyderm_Acoustic
                     //Specular ray order exceeds order of image source calculation. Start logging specular part.
                     RecMain.CheckBroadbandRay(R, Start[0]);
                 }
-                //R.Energy[0] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[0] * leg[0]);
-                //R.Energy[1] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[1] * leg[0]);
-                //R.Energy[2] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[2] * leg[0]);
-                //R.Energy[3] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[3] * leg[0]);
-                //R.Energy[4] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[4] * leg[0]);
-                //R.Energy[5] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[5] * leg[0]);
-                //R.Energy[6] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[6] * leg[0]);
-                //R.Energy[7] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[7] * leg[0]);
                 R.AddLeg(leg[0] / Room.Sound_speed(code[0]));
                 R.x = Start[0].x; R.y = Start[0].y; R.z = Start[0].z;
 
@@ -410,11 +413,11 @@ namespace Pachyderm_Acoustic
                 //    }
                 //}
                 //3. Apply Scattering
-                Room.Scatter_Early(ref R, ref Rays, ref Rnd, cos_theta, u, v, Room.TransmissionValue[R.Surf_ID]);
+                Room.Scatter_Early(ref R, ref Rays, ref Rnd, cos_theta, u, v, Room.TransmissionSpectrum(R.Surf_ID, R.ThirdOctave));
                 ///////////////////////////////////////////////////////////////
 
                 //Utilities.PachTools.Ray_Acoustics.SpecularReflection(ref R.direction, ref Room, ref _u[Params.ThreadID], ref _v[Params.ThreadID], ref R.Surf_ID);
-            } while (R.Energy[h_oct] > Threshold_Power_1);
+            } while (R.OctaveEnergy(h_oct) > Threshold_Power_1);
 
             foreach (int o in _octaves)
             {
@@ -444,7 +447,6 @@ namespace Pachyderm_Acoustic
 
                         RecMain.CheckRay(OR, Start[0]);
 
-                        //OR.Intensity *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[OR.Octave] * leg[0]);
                         OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
                         OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
 
@@ -468,7 +470,7 @@ namespace Pachyderm_Acoustic
                         //}
 
                         // 2,3. Apply Scattering & Transmission.
-                        Room.Scatter_Late(ref OR, ref Rays, ref Rnd, cos_theta, u, v, Rnd.NextDouble() < Room.TransmissionValue[OR.Surf_ID][OR.Octave]);
+                        Room.Scatter_Late(ref OR, ref Rays, ref Rnd, cos_theta, u, v, Rnd.NextDouble() < Room.TransmissionSpectrum(OR.Surf_ID, false)[OR.Octave]);
                     }
                     while (OR.t_sum < COTime && OR.Intensity > Threshold_Power_2[OR.Octave]);
 
@@ -507,7 +509,6 @@ namespace Pachyderm_Acoustic
                 }
 
                 RecMain.CheckRay(OR, Start[0]);
-                //OR.Intensity *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[OR.Octave] * leg[0]);
                 OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
                 OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
                                                                                                       
@@ -529,7 +530,7 @@ namespace Pachyderm_Acoustic
                 //}
 
                 // 2,3. Apply Scattering & Transmission.
-                Room.Scatter_Simple(ref OR, ref Rnd, cos_theta, u, v, Rnd.NextDouble() < Room.TransmissionValue[OR.Surf_ID][OR.Octave]);
+                Room.Scatter_Simple(ref OR, ref Rnd, cos_theta, u, v, Rnd.NextDouble() < Room.TransmissionSpectrum(OR.Surf_ID, false)[OR.Octave]);
             }
             while (OR.t_sum < COTime && OR.Intensity > OR.Decimation_threshold);
             OctaveRayPool.Instance.release(OR);
@@ -547,17 +548,20 @@ namespace Pachyderm_Acoustic
             BroadRay R;
 
             R = Source.Directions(ThreadID, ref Rnd, _octaves);
+            // Mask spectral components while retaining their absolute indices and geometric octave groups.
+            for (int band = 0; band < R.Energy.Length; band++) if (band < bandStart || band > bandEnd) R.Energy[band] = 0;
 
             lock (initlock)
             {
-                for (int j = 0; j < 8; j++) _eInit += R.Energy[j];
+                for (int j = 0; j < R.Energy.Length; j++) _eInit += R.Energy[j];
             }
-            Threshold_Power_1 = R.Energy[h_oct] * 1E-2; //1E-3
+            Threshold_Power_1 = R.OctaveEnergy(h_oct) * 1E-2; //1E-3
             foreach (int o in _octaves)
             {
-                Threshold_Power_2[o] = R.Energy[o] * Math.Pow(10, -4.5);//Cease splitting at 0.0001 sound intensity, or 40 dB down.
-                Threshold_Power_3[o] = R.Energy[o] * 1E-9;//Finish 4 digits (more than generous) under 60 dB of decay. Full double Precision would be 15 digits.
+                Threshold_Power_2[o] = R.OctaveEnergy(o) * Math.Pow(10, -4.5);//Cease splitting at 0.0001 sound intensity, or 40 dB down.
+                Threshold_Power_3[o] = R.OctaveEnergy(o) * 1E-9;//Finish 4 digits (more than generous) under 60 dB of decay. Full double Precision would be 15 digits.
             }
+            R.Decimation = Threshold_Power_3;
             int order = 0;
             double u = 0, v = 0;
             do
@@ -569,7 +573,7 @@ namespace Pachyderm_Acoustic
                     //Ray is lost... move on...
                     if (order > IS_Order)
                         RecMain.CheckBroadbandRay(R, new Point(R.x + R.dx * 1000000, R.y + R.dy * 1000000, R.z + R.dz * 1000000));
-                    lock (lostlock) { for (int j = 0; j < 8; j++) _lost += R.Energy[j]; }
+                    lock (lostlock) { for (int j = 0; j < R.Energy.Length; j++) _lost += R.Energy[j]; }
                     BroadRayPool.Instance.release();
                     goto Do_Scattered;
                 }
@@ -579,14 +583,6 @@ namespace Pachyderm_Acoustic
                     //Specular ray order exceeds order of image source calculation. Start logging specular part.
                     RecMain.CheckBroadbandRay(R, Start[0]);
                 }
-                R.Energy[0] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[0] * leg[0]);
-                R.Energy[1] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[1] * leg[0]);
-                R.Energy[2] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[2] * leg[0]);
-                R.Energy[3] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[3] * leg[0]);
-                R.Energy[4] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[4] * leg[0]);
-                R.Energy[5] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[5] * leg[0]);
-                R.Energy[6] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[6] * leg[0]);
-                R.Energy[7] *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[7] * leg[0]);
                 R.AddLeg(leg[0] / Room.Sound_speed(code[0]));
                 R.x = Start[0].x; R.y = Start[0].y; R.z = Start[0].z;
 
@@ -609,11 +605,11 @@ namespace Pachyderm_Acoustic
                 //    }
                 //}
                 //2, 3. Apply Scattering & Transmission
-                Room.Scatter_Early(ref R, ref Rays, ref Rnd, cos_theta, u, v, Room.TransmissionValue[R.Surf_ID]);
+                Room.Scatter_Early(ref R, ref Rays, ref Rnd, cos_theta, u, v, Room.TransmissionSpectrum(R.Surf_ID, R.ThirdOctave));
                 ///////////////////////////////////////////////////////////////
 
                 //Utilities.PachTools.Ray_Acoustics.SpecularReflection(ref R.direction, ref Room, ref _u[Params.ThreadID], ref _v[Params.ThreadID], ref R.Surf_ID);
-            } while (R.Energy[h_oct] > Threshold_Power_1);
+            } while (R.OctaveEnergy(h_oct) > Threshold_Power_1);
 
             foreach (int o in _octaves) Rays.Enqueue(R.SplitRay(o));//Split all rays into individual octaves.
             BroadRayPool.Instance.release();
@@ -638,7 +634,6 @@ namespace Pachyderm_Acoustic
 
                         RecMain.CheckRay(OR, Start[0]);
 
-                        OR.Intensity *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[OR.Octave] * leg[0]);
                         OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
                         OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
 
@@ -661,7 +656,7 @@ namespace Pachyderm_Acoustic
                         //}
 
                         // 2,3. Apply Scattering and transmission
-                        Room.Scatter_Late(ref OR, ref Rays, ref Rnd, cos_theta, u, v, Rnd.NextDouble() < Room.TransmissionValue[OR.Surf_ID][OR.Octave]);
+                        Room.Scatter_Late(ref OR, ref Rays, ref Rnd, cos_theta, u, v, Rnd.NextDouble() < Room.TransmissionSpectrum(OR.Surf_ID, false)[OR.Octave]);
                     }
                     while (OR.t_sum < COTime && OR.Intensity > Threshold_Power_2[OR.Octave]);
 
@@ -679,7 +674,6 @@ namespace Pachyderm_Acoustic
 
                         RecMain.CheckRay(OR, Start[0]);
                         //OctChecks.Enqueue(new object[] { OR.Clone(), new Hare.Geometry.Point(Start[0].x, Start[0].y, Start[0].z) });
-                        OR.Intensity *= Math.Pow(10, -.1 * Room.Attenuation(code[0])[OR.Octave] * leg[0]);
                         OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
                         OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
 
@@ -701,7 +695,7 @@ namespace Pachyderm_Acoustic
                         //}
 
                         // 2, 3. Apply Scattering & Transmission.
-                        Room.Scatter_Simple(ref OR, ref Rnd, cos_theta, u, v, Rnd.NextDouble() < Room.TransmissionValue[OR.Surf_ID][OR.Octave]);
+                        Room.Scatter_Simple(ref OR, ref Rnd, cos_theta, u, v, Rnd.NextDouble() < Room.TransmissionSpectrum(OR.Surf_ID, false)[OR.Octave]);
                     }
                     while (OR.t_sum < COTime && OR.Intensity > Threshold_Power_3[OR.Octave]);
                     OctaveRayPool.Instance.release(OR);

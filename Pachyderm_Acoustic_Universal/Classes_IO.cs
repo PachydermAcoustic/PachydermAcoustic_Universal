@@ -61,6 +61,14 @@ namespace Pachyderm_Acoustic
                     throw new Exception("There is no simulated data to save.");
                 }
 
+                if (Direct_Data == null || Direct_Data.Length == 0 || Receiver == null || Receiver.Length != Direct_Data.Length)
+                    throw new ArgumentException("Direct sound and receiver banks are required for each source.");
+                bool thirdOctave = Direct_Data[0].ThirdOctave;
+                for (int source = 0; source < Direct_Data.Length; source++)
+                    if (Direct_Data[source].ThirdOctave != thirdOctave || Receiver[source].Third_Oct != thirdOctave ||
+                        (IS_Data != null && IS_Data[source] != null && IS_Data[source].ThirdOctave != thirdOctave))
+                        throw new ArgumentException("All simulation data must use the same frequency resolution.");
+
                 int maxAttempts = 3;
                 int currentAttempt = 0;
                 bool success = false;
@@ -75,12 +83,12 @@ namespace Pachyderm_Acoustic
                         //1. Date & Time
                         sw.Write(System.DateTime.Now.ToString());
                         //2. Library Version... if less than 1.1, assume only 1 source.
-                        sw.Write(PachTools.Version());
+                        sw.Write("2.7.0.0");
                         //3. Cut off Time (seconds) and SampleRate
                         sw.Write((double)Receiver[0].CO_Time);
                         sw.Write(Receiver[0].SampleRate);
                         //3.1 Third Octave? (version >= 2.7) true for 1/3 octave, false for octave band.
-                        if (double.Parse(PachTools.Version().Substring(0, 2)) >= 2.7) sw.Write(Direct_Data[0].Io[0].Length > 8);
+                        sw.Write(Direct_Data[0].ThirdOctave);
                         //4.0 Source Count(int)
                         Hare.Geometry.Point[] SRC = new Hare.Geometry.Point[Direct_Data.Length];
                         for (int i = 0; i < Direct_Data.Length; i++) SRC[i] = Direct_Data[i].Src_Origin;
@@ -185,11 +193,11 @@ namespace Pachyderm_Acoustic
                     double CO_TIME = sr.ReadDouble();
                     int SampleRate = sr.ReadInt32();
                     //3.1 Third Octave? (version >= 2.7) true for 1/3 octave, false for octave band.
-                    bool Third_Octave = double.Parse(Pach_version.Substring(0, 3)) >= 2.7 ? sr.ReadBoolean() : false;
+                    bool Third_Octave = double.Parse(Pach_version.Substring(0, 3), System.Globalization.CultureInfo.InvariantCulture) >= 2.7 ? sr.ReadBoolean() : false;
                     //4. Source Count          
                     int SrcCt = 1;
                     string vers_shallow = Pach_version.Substring(0, 3);
-                    if (double.Parse(vers_shallow) >= 1.1) SrcCt = sr.ReadInt32();
+                    if (double.Parse(vers_shallow, System.Globalization.CultureInfo.InvariantCulture) >= 1.1) SrcCt = sr.ReadInt32();
                     //4.1 Source Location x                   
                     //4.2 Source Location y
                     //4.3 Source Location z
@@ -204,7 +212,7 @@ namespace Pachyderm_Acoustic
                     for (int q = 0; q < Rec_Ct; q++)
                     {
                         Recs[q] = new Hare.Geometry.Point(sr.ReadDouble(), sr.ReadDouble(), sr.ReadDouble());
-                        if (double.Parse(Pach_version.Substring(0, 3)) >= 2.0) Rho_C[q] = sr.ReadDouble();
+                        if (double.Parse(Pach_version.Substring(0, 3), System.Globalization.CultureInfo.InvariantCulture) >= 2.0) Rho_C[q] = sr.ReadDouble();
                         else Rho_C[q] = 400;
                     }
 
@@ -223,7 +231,7 @@ namespace Pachyderm_Acoustic
                             case "Direct_Sound":
                             case "Direct_Sound w sourcedata":
                                 //9. Read Direct Sound Data
-                                Direct_Data[DDCT] = Direct_Sound.Read_Data(ref sr, Recs, SrcPt[DDCT], Rho_C, Third_Octave, Pach_version);
+                                Direct_Data[DDCT] = Direct_Sound.Read_Data(ref sr, Recs, SrcPt[DDCT], Rho_C, Third_Octave, Pach_version, (int)SampleRate);
                                 Direct_Data[DDCT].CO_Time = CO_TIME;
                                 Direct_Data[DDCT].SampleFreq = (int)SampleRate;
                                 DDCT++;
@@ -250,6 +258,7 @@ namespace Pachyderm_Acoustic
                 catch (System.Exception X)
                 {
                     sr.Close();
+                    if (Eto.Forms.Application.Instance == null) throw;
                     Eto.Forms.MessageBox.Show("File Read Failed...", String.Format("Results file was corrupt or incomplete. We apologize for this inconvenience. Please report this to the software author. It will be much appreciated. \r\n Exception Message: {0}. \r\n Method: {1}", X.Message, X.TargetSite));
                     return false;
                 }
@@ -262,6 +271,10 @@ namespace Pachyderm_Acoustic
             /// <param name="Rec_List">The list of receivers to be written.</param>
             public static void Write_pachm(string filename, PachMapReceiver[] Rec_List)
             {
+                if (Rec_List == null || Rec_List.Length == 0) throw new ArgumentException("A receiver map is required.");
+                foreach (PachMapReceiver map in Rec_List)
+                    if (map.Third_Oct != Rec_List[0].Third_Oct || map.SWL.Length != (map.Third_Oct ? 24 : 8) || map.SampleRate != Rec_List[0].SampleRate || map.SampleCT != Rec_List[0].SampleCT || map.Directional != Rec_List[0].Directional)
+                        throw new ArgumentException("Mapped receiver results must have matching band resolution, sample rate, duration and directional settings.");
                 int maxAttempts = 3;
                 int currentAttempt = 0;
                 bool success = false;
@@ -285,7 +298,8 @@ namespace Pachyderm_Acoustic
                         sw.Write((UInt32)Rec_Ct);
                         //4.5 Announce the Version
                         sw.Write("Version");
-                        sw.Write(PachTools.Version());
+                        sw.Write("2.7.0.0");
+                        sw.Write(Rec_List[0].Third_Oct);
                         //5. Announce that the following data pertains to the form of the analysis mesh. (string)
                         sw.Write("Mesh Information");
                         //6. Announce Mesh Vertices (string)
@@ -324,7 +338,8 @@ namespace Pachyderm_Acoustic
                             sw.Write(Rec_List[i].Src.z);
                             ///////////////////////
                             sw.Write(Rec_List[i].SrcType);
-                            sw.Write(Rec_List[i].delay_ms);//v.2.0.0.1
+                            sw.Write(Rec_List[i].delay_ms);
+                            foreach (double level in Rec_List[i].SWL) sw.Write(level);//v.2.0.0.1
                         }
 
                         //8. Announce that the following data pertains to the receiver histograms (string)
@@ -343,7 +358,7 @@ namespace Pachyderm_Acoustic
                                 //Write Impedance of Air
                                 sw.Write(Rec_List[0].Rec_List[i].Rho_C);
 
-                                for (int Octave = 0; Octave < 8; Octave++)
+                                for (int Octave = 0; Octave < (Rec_List[s].Third_Oct ? 24 : 8); Octave++)
                                 {
                                     //Write Octave (int)
                                     sw.Write((UInt32)Octave);
@@ -433,6 +448,7 @@ namespace Pachyderm_Acoustic
                 //4. Write the number of Receivers (int)
                 int Rec_CT = (int)sr.ReadUInt32();
                 //4.5 Write the version number
+                bool thirdOctave = false;
                 double version = 1.1;
                 double rev = 0;
                 //5. Announce that the following data pertains to the form of the analysis mesh. (string)
@@ -451,7 +467,8 @@ namespace Pachyderm_Acoustic
                         case "Version":
                             //Pach1.7 = Versioning functionality added.
                             string v = sr.ReadString();
-                            version = double.Parse(v.Substring(0, 3));
+                            version = double.Parse(v.Substring(0, 3), System.Globalization.CultureInfo.InvariantCulture);
+                            if (version >= 2.7) thirdOctave = sr.ReadBoolean();
                             rev = int.Parse(v.Split(new char[1] { '.' })[3]);
                             break;
                         case "Mesh Information":
@@ -496,7 +513,12 @@ namespace Pachyderm_Acoustic
                             for (int s = 0; s < s_ct; s++)
                             {
                                 Map[s] = new PachMapReceiver();
-                                Map[s].CutOffTime = (double)SampleCT / (double)SampleRate;
+                                Map[s].Third_Oct = thirdOctave;
+                                Map[s].Directional = Directional;
+                                Map[s].Time1Pt = SampleCT == 1;
+                                Map[s].Oct_choice = Enumerable.Range(0, thirdOctave ? 24 : 8).ToArray();
+                                Map[s].SWL = Enumerable.Repeat(120.0, thirdOctave ? 24 : 8).ToArray();
+                                Map[s].CutOffTime = (double)SampleCT / (double)SampleRate * 1000;
                                 Map[s].SampleCT = SampleCT;
                                 Map[s].SampleRate = SampleRate;
                                 Map[s].Map_Mesh = Map_Mesh;
@@ -506,6 +528,8 @@ namespace Pachyderm_Acoustic
                                 if (version > 2.0 || (version == 2.0 && rev >= 1))
                                 {
                                     delay[s] = sr.ReadDouble();
+                                    Map[s].delay_ms = delay[s];
+                                    if (version >= 2.7) for (int band = 0; band < Map[s].SWL.Length; band++) Map[s].SWL[band] = sr.ReadDouble();
                                 }
                             }
                             break;
@@ -519,6 +543,11 @@ namespace Pachyderm_Acoustic
                             for (int s = 0; s < s_ct; s++)
                             {
                                 Map[s] = new PachMapReceiver();
+                                Map[s].Third_Oct = thirdOctave;
+                                Map[s].Directional = Directional;
+                                Map[s].Time1Pt = SampleCT == 1;
+                                Map[s].Oct_choice = Enumerable.Range(0, thirdOctave ? 24 : 8).ToArray();
+                                Map[s].SWL = Enumerable.Repeat(120.0, thirdOctave ? 24 : 8).ToArray();
                                 Map[s].CutOffTime = (double)SampleCT / (double)SampleRate * 1000;
                                 Map[s].SampleCT = SampleCT;
                                 Map[s].SampleRate = SampleRate;
@@ -530,6 +559,8 @@ namespace Pachyderm_Acoustic
                                 if (version > 2.0 || (version == 2.0 && rev >= 1))
                                 {
                                     delay[s] = sr.ReadDouble();
+                                    Map[s].delay_ms = delay[s];
+                                    if (version >= 2.7) for (int band = 0; band < Map[s].SWL.Length; band++) Map[s].SWL[band] = sr.ReadDouble();
                                 }
                             }
                             break;
@@ -565,7 +596,7 @@ namespace Pachyderm_Acoustic
 
                                     if (vert_Receiver)
                                     {
-                                        Map[s].Rec_List[i] = new PachMapReceiver.Map_Receiver(Map_Mesh[i], Map[s].Src, Direct_Time, Rho_C, i, SampleRate, SampleCT, Directional);
+                                        Map[s].Rec_List[i] = new PachMapReceiver.Map_Receiver(Map_Mesh[i], Map[s].Src, Direct_Time, Rho_C, i, SampleRate, SampleCT, Directional, thirdOctave);
                                     }
                                     else
                                     {
@@ -576,10 +607,28 @@ namespace Pachyderm_Acoustic
                                             RecLoc /= 4;
                                         }
                                         else RecLoc /= 3;
-                                        Map[s].Rec_List[i] = new PachMapReceiver.Map_Receiver(RecLoc, Map[s].Src, Direct_Time, Rho_C, i, SampleRate, SampleCT, Directional);
+                                        Map[s].Rec_List[i] = new PachMapReceiver.Map_Receiver(RecLoc, Map[s].Src, Direct_Time, Rho_C, i, SampleRate, SampleCT, Directional, thirdOctave);
                                     }
 
-                                    for (int Octave = 0; Octave < 8; Octave++)
+                                    bool directionsDouble = version >= 2.7;
+                                    // Some 2.5/2.6 writers emitted doubles while their readers expected floats.
+                                    // Recognize the record terminator at the double-width boundary without changing older float files.
+                                    if (Directional && version >= 2.5 && version < 2.7)
+                                    {
+                                        long bandStart = sr.BaseStream.Position;
+                                        long doubleEnd = bandStart + 8L * (4 + SampleCT * 64L);
+                                        if (doubleEnd < sr.BaseStream.Length)
+                                        {
+                                            try
+                                            {
+                                                sr.BaseStream.Position = doubleEnd;
+                                                directionsDouble = sr.ReadString() == "End_Receiver_Hits";
+                                            }
+                                            catch (System.IO.IOException) { }
+                                            finally { sr.BaseStream.Position = bandStart; }
+                                        }
+                                    }
+                                    for (int Octave = 0; Octave < (thirdOctave ? 24 : 8); Octave++)
                                     {
                                         //Write Octave (int)
                                         int Oct_out = (int)sr.ReadUInt32();
@@ -590,12 +639,12 @@ namespace Pachyderm_Acoustic
                                             if (version < 2.5)
                                             {
                                                 for (int e = 0; e < SampleCT; e++)
-                                                    Map[s].Rec_List[i].Combine_Sample(e, sr.ReadDouble(), 0, new Hare.Geometry.Vector(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()), new Hare.Geometry.Vector(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()), Octave);
+                                                    Map[s].Rec_List[i].Combine_Sample(e, sr.ReadDouble(), 0, new Hare.Geometry.Vector(directionsDouble ? sr.ReadDouble() : sr.ReadSingle(), directionsDouble ? sr.ReadDouble() : sr.ReadSingle(), directionsDouble ? sr.ReadDouble() : sr.ReadSingle()), new Hare.Geometry.Vector(directionsDouble ? sr.ReadDouble() : sr.ReadSingle(), directionsDouble ? sr.ReadDouble() : sr.ReadSingle(), directionsDouble ? sr.ReadDouble() : sr.ReadSingle()), Octave);
                                             }
                                             else
                                             {
                                                 for (int e = 0; e < SampleCT; e++)
-                                                    Map[s].Rec_List[i].Combine_Sample(e, sr.ReadDouble(), sr.ReadDouble(), new Hare.Geometry.Vector(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()), new Hare.Geometry.Vector(sr.ReadSingle(), sr.ReadSingle(), sr.ReadSingle()), Octave);
+                                                    Map[s].Rec_List[i].Combine_Sample(e, sr.ReadDouble(), sr.ReadDouble(), new Hare.Geometry.Vector(directionsDouble ? sr.ReadDouble() : sr.ReadSingle(), directionsDouble ? sr.ReadDouble() : sr.ReadSingle(), directionsDouble ? sr.ReadDouble() : sr.ReadSingle()), new Hare.Geometry.Vector(directionsDouble ? sr.ReadDouble() : sr.ReadSingle(), directionsDouble ? sr.ReadDouble() : sr.ReadSingle(), directionsDouble ? sr.ReadDouble() : sr.ReadSingle()), Octave);
                                             }
                                         }
                                         else

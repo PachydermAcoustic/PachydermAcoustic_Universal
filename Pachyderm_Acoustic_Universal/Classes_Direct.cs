@@ -30,6 +30,13 @@ namespace Pachyderm_Acoustic
     /// </summary>
     public class Direct_Sound:Simulation_Type
     {
+        public int BandCount { get { return SWL == null ? 8 : SWL.Length; } }
+        public bool ThirdOctave { get { return BandCount == 24; } }
+        public double[] OctaveSWL
+        {
+            get { return AcousticalMath.ConvertBandEnergy(SWL.Select(level => Math.Pow(10, level / 10) * 1E-12).ToArray(), false).Select(power => 10 * Math.Log10(power / 1E-12)).ToArray(); }
+        }
+
         public Source Src;
         private List<Hare.Geometry.Point> Receiver;
         public double CO_Time;
@@ -87,17 +94,10 @@ namespace Pachyderm_Acoustic
                 for (int time = 0; time < Io[q][0].Length; time++)
                 {
                     //5. Write all Energy data
-                    BW.Write(Io[q][0][time]);
-                    BW.Write(Io[q][1][time]);
-                    BW.Write(Io[q][2][time]);
-                    BW.Write(Io[q][3][time]);
-                    BW.Write(Io[q][4][time]);
-                    BW.Write(Io[q][5][time]);
-                    BW.Write(Io[q][6][time]);
-                    BW.Write(Io[q][7][time]);
+                    for (int band = 0; band < BandCount; band++) BW.Write(Io[q][band][time]);
 
                     //5c. Write all directional data
-                    for (int oct = 0; oct < 8; oct++) for (int dir = 0; dir < 3; dir++)
+                    for (int oct = 0; oct < BandCount; oct++) for (int dir = 0; dir < 3; dir++)
                         {
                             BW.Write(Dir_Rec_Pos[q][oct, time, dir]);
                             BW.Write(Dir_Rec_Neg[q][oct, time, dir]);
@@ -114,20 +114,26 @@ namespace Pachyderm_Acoustic
         /// <returns>The completed direct sound simulation type.</returns>
         public static Direct_Sound Read_Data(ref System.IO.BinaryReader BR, IEnumerable<Hare.Geometry.Point> RecPts, Hare.Geometry.Point SrcPt, double[] Rho_C, bool Third_Oct, string Version)
         {
+            return Read_Data(ref BR, RecPts, SrcPt, Rho_C, Third_Oct, Version, 44100);
+        }
+
+        public static Direct_Sound Read_Data(ref System.IO.BinaryReader BR, IEnumerable<Hare.Geometry.Point> RecPts, Hare.Geometry.Point SrcPt, double[] Rho_C, bool Third_Oct, string Version, int sampleFrequency)
+        {
             Direct_Sound D = new Direct_Sound();
+            D.SampleFreq = sampleFrequency;
             int no_of_bands = Third_Oct ? 24 : 8;
             D.Receiver = RecPts.ToList<Hare.Geometry.Point>(); //new Receiver_Bank(RecPts, SrcPt, 343, new double[] { 0, 0, 0, 0, 0, 0, 0, 0 }, 0, 1000, 0, Receiver_Bank.Type.Stationary);
             int Rec_Ct = D.Receiver.Count;//RecPts.Count<Rhino.Geometry.Point3d>();
             D.Rho_C = Rho_C;
             //2. Write strength reference data
             //Pre 2.0, 8 doubles.
-            if (double.Parse(Version.Substring(0, 3)) < 2.0)
+            if (double.Parse(Version.Substring(0, 3), System.Globalization.CultureInfo.InvariantCulture) < 2.0)
             {
                 for(int i = 0; i < 8; i++) BR.ReadDouble();
             }
             ////Duration_ms = 1;
             //TODO Add version 1.5 and greater Source direction. (oops)
-            if (double.Parse(Version.Substring(0, 3)) >= 1.1)
+            if (double.Parse(Version.Substring(0, 3), System.Globalization.CultureInfo.InvariantCulture) >= 1.1)
             {
                 //2.1 Write source data - type and SWL
                 string[] typestring = BR.ReadString().Split(':'); //string
@@ -137,12 +143,12 @@ namespace Pachyderm_Acoustic
                     //2.2 Write number of samples
                     ////Duration_ms = BR.ReadInt32();
                 //}
-                D.SWL = new double[8];
+                D.SWL = new double[no_of_bands];
                 for (int o = 0; o < no_of_bands; o++)
                 {
                     D.SWL[o] = BR.ReadDouble(); //double
                 }
-                if (double.Parse(Version.Substring(0, 3)) >= 2.0)
+                if (double.Parse(Version.Substring(0, 3), System.Globalization.CultureInfo.InvariantCulture) >= 2.0)
                 {
                     D.Delay_ms = BR.ReadDouble();
                 }
@@ -165,7 +171,7 @@ namespace Pachyderm_Acoustic
             D.Dir_Rec_Pos = new float[RecPts.Count<Hare.Geometry.Point>()][,,];
             D.Dir_Rec_Neg = new float[RecPts.Count<Hare.Geometry.Point>()][,,];
 
-            double v = double.Parse(Version.Substring(0, 3));
+            double v = double.Parse(Version.Substring(0, 3), System.Globalization.CultureInfo.InvariantCulture);
 
 
             for (int q = 0; q < RecPts.Count<Hare.Geometry.Point>(); q++)
@@ -177,7 +183,7 @@ namespace Pachyderm_Acoustic
                 D.Validity[q] = BR.ReadBoolean();
                 //4. Write the Time point
                 D.Time_Pt[q] = BR.ReadDouble();
-                D.Io[q] = new double[9][];
+                D.Io[q] = new double[no_of_bands + 1][];
                 D.Dir_Rec_Pos[q] = new float[no_of_bands, no_of_samples, 3];
                 D.Dir_Rec_Neg[q] = new float[no_of_bands, no_of_samples, 3];
 
@@ -194,7 +200,7 @@ namespace Pachyderm_Acoustic
                     for (int i = 0; i < no_of_bands; i++)
                     {
                         D.Io[q][i][s] = BR.ReadDouble();
-                        D.Io[q][no_of_bands][s] = D.Io[q][i][s];
+                        D.Io[q][no_of_bands][s] += D.Io[q][i][s];
                     }
 
                     if (v == 1.7)
@@ -205,7 +211,7 @@ namespace Pachyderm_Acoustic
                         for(int i = 0; i < 16; i++) BR.ReadSingle();    
                     }
                     //5c. Write all directional data
-                    for (int oct = 0; oct < 8; oct++) for (int dir = 0; dir < 3; dir++)
+                    for (int oct = 0; oct < no_of_bands; oct++) for (int dir = 0; dir < 3; dir++)
                         {
                             D.Dir_Rec_Pos[q][oct,s,dir] = BR.ReadSingle();
                             D.Dir_Rec_Neg[q][oct,s,dir] = BR.ReadSingle();
@@ -228,7 +234,7 @@ namespace Pachyderm_Acoustic
         /// <param name="Src_in">The sound source</param>
         /// <param name="Rec_in">The collection of receivers</param>
         /// <param name="Room_in">The acoustical scene to render</param>
-        /// <param name="RayCount">The number of rays which will be used </param>
+        /// <param name="Octaves">Spectral band indices: 0-7 for octave, 0-23 for third octave.</param>
         public Direct_Sound(Source Src_in, Receiver_Bank Rec_in, Scene Room_in, int[] Octaves, bool ScreenCalc = false, bool SPL_Only = false)
         {
             this.SPL_Only = SPL_Only;
@@ -242,7 +248,7 @@ namespace Pachyderm_Acoustic
             Room = Room_in;
             C_Sound = Room_in.Sound_speed(0);
             SampleFreq = Rec_in.SampleRate;
-            Src = Src_in;
+            Src = Src_in.ForBandResolution(Rec_in.Third_Oct);
             this.CO_Time = Rec_in.CO_Time;
             Receiver = new List<Point>();
             Rho_C = new double[Rec_in.Count];
@@ -254,8 +260,10 @@ namespace Pachyderm_Acoustic
                 Rho_C[i] = Room.Rho_C(Rec_in.Origin(i));
                 Receiver.Add(Rec_in.Origin(i));
             }
-            SWL = new double[8] { Src_in.SWL(0), Src_in.SWL(1), Src_in.SWL(2), Src_in.SWL(3), Src_in.SWL(4), Src_in.SWL(5), Src_in.SWL(6), Src_in.SWL(7) };
-            Oct_choice = Octaves;
+            SWL = Src.SWL();
+            if (Octaves == null || Octaves.Length == 0 || Octaves.Any(band => band < 0 || band >= BandCount))
+                throw new ArgumentOutOfRangeException(nameof(Octaves), "Select spectral band indices from 0 through " + (BandCount - 1) + ".");
+            Oct_choice = Octaves.Distinct().ToArray();
         }
 
         /// <summary>
@@ -302,7 +310,7 @@ namespace Pachyderm_Acoustic
             List<double> Deygout_z = new List<double>();
             List<double[]> Deygout_trans = new List<double[]>();
 
-            double[] f = new double[8] { 62.5, 125, 250, 500, 1000, 2000, 4000, 8000 };
+            double[] f = (ThirdOctave ? AcousticalMath.ThirdOctaveCenters() : AcousticalMath.OctaveCenters());
             double d_length = (SrcPt - Receiver[rec_id]).Length();
 
             object LOCKED = new object();
@@ -321,12 +329,12 @@ namespace Pachyderm_Acoustic
 
                 //Omit edges that are not part of an opaque member
                 bool omit = true;
-                double[] trans = new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
+                double[] trans = new double[BandCount];
                 for (int i = 0; i < (Room as Polygon_Scene).Raw_Edge[edge].Polys.Count; i++)
                 {
                     bool istran = Room.IsTransmissive[(Room as Polygon_Scene).Raw_Edge[edge].Polys[i].Poly_ID];
                     omit &= istran;
-                    double[] newtrans = (Room as Polygon_Scene).TransmissionValue[(Room as Polygon_Scene).Raw_Edge[edge].Polys[i].Poly_ID];
+                    double[] newtrans = (Room as Polygon_Scene).TransmissionSpectrum((Room as Polygon_Scene).Raw_Edge[edge].Polys[i].Poly_ID, ThirdOctave);
                     if (istran && newtrans[0] > trans[0]) trans = newtrans;
                 }
                 if (omit) return;
@@ -350,7 +358,7 @@ namespace Pachyderm_Acoustic
                                 // Edge point is unoccluded. Register as a reflection.
                                 lock (LOCKED)
                                 {
-                                    D_TransMod.Add(new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 });
+                                    D_TransMod.Add(Enumerable.Repeat(1.0, BandCount).ToArray());
                                     d_ex.Add((SrcPt - pt).Length() + (Receiver[rec_id] - pt).Length());
                                     Paths.Add(new Point[3] { SrcPt, pt, Receiver[rec_id] });
                                 }
@@ -379,7 +387,7 @@ namespace Pachyderm_Acoustic
                 }
             });
 
-            double[] ScreenAtten = new double[8];
+            double[] ScreenAtten = new double[BandCount];
 
             if (Paths.Count == 0)
             {
@@ -466,7 +474,7 @@ namespace Pachyderm_Acoustic
 
                     Start.Enqueue(cpath[indexMax]);
                     double slopecompare = cz[indexMax] / ct[indexMax];
-                    if (ctr[indexMax][0] > 0) for (int oct = 0; oct < 8; oct++) TransMod[oct] *= ctr[indexMax][oct];
+                    if (ctr[indexMax][0] > 0) for (int oct = 0; oct < BandCount; oct++) TransMod[oct] *= ctr[indexMax][oct];
 
                     //Find the upward slope of the drape...
                     for (int id = indexMax-1; id >-1; id--)
@@ -474,7 +482,7 @@ namespace Pachyderm_Acoustic
                         double newslope = cz[id] / ct[id];
                         if (newslope > slopecompare)
                         {
-                            if (ctr[id][0] > 0) for (int oct = 0; oct < 8; oct++) TransMod[oct] *= ctr[id][oct];
+                            if (ctr[id][0] > 0) for (int oct = 0; oct < BandCount; oct++) TransMod[oct] *= ctr[id][oct];
                             Start.Enqueue(cpath[id]);
                             slopecompare = newslope;
                         }
@@ -487,7 +495,7 @@ namespace Pachyderm_Acoustic
                         double newslope = (cz[id]) / (ct[id] - ct[indexMax]);
                         if (newslope > slopecompare)
                         {
-                            if (ctr[id][0] > 0) for (int oct = 0; oct < 8; oct++) TransMod[oct] *= ctr[id][oct];
+                            if (ctr[id][0] > 0) for (int oct = 0; oct < BandCount; oct++) TransMod[oct] *= ctr[id][oct];
                             End.Push(cpath[id]);
                             slopecompare = newslope;
                             ref_id = id;
@@ -516,9 +524,10 @@ namespace Pachyderm_Acoustic
             path = Paths[minid];
             //double sigma2pi_170 = 2 * Math.PI * (d_exmin - d_length) / 170.0;
             double Nf = Math.Sqrt(2 * Math.PI * 31.5 * 2 * (d_exmin - d_length) / C_Sound);
-            for (int oct = 0; oct < 8; oct++)
+            for (int oct = 0; oct < BandCount; oct++)
             {
-                Nf *= Math.Sqrt(2);
+                if (ThirdOctave) Nf = Math.Sqrt(2 * Math.PI * f[oct] * 2 * (d_exmin - d_length) / C_Sound);
+                else Nf *= Math.Sqrt(2);
                 //ScreenAtten[oct] = 1.0 / (sigma2pi_170 * f[oct] * 3.162278 / Math.Pow(Math.Tanh(Math.Sqrt(sigma2pi_170 * f[oct])), 2));
                 //kurze anderson Screen Attenuation
                 ScreenAtten[oct] = 1.0 / (Nf * 3.162278 / Math.Tanh(Nf)) * D_TransMod[minid][oct];
@@ -656,12 +665,12 @@ namespace Pachyderm_Acoustic
             Vector d = Receiver[rec_id] - SrcOrigin;
             double dist = d.Length();
             d.Normalize();
-            Ray R = new Ray(Src.Origin, d, 0, rnd);
+            Ray R = new Ray(SrcOrigin, d, 0, rnd);
             double x1 = 0, x2 = 0;
             double t;
             int x3 = 0;
             Point x4;
-            TransMod = new double[8] {1,1,1,1,1,1,1,1};
+            TransMod = Enumerable.Repeat(1.0, BandCount).ToArray();
             while (true)
             {
                 if (Room.shoot(R, out x1, out x2, out x3, out x4, out t))
@@ -669,7 +678,7 @@ namespace Pachyderm_Acoustic
                     Validity[rec_id] = (t >= dist);
                     if (!Validity[rec_id] && Room.IsTransmissive[x3]) 
                     {
-                        for(int oct = 0; oct < 8; oct++) TransMod[oct] *= Room.TransmissionValue[x3][oct];
+                        for(int oct = 0; oct < BandCount; oct++) TransMod[oct] *= Room.TransmissionSpectrum(x3, ThirdOctave)[oct];
                         R.x = x4.x;
                         R.y = x4.y;
                         R.z = x4.z;
@@ -690,7 +699,7 @@ namespace Pachyderm_Acoustic
         /// </summary>
         public void Calculate()
         {
-            if (Src.Type() == "Surface Sound")
+            if (Src is SurfaceSource)
             {
                 Surface_Calculation();
             }
@@ -749,11 +758,11 @@ namespace Pachyderm_Acoustic
                     Time_Pt[i] = min_dist_all / C_Sound + Delay_ms;
                     int samples = SPL_Only ? 1 : Math.Max((int)Math.Ceiling((max_dist_all - min_dist_all) * SampleFreq / C_Sound) + 100, 1);
 
-                    Io[i] = new double[8][];
-                    Dir_Rec_Pos[i] = new float[8, samples, 3];
-                    Dir_Rec_Neg[i] = new float[8, samples, 3];
+                    Io[i] = new double[BandCount][];
+                    Dir_Rec_Pos[i] = new float[BandCount, samples, 3];
+                    Dir_Rec_Neg[i] = new float[BandCount, samples, 3];
 
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < BandCount; oct++)
                     {
                         Io[i][oct] = new double[samples];
                     }
@@ -776,6 +785,7 @@ namespace Pachyderm_Acoustic
                             dir /= Length;
                             double[] Power = s.DirPower(0, i_rnd.Next(), dir);
 
+                            double[] arrivalEnergy = new double[BandCount];
                             int t = 0;
 
                             if (!Validity[i] && Screen_atten)
@@ -789,18 +799,26 @@ namespace Pachyderm_Acoustic
                                 if (t >= Io[i][0].Length)
                                 {
                                     int newLen = t + 50;
-                                    for (int oct = 0; oct < 8; oct++)
+                                    for (int oct = 0; oct < BandCount; oct++)
                                     {
                                         Array.Resize(ref Io[i][oct], newLen);
                                         //Array.Resize(ref Dir_Rec_Pos, newLen);
                                         //Array.Resize(ref Dir_Rec_Neg, newLen);
                                     }
+                                    float[,,] positive = new float[BandCount, newLen, 3], negative = new float[BandCount, newLen, 3];
+                                    for (int band = 0; band < BandCount; band++) for (int time = 0; time < Dir_Rec_Pos[i].GetLength(1); time++) for (int axis = 0; axis < 3; axis++)
+                                    {
+                                        positive[band, time, axis] = Dir_Rec_Pos[i][band, time, axis];
+                                        negative[band, time, axis] = Dir_Rec_Neg[i][band, time, axis];
+                                    }
+                                    Dir_Rec_Pos[i] = positive; Dir_Rec_Neg[i] = negative;
                                 }
                                 else if (t < 0) t = 0;
 
-                                for (int oct = 0; oct < 8; oct++)
+                                for (int oct = 0; oct < BandCount; oct++)
                                 {
-                                    Io[i][oct][t] += Power[oct] * Atten[oct] * transmod[oct] * Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist);
+                                    arrivalEnergy[oct] = Power[oct] * Atten[oct] * transmod[oct] * Math.Pow(10, -.1 * Room.Attenuation(0, ThirdOctave)[oct] * dist) / (4 * Math.PI * dist * dist);
+                                    Io[i][oct][t] += arrivalEnergy[oct];
                                 }
 
                                 if (path != null && path.Length > 1)
@@ -817,16 +835,17 @@ namespace Pachyderm_Acoustic
                                 if (t < 0) t = 0;
                                 if (t >= Io[i][0].Length) t = Io[i][0].Length - 1;
 
-                                for (int oct = 0; oct < 8; oct++)
+                                for (int oct = 0; oct < BandCount; oct++)
                                 {
-                                    Io[i][oct][t] += Power[oct] * Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * Length) * transmod[oct] / (4 * Math.PI * Length * Length);
+                                    arrivalEnergy[oct] = Power[oct] * Math.Pow(10, -.1 * Room.Attenuation(0, ThirdOctave)[oct] * Length) * transmod[oct] / (4 * Math.PI * Length * Length);
+                                    Io[i][oct][t] += arrivalEnergy[oct];
                                 }
                             }
 
                             if (this.SPL_Only) t = 0;
                             
                             // Accumulate Directions
-                            for (int oct = 0; oct < 8; oct++)
+                            for (int oct = 0; oct < BandCount; oct++)
                             {
                                 Vector V = dir * Io[i][oct][t];
                                 if (-V.dx > 0) Dir_Rec_Pos[i][oct, t, 0] -= (float)V.dx; else Dir_Rec_Neg[i][oct, t, 0] -= (float)V.dx;
@@ -838,6 +857,19 @@ namespace Pachyderm_Acoustic
                     current_Receiver++;
                 });
             }
+
+            for (int rec = 0; rec < Io.Length; rec++)
+                for (int band = 0; band < BandCount; band++)
+                    if (!Oct_choice.Contains(band))
+                    {
+                        Array.Clear(Io[rec][band], 0, Io[rec][band].Length);
+                        for (int time = 0; time < Dir_Rec_Pos[rec].GetLength(1); time++)
+                            for (int axis = 0; axis < 3; axis++)
+                            {
+                                Dir_Rec_Pos[rec][band, time, axis] = 0;
+                                Dir_Rec_Neg[rec][band, time, axis] = 0;
+                            }
+                    }
         }
 
         public double[] Dir_Filter(int Rec_ID, double alt, double azi, bool degrees, int Sampling_Frequency, bool flat)
@@ -897,7 +929,7 @@ namespace Pachyderm_Acoustic
 
                     for (int i = 0; i < filterLength; i++)
                     {
-                        double[] Eo = new double[8];
+                        double[] Eo = new double[BandCount];
                         Vector D = new Vector(1, 0, 0);
                         Vector Vn = Utilities.PachTools.Rotate_Vector(Utilities.PachTools.Rotate_Vector(D, azi, 0, degrees), 0, alt, degrees);
                         Vn.Normalize();
@@ -981,9 +1013,9 @@ namespace Pachyderm_Acoustic
         /// <returns></returns>
         public double EnergyValue(int octave, int t, int Rec_ID)
         {
-            if (t < 0 || t > Io[Rec_ID][octave].Length) return 0;
+            if (t < 0 || t >= Io[Rec_ID][0].Length) return 0;
 
-            if (octave > 7) return EnergySum(Rec_ID, t);
+            if (octave >= BandCount) return EnergySum(Rec_ID, t);
 
             if (t < Io[Rec_ID][octave].Length)
             {
@@ -1004,7 +1036,9 @@ namespace Pachyderm_Acoustic
         {
             if (t < Io[Rec_ID][0].Length)
             {
-                return Io[Rec_ID][0][t] + Io[Rec_ID][1][t] + Io[Rec_ID][2][t] + Io[Rec_ID][3][t] + Io[Rec_ID][4][t] + Io[Rec_ID][5][t] + Io[Rec_ID][6][t] + Io[Rec_ID][7][t];
+                double sum = 0;
+                for (int band = 0; band < BandCount; band++) sum += Io[Rec_ID][band][t];
+                return sum;
             }
             else
             {
@@ -1020,7 +1054,7 @@ namespace Pachyderm_Acoustic
         /// <returns></returns>
         public double[] EnergyValue(int octave, int Rec_ID)
         {
-            if (octave > 7) return EnergySum(Rec_ID);
+            if (octave >= BandCount) return EnergySum(Rec_ID);
             double[] E = new double[Io[Rec_ID][octave].Length]; 
 
             for (int i = 0; i < Io[Rec_ID][octave].Length; i++)
@@ -1041,7 +1075,7 @@ namespace Pachyderm_Acoustic
             double[] E = new double[Io[Rec_ID][0].Length];
             for(int i = 0; i < Io[Rec_ID][0].Length; i++)
             {
-                E[i] = Io[Rec_ID][0][i] + Io[Rec_ID][1][i] + Io[Rec_ID][2][i] + Io[Rec_ID][3][i] + Io[Rec_ID][4][i] + Io[Rec_ID][5][i] + Io[Rec_ID][6][i] + Io[Rec_ID][7][i];
+                for (int band = 0; band < BandCount; band++) E[i] += Io[Rec_ID][band][i];
             }
             return E;
         }
@@ -1106,7 +1140,7 @@ namespace Pachyderm_Acoustic
             int length = Dir_Rec_Pos[Rec_Index].GetLength(1);
             Vector[] V = new Vector[length];
 
-            if (Octave == 8)
+            if (Octave == BandCount)
             {
                 for (int oct = 0; oct < 7; oct++)
                 {
@@ -1133,7 +1167,7 @@ namespace Pachyderm_Acoustic
             int length = Dir_Rec_Neg[Rec_Index].GetLength(1);
             Vector[] V = new Vector[length];
 
-            if (Octave == 8)
+            if (Octave == BandCount)
             {
                 for (int oct = 0; oct < 7; oct++)
                 {
@@ -1199,8 +1233,8 @@ namespace Pachyderm_Acoustic
                 V[i] = Vpos[i] + Vneg[i];
                 V[i].Normalize();
                 double I = 0;
-                if (Octave == 8)
-                    for (int oct = 0; oct < 8; oct++) I += Io[Rec_ID][oct][i];
+                if (Octave == BandCount)
+                    for (int oct = 0; oct < BandCount; oct++) I += Io[Rec_ID][oct][i];
                 else
                     I = Io[Rec_ID][Octave][0];
                 
@@ -1241,7 +1275,7 @@ namespace Pachyderm_Acoustic
             double alt = Math.Atan2(V.dx, V.dz);
             
             Vector[] D = new Vector[Dir_Rec_Pos[Rec_ID].GetLength(1)];
-            for (int o = 0; o < 8; o++)
+            for (int o = 0; o < BandCount; o++)
             {
                 Vector[] Vf = new Vector[Dir_Rec_Pos[Rec_ID].GetLength(1)];
                 Vector[] Vpos = Directions_Pos(o, Rec_ID, alt, azi, false);
@@ -1261,7 +1295,7 @@ namespace Pachyderm_Acoustic
         {
             Vector[] D = new Vector[Dir_Rec_Pos[Rec_ID].GetLength(1)];
             for(int i = 0; i < D.Length; i++) D[i] = new Vector();
-            for (int o = 0; o < 8; o++)
+            for (int o = 0; o < BandCount; o++)
             {
                 Vector[] Vf = new Vector[Dir_Rec_Pos[Rec_ID].GetLength(1)];
                 Vector[] Vpos = Directions_Pos(o, Rec_ID, alt, azi, false);
@@ -1284,10 +1318,11 @@ namespace Pachyderm_Acoustic
         /// <returns>A factor that can be used to adjust any other simulation types.</returns>
         public double[] Set_Power(double[] swl)
         {
-            SWL = swl;
-            double[] factor = new double[8];
-            for(int i = 0; i < 8; i++) factor[i] = Utilities.AcousticalMath.Intensity_SPL(swl[i]) / Src.SoundPower[i];
-            for (int i = 0; i < 8; i++) Src.SoundPower[i] = Utilities.AcousticalMath.Intensity_SPL(swl[i]);
+            if (swl == null || swl.Length != BandCount) throw new ArgumentException("New source levels must match the simulation band count.");
+            SWL = (double[])swl.Clone();
+            double[] factor = new double[BandCount];
+            for(int i = 0; i < BandCount; i++) factor[i] = Utilities.AcousticalMath.Intensity_SPL(swl[i]) / Src.SoundPower[i];
+            for (int i = 0; i < BandCount; i++) Src.SoundPower[i] = Utilities.AcousticalMath.Intensity_SPL(swl[i]);
             for (int i = 0; i < this.Io.Length; i++) for (int j = 0; j < factor.Length; j++) for (int k = 0; k < this.Io[i][j].Length; k++) this.Io[i][j][k] *= factor[j];
 
             for (int i = 0; i < Dir_Rec_Pos.Length; i++) for (int j = 0; j < Dir_Rec_Pos[i].GetLength(0); j++) for (int k = 0; k < Dir_Rec_Pos[i].GetLength(1); k++) for (int l = 0; l < Dir_Rec_Pos[i].GetLength(2); l++)
@@ -1319,15 +1354,15 @@ namespace Pachyderm_Acoustic
             F = new double[Receiver.Count][];
             Fdir = new double[Receiver.Count][][];
 
-            double[] p_mod = new double[8];
-            for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
+            double[] p_mod = new double[BandCount];
+            for (int i = 0; i < BandCount; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
 
             int inputFS = SampleFreq > 0 ? SampleFreq : 44100;
             const int outputFS = 44100;
 
             for (int i = 0; i < Receiver.Count; i++)
             {
-                double[][] ETC = new double[8][];
+                double[][] ETC = new double[BandCount][];
                 int outputSamples = Math.Max(1, (int)Math.Ceiling(Io[i][0].Length * (double)outputFS / inputFS));
                 F[i] = new double[outputSamples + 16384];
                 Fdir[i] = new double[6][];
@@ -1335,9 +1370,9 @@ namespace Pachyderm_Acoustic
 
                 for (int t = 0; t < Io[i][0].Length; t++)
                 {
-                    double[] pr = new double[8];
+                    double[] pr = new double[BandCount];
                     bool hasEnergy = false;
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < BandCount; oct++)
                     {
                         double intensity = Io[i][oct][t];
                         if (intensity > 0) hasEnergy = true;
@@ -1353,9 +1388,9 @@ namespace Pachyderm_Acoustic
                     }
 
                     double[][] dir_E = new double[6][];
-                    for (int d = 0; d < 6; d++) dir_E[d] = new double[8];
+                    for (int d = 0; d < 6; d++) dir_E[d] = new double[BandCount];
                     Vector vpos = new Vector(), vneg = new Vector();
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < BandCount; oct++)
                     {
                         vpos += new Vector(Math.Abs(Dir_Rec_Pos[i][oct,t,0]), Math.Abs(Dir_Rec_Pos[i][oct,t,1]), Math.Abs(Dir_Rec_Pos[i][oct,t,2]));
                         vneg += new Vector(Math.Abs(Dir_Rec_Neg[i][oct,t,0]), Math.Abs(Dir_Rec_Neg[i][oct,t,1]), Math.Abs(Dir_Rec_Neg[i][oct,t,2]));
@@ -1384,18 +1419,18 @@ namespace Pachyderm_Acoustic
             double[] F_out = new double[outputSamples + 16384];
             double scale = Math.Sqrt(16384);
 
-            double[] p_mod = new double[8];
-            for (int i = 0; i < 8; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
+            double[] p_mod = new double[BandCount];
+            for (int i = 0; i < BandCount; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
 
-            double[][] ETC = new double[8][];
+            double[][] ETC = new double[BandCount][];
 
             if (dim == 0)
             {
                 for (int t = 0; t < Io[Rec_ID][0].Length; t++)
                 {
-                    double[] pr = new double[8];
+                    double[] pr = new double[BandCount];
                     bool hasEnergy = false;
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < BandCount; oct++)
                     {
                         double intensity = Io[Rec_ID][oct][t];
                         if (intensity > 0) hasEnergy = true;
@@ -1415,9 +1450,9 @@ namespace Pachyderm_Acoustic
             {
                 for (int t = 0; t < Io[Rec_ID][0].Length; t++)
                 {
-                    double[] pr = new double[8];
+                    double[] pr = new double[BandCount];
                     bool hasEnergy = false;
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < BandCount; oct++)
                     {
                         double intensity = Io[Rec_ID][oct][t];
                         if (intensity > 0) hasEnergy = true;
@@ -1428,9 +1463,9 @@ namespace Pachyderm_Acoustic
                     double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, Sampling_Frequency, 16384, 0);
 
                     double[][] dir_E = new double[6][];
-                    for (int d = 0; d < 6; d++) dir_E[d] = new double[8];
+                    for (int d = 0; d < 6; d++) dir_E[d] = new double[BandCount];
                     Vector vpos = new Vector(), vneg = new Vector();
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < BandCount; oct++)
                     {
                         vpos += new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][oct,t,0]), Math.Abs(Dir_Rec_Pos[Rec_ID][oct,t,1]), Math.Abs(Dir_Rec_Pos[Rec_ID][oct,t,2]));
                         vneg += new Vector(Math.Abs(Dir_Rec_Neg[Rec_ID][oct,t,0]), Math.Abs(Dir_Rec_Neg[Rec_ID][oct,t,1]), Math.Abs(Dir_Rec_Neg[Rec_ID][oct,t,2]));
@@ -1489,9 +1524,9 @@ namespace Pachyderm_Acoustic
                 }
 
                 double[][] dir_E = new double[6][];
-                for (int d = 0; d < 6; d++) dir_E[d] = new double[8];
+                for (int d = 0; d < 6; d++) dir_E[d] = new double[BandCount];
                 Vector vpos = new Vector(), vneg = new Vector();
-                for (int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < BandCount; oct++)
                 {
                     vpos += new Vector(Math.Abs(Dir_Rec_Pos[Rec_ID][oct,t,0]), Math.Abs(Dir_Rec_Pos[Rec_ID][oct,t,1]), Math.Abs(Dir_Rec_Pos[Rec_ID][oct,t,2]));
                     vneg += new Vector(Math.Abs(Dir_Rec_Neg[Rec_ID][oct,t,0]), Math.Abs(Dir_Rec_Neg[Rec_ID][oct,t,1]), Math.Abs(Dir_Rec_Neg[Rec_ID][oct,t,2]));
@@ -1662,8 +1697,8 @@ namespace Pachyderm_Acoustic
                 if (newSampleCount > currentSampleCount)
                 {
                     // Allocate new 3D containers [Octaves, Time, Axis]
-                    float[,,] newPosArray = new float[8, newSampleCount, 3];
-                    float[,,] newNegArray = new float[8, newSampleCount, 3];
+                    float[,,] newPosArray = new float[BandCount, newSampleCount, 3];
+                    float[,,] newNegArray = new float[BandCount, newSampleCount, 3];
 
                     // copy current array: 8 octaves * current samples * 3 axis * 4 bytes/float
                     int bytesToCopy = 8 * currentSampleCount * 3 * sizeof(float);
@@ -1673,7 +1708,7 @@ namespace Pachyderm_Acoustic
                     Dir_Rec_Pos[rec_id] = newPosArray;
                     Dir_Rec_Neg[rec_id] = newNegArray;
 
-                    for(int oct = 0; oct < 8; oct++)
+                    for(int oct = 0; oct < BandCount; oct++)
                     {
                         Io[rec_id][oct] = new double[newSampleCount];
                     }
@@ -1743,7 +1778,7 @@ namespace Pachyderm_Acoustic
                     if (dist > limit)
                     {
                         I_d.Add(dir);
-                        I.Add(new double[8]);
+                        I.Add(new double[BandCount]);
                         time.Add(tdbl);
                         continue;
                     }
@@ -1779,10 +1814,10 @@ namespace Pachyderm_Acoustic
                         if (!Room.shoot(D, out x1, out x2, out x3, out x4, out t_in, out code) || t_in[0] >= dist)
                         {
                             // Clear Path - Apply Attenuation
-                            for (int oct = 0; oct < 8; oct++) W_temp[oct] *= Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / (4 * Math.PI * dist * dist * local_trib);
+                            for (int oct = 0; oct < BandCount; oct++) W_temp[oct] *= Math.Pow(10, -.1 * Room.Attenuation(0, ThirdOctave)[oct] * dist) / (4 * Math.PI * dist * dist * local_trib);
 
-                            double[] result = new double[8];
-                            Array.Copy(W_temp, result, 8);
+                            double[] result = new double[BandCount];
+                            Array.Copy(W_temp, result, BandCount);
 
                             I_d.Add(dir);
                             I.Add(result);
@@ -1795,7 +1830,7 @@ namespace Pachyderm_Acoustic
                         {
                             // Transmissive
                             D.x = x4[0].x; D.y = x4[0].y; D.z = x4[0].z;
-                            for (int oct = 0; oct < 8; oct++) W_temp[oct] *= Room.TransmissionValue[x3][oct];
+                            for (int oct = 0; oct < BandCount; oct++) W_temp[oct] *= Room.TransmissionSpectrum(x3, ThirdOctave)[oct];
                             // Loop continues
                         }
                         else
@@ -1808,14 +1843,14 @@ namespace Pachyderm_Acoustic
                                 double[] PowerAtten = Process_Screen_Attenuation(height_samples[j], rec_id, ref path, ref dist);
 
                                 double spread = (4 * Math.PI * dist * dist * local_trib);
-                                for (int oct = 0; oct < 8; oct++)
+                                for (int oct = 0; oct < BandCount; oct++)
                                 {
                                     W_temp[oct] *= PowerAtten[oct];
-                                    W_temp[oct] *= Math.Pow(10, -.1 * Room.Attenuation(0)[oct] * dist) / spread;
+                                    W_temp[oct] *= Math.Pow(10, -.1 * Room.Attenuation(0, ThirdOctave)[oct] * dist) / spread;
                                 }
 
-                                double[] result = new double[8];
-                                Array.Copy(W_temp, result, 8);
+                                double[] result = new double[BandCount];
+                                Array.Copy(W_temp, result, BandCount);
 
                                 I_d.Add(dir);
                                 I.Add(result);
@@ -1852,6 +1887,8 @@ namespace Pachyderm_Acoustic
             double[][] dist = new double[R.Count][]; //Rec;Curve;Sample
             int[] RecT = new int[R.Count];
             Io = new double[R.Count][][];
+            Dir_Rec_Pos = new float[R.Count][,,];
+            Dir_Rec_Neg = new float[R.Count][,,];
             Validity = new Boolean[R.Count];
 
             double C_Sound = Room.Sound_speed(0);
@@ -1903,32 +1940,30 @@ namespace Pachyderm_Acoustic
 
             for (int rec_id = 0; rec_id < R.Count; rec_id++)
             {
-                Io[rec_id] = new double[8][];
-                for (int oct = 0; oct < 8; oct++)
+                Io[rec_id] = new double[BandCount][];
+                Dir_Rec_Pos[rec_id] = new float[BandCount, RecT[rec_id] + 1, 3];
+                Dir_Rec_Neg[rec_id] = new float[BandCount, RecT[rec_id] + 1, 3];
+                for (int oct = 0; oct < BandCount; oct++)
                 {
                     Io[rec_id][oct] = new double[RecT[rec_id] + 1];
                 }
                 for (int j = 0; j < tau[rec_id].Length; j++)
                 {
-                    double[] Io_t = new double[8];
+                    double[] Io_t = new double[BandCount];
 
-                    Io_t[0] = Math.Pow(10, Ssrc.DomainLevel[0] / 10) * 1E-12 * Math.Exp(-0.2302 * Room.Attenuation(0)[0] * dist[rec_id][j]) / (4 * Math.PI * dist[rec_id][j] * dist[rec_id][j]) / Ssrc.Samples.Length;
-                    Io_t[1] = Math.Pow(10, Ssrc.DomainLevel[1] / 10) * 1E-12 * Math.Exp(-0.2302 * Room.Attenuation(0)[1] * dist[rec_id][j]) / (4 * Math.PI * dist[rec_id][j] * dist[rec_id][j]) / Ssrc.Samples.Length;
-                    Io_t[2] = Math.Pow(10, Ssrc.DomainLevel[2] / 10) * 1E-12 * Math.Exp(-0.2302 * Room.Attenuation(0)[2] * dist[rec_id][j]) / (4 * Math.PI * dist[rec_id][j] * dist[rec_id][j]) / Ssrc.Samples.Length;
-                    Io_t[3] = Math.Pow(10, Ssrc.DomainLevel[3] / 10) * 1E-12 * Math.Exp(-0.2302 * Room.Attenuation(0)[3] * dist[rec_id][j]) / (4 * Math.PI * dist[rec_id][j] * dist[rec_id][j]) / Ssrc.Samples.Length;
-                    Io_t[4] = Math.Pow(10, Ssrc.DomainLevel[4] / 10) * 1E-12 * Math.Exp(-0.2302 * Room.Attenuation(0)[4] * dist[rec_id][j]) / (4 * Math.PI * dist[rec_id][j] * dist[rec_id][j]) / Ssrc.Samples.Length;
-                    Io_t[5] = Math.Pow(10, Ssrc.DomainLevel[5] / 10) * 1E-12 * Math.Exp(-0.2302 * Room.Attenuation(0)[5] * dist[rec_id][j]) / (4 * Math.PI * dist[rec_id][j] * dist[rec_id][j]) / Ssrc.Samples.Length;
-                    Io_t[6] = Math.Pow(10, Ssrc.DomainLevel[6] / 10) * 1E-12 * Math.Exp(-0.2302 * Room.Attenuation(0)[6] * dist[rec_id][j]) / (4 * Math.PI * dist[rec_id][j] * dist[rec_id][j]) / Ssrc.Samples.Length;
-                    Io_t[7] = Math.Pow(10, Ssrc.DomainLevel[7] / 10) * 1E-12 * Math.Exp(-0.2302 * Room.Attenuation(0)[7] * dist[rec_id][j]) / (4 * Math.PI * dist[rec_id][j] * dist[rec_id][j]) / Ssrc.Samples.Length;
-
-                    Io[rec_id][0][tau[rec_id][j]] += Io_t[0];
-                    Io[rec_id][1][tau[rec_id][j]] += Io_t[1];
-                    Io[rec_id][2][tau[rec_id][j]] += Io_t[2];
-                    Io[rec_id][3][tau[rec_id][j]] += Io_t[3];
-                    Io[rec_id][4][tau[rec_id][j]] += Io_t[4];
-                    Io[rec_id][5][tau[rec_id][j]] += Io_t[5];
-                    Io[rec_id][6][tau[rec_id][j]] += Io_t[6];
-                    Io[rec_id][7][tau[rec_id][j]] += Io_t[7];
+                    for (int oct = 0; oct < BandCount; oct++)
+                    {
+                        Io_t[oct] = Math.Pow(10, Ssrc.DomainLevel[oct] / 10) * 1E-12 * Math.Exp(-0.2302 * Room.Attenuation(0, ThirdOctave)[oct] * dist[rec_id][j]) / (4 * Math.PI * dist[rec_id][j] * dist[rec_id][j]) / Ssrc.Samples.Length;
+                        Io[rec_id][oct][tau[rec_id][j]] += Io_t[oct];
+                        Vector direction = R[rec_id] - Ssrc.Samples[j];
+                        direction.Normalize();
+                        Dir_Rec_Pos[rec_id][oct, tau[rec_id][j], 0] += (float)(Math.Max(0, direction.dx) * Io_t[oct]);
+                        Dir_Rec_Pos[rec_id][oct, tau[rec_id][j], 1] += (float)(Math.Max(0, direction.dy) * Io_t[oct]);
+                        Dir_Rec_Pos[rec_id][oct, tau[rec_id][j], 2] += (float)(Math.Max(0, direction.dz) * Io_t[oct]);
+                        Dir_Rec_Neg[rec_id][oct, tau[rec_id][j], 0] += (float)(Math.Min(0, direction.dx) * Io_t[oct]);
+                        Dir_Rec_Neg[rec_id][oct, tau[rec_id][j], 1] += (float)(Math.Min(0, direction.dy) * Io_t[oct]);
+                        Dir_Rec_Neg[rec_id][oct, tau[rec_id][j], 2] += (float)(Math.Min(0, direction.dz) * Io_t[oct]);
+                    }
                 }
             }
             return true;

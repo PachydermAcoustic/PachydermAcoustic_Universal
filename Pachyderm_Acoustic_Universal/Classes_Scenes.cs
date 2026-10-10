@@ -34,6 +34,8 @@ namespace Pachyderm_Acoustic
             protected List<Material> AbsorptionData = new List<Material>();
             protected List<Scattering> ScatteringData = new List<Scattering>();
             protected List<double[]> TransmissionData = new List<double[]>();
+            protected List<double[]> TransmissionData_Octave = new List<double[]>();
+            protected List<double[]> TransmissionData_ThirdOctave = new List<double[]>();
             protected List<bool> Transmissive = new List<bool>();
             protected double TempC_S;
             protected double Pa_S;
@@ -287,6 +289,36 @@ namespace Pachyderm_Acoustic
                 return this.Env_Prop.AttenuationPureTone(pt, frequency);
             }
 
+            /// <summary>Total absorbing area in each spectral band, in square metres.</summary>
+            public double[] TotalAbsorption(bool thirdOctave)
+            {
+                double[] totalAbs = new double[thirdOctave ? 24 : 8];
+                for (int surface = 0; surface < Count(); surface++)
+                {
+                    double area = SurfaceArea(surface);
+                    for (int band = 0; band < totalAbs.Length; band++)
+                        totalAbs[band] += area * AbsorptionData[surface].Coefficient_A_Broad(band, thirdOctave);
+                }
+                return totalAbs;
+            }
+
+            public double[] TransmissionSpectrum(int surface, bool thirdOctave)
+            {
+                return thirdOctave ? TransmissionData_ThirdOctave[surface] : TransmissionData_Octave[surface];
+            }
+
+            // Prepare spectra when constructing the scene; simulation calls only retrieve them.
+            protected static double[] TransmissionSpectrum(double[] data, bool thirdOctave)
+            {
+                if (data.Length == (thirdOctave ? 24 : 8)) return data;
+                if (data.Length != 8 && data.Length != 24) throw new ArgumentException("Transmission requires 8 or 24 coefficients.");
+                double[] spectrum = new double[thirdOctave ? 24 : 8];
+                for (int band = 0; band < spectrum.Length; band++)
+                    spectrum[band] = thirdOctave ? data[band / 3] : (data[3 * band] + data[3 * band + 1] + data[3 * band + 2]) / 3;
+                return spectrum;
+            }
+            public double[] Attenuation(int arg, bool thirdOctave) { return Env_Prop.Attenuation_Coef(arg, thirdOctave); }
+            public double[] Attenuation(Hare.Geometry.Point pt, bool thirdOctave) { return Env_Prop.Attenuation_Coef(pt, thirdOctave); }
             public double[] Attenuation(int arg)
             {
                 return this.Env_Prop.Attenuation_Coef(arg);
@@ -327,7 +359,7 @@ namespace Pachyderm_Acoustic
             public abstract void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v, double[] Transmission = null);
             public abstract void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, double cos_theta, double u, double v, bool Transmission = false);
             public abstract void Scatter_Simple(ref OctaveRay Ray, ref Random rand, double cos_theta, double u, double v, bool Transmission = false);
-            
+
             public List<Material> AbsorptionValue
             {
                 get
@@ -452,18 +484,26 @@ namespace Pachyderm_Acoustic
                 AbsorptionData = new List<Material>();
                 ScatteringData = new List<Scattering>();
                 TransmissionData = new List<double[]>();
+                TransmissionData_Octave = new List<double[]>();
+                TransmissionData_ThirdOctave = new List<double[]>();
+                Transmissive = new List<bool>();
 
                 ///Get Bounds of Model
                 double MinX = double.PositiveInfinity, MinY = double.PositiveInfinity, MinZ = double.PositiveInfinity;
                 double MaxX = double.NegativeInfinity, MaxY = double.NegativeInfinity, MaxZ = double.NegativeInfinity;
                 for (int i = 0; i < Model.Length; i++)
                 {
+                    double[] transmissionOctave = TransmissionSpectrum(Trans[i], false);
+                    double[] transmissionThirdOctave = TransmissionSpectrum(Trans[i], true);
                     for (int j = 0; j < Model[i].Length; j++)
                     {
                         PTS.Add(Model[i][j]);
                         AbsorptionData.Add(Mat[i]);
                         ScatteringData.Add(Scat[i]);
                         TransmissionData.Add(Trans[i]);
+                        TransmissionData_Octave.Add(transmissionOctave);
+                        TransmissionData_ThirdOctave.Add(transmissionThirdOctave);
+                        Transmissive.Add(Trans[i].Any(coefficient => coefficient > 0));
                         for (int k = 0; k < Model[i][j].Length; k++)
                         {
                             if (Model[i][j][k].x < MinX) MinX = Model[i][j][k].x;

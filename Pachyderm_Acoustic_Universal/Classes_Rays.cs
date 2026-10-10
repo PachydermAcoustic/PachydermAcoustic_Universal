@@ -25,11 +25,16 @@ namespace Pachyderm_Acoustic
     namespace Environment
     {
         /// <summary>
-        /// Ray for a single octave band.
+        /// One geometric ray carrying the energies in a contiguous range of spectral bands.
         /// </summary>
         public class OctaveRay: Ray
         {
             public double Intensity;
+            public int BandStart;
+            public int BandCount = 1;
+            public bool ThirdOctave { get { return BandCount == 3; } }
+            public double[] Fractions;
+            // Intensity is the total; Fractions holds the pooled spectral shares.
             public int Octave;
             public double t_sum;
             public int Surf_ID;
@@ -47,6 +52,8 @@ namespace Pachyderm_Acoustic
                 t_sum = Time;
                 Octave = octave;
                 Intensity = Intensity_in;
+                BandStart = octave; BandCount = 1;
+                Scatter_Mask = 0;
                 Source_ID = SrcID;
                 Surf_ID = srf_id;
                 Decimation = Decimation_in;
@@ -58,6 +65,8 @@ namespace Pachyderm_Acoustic
                 t_sum = Time;
                 Octave = octave;
                 Intensity = Intensity_in;
+                BandStart = octave; BandCount = 1;
+                Scatter_Mask = 0;
                 Source_ID = SrcID;
                 Surf_ID = srf_id;
                 Decimation_threshold = Decimation_in;
@@ -66,6 +75,7 @@ namespace Pachyderm_Acoustic
 
             public void reassign(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave, int SrcID, int srf_id = -1)
             {
+                poly_origin1 = poly_origin2 = 0;
                 x = StartPt.x; y = StartPt.y; z = StartPt.z;
                 dx = Direction.dx; dy = Direction.dy; dz = Direction.dz;
                 ThreadID = ThreadID_IN;
@@ -73,12 +83,15 @@ namespace Pachyderm_Acoustic
                 t_sum = Time;
                 Octave = octave;
                 Intensity = Intensity_in;
+                BandStart = octave; BandCount = 1;
+                Scatter_Mask = 0;
                 Source_ID = SrcID;
                 Surf_ID = srf_id;
             }
 
             public void reassign(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave, int SrcID, double Decimation_in, int srf_id = -1)
             {
+                poly_origin1 = poly_origin2 = 0;
                 x = StartPt.x; y = StartPt.y; z = StartPt.z;
                 dx = Direction.dx; dy = Direction.dy; dz = Direction.dz;
                 ThreadID = ThreadID_IN;
@@ -86,6 +99,8 @@ namespace Pachyderm_Acoustic
                 t_sum = Time;
                 Octave = octave;
                 Intensity = Intensity_in;
+                BandStart = octave; BandCount = 1;
+                Scatter_Mask = 0;
                 Source_ID = SrcID;
                 Surf_ID = srf_id;
                 Decimation = Decimation_in;
@@ -93,6 +108,7 @@ namespace Pachyderm_Acoustic
 
             public void reassign(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave, int SrcID, double Decimation_in, double Decimation_Inv, int srf_id = -1)
             {
+                poly_origin1 = poly_origin2 = 0;
                 x = StartPt.x; y = StartPt.y; z = StartPt.z;
                 dx = Direction.dx; dy = Direction.dy; dz = Direction.dz;
                 ThreadID = ThreadID_IN;
@@ -100,6 +116,8 @@ namespace Pachyderm_Acoustic
                 t_sum = Time;
                 Octave = octave;
                 Intensity = Intensity_in;
+                BandStart = octave; BandCount = 1;
+                Scatter_Mask = 0;
                 Source_ID = SrcID;
                 Surf_ID = srf_id;
                 Decimation_threshold = Decimation_in;
@@ -124,6 +142,12 @@ namespace Pachyderm_Acoustic
             {
                 //OctaveRay O = new OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation_threshold, Decim_Inv, Surf_ID);
                 OctaveRay O = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation_threshold, Decim_Inv, Scatter_Mask, Surf_ID);
+                O.BandStart = BandStart; O.BandCount = BandCount;
+                if (BandCount > 1)
+                {
+                    if (O.Fractions == null || O.Fractions.Length < BandCount) O.Fractions = new double[BandCount];
+                    System.Array.Copy(Fractions, O.Fractions, BandCount);
+                }
                 this.Intensity *= (1 - E_Mod_Coef);
                 return O;
             }
@@ -138,14 +162,68 @@ namespace Pachyderm_Acoustic
             {
                 //OctaveRay O = new OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation_threshold, Decim_Inv, Surf_ID);
                 OctaveRay O = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation_threshold, Decim_Inv, Scatter_Mask, Surf_ID);
+                O.BandStart = BandStart; O.BandCount = BandCount;
+                if (BandCount > 1)
+                {
+                    if (O.Fractions == null || O.Fractions.Length < BandCount) O.Fractions = new double[BandCount];
+                    System.Array.Copy(Fractions, O.Fractions, BandCount);
+                }
                 this.Intensity *= (1 - E_Mod_Coef);
                 return O;
+            }
+
+            public OctaveRay SplitRay(double[] coefficients)
+            {
+                OctaveRay branch = Clone();
+                if (branch.BandCount == 1) branch.Intensity *= coefficients[branch.BandStart];
+                else
+                {
+                    double total = 0;
+                    for (int i = 0; i < branch.BandCount; i++) { branch.Fractions[i] = branch.Intensity * branch.Fractions[i] * coefficients[branch.BandStart + i]; total += branch.Fractions[i]; }
+                    branch.Intensity = total;
+                    for (int i = 0; i < branch.BandCount; i++) branch.Fractions[i] = total > 0 ? branch.Fractions[i] / total : 1.0 / branch.BandCount;
+                }
+                if (BandCount == 1) Intensity *= (1 - coefficients[BandStart]);
+                else
+                {
+                    double total = 0;
+                    for (int i = 0; i < BandCount; i++) { Fractions[i] = Intensity * Fractions[i] * (1 - coefficients[BandStart + i]); total += Fractions[i]; }
+                    Intensity = total;
+                    for (int i = 0; i < BandCount; i++) Fractions[i] = total > 0 ? Fractions[i] / total : 1.0 / BandCount;
+                }
+                return branch;
+            }
+            public OctaveRay SplitRay(double fraction0, double fraction1, double fraction2)
+            {
+                if (BandCount == 1) return SplitRay(fraction0);
+                OctaveRay branch = Clone();
+                if (BandCount != 3) throw new System.InvalidOperationException("Use the indexed coefficient spectrum for this band range.");
+                double branchTotal = 0, remainingTotal = 0;
+                for (int i = 0; i < BandCount; i++)
+                {
+                    double fraction = i == 0 ? fraction0 : i == 1 ? fraction1 : fraction2;
+                    branch.Fractions[i] = branch.Intensity * branch.Fractions[i] * fraction; branchTotal += branch.Fractions[i];
+                    Fractions[i] = Intensity * Fractions[i] * (1 - fraction); remainingTotal += Fractions[i];
+                }
+                branch.Intensity = branchTotal; Intensity = remainingTotal;
+                for (int i = 0; i < BandCount; i++)
+                {
+                    branch.Fractions[i] = branchTotal > 0 ? branch.Fractions[i] / branchTotal : 1.0 / BandCount;
+                    Fractions[i] = remainingTotal > 0 ? Fractions[i] / remainingTotal : 1.0 / BandCount;
+                }
+                return branch;
             }
 
             public OctaveRay Clone()
             {
                 //OctaveRay O = new OctaveRay(x, y, z, dx, dy, dz, this.Ray_ID, this.ThreadID, this.Intensity, this.t_sum, this.Octave, this.Source_ID, this.Decimation_threshold, this.Decim_Inv, this.Surf_ID);
                 OctaveRay O = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, this.Ray_ID, this.ThreadID, this.Intensity, this.t_sum, this.Octave, this.Source_ID, this.Decimation_threshold, this.Decim_Inv, this.Scatter_Mask, this.Surf_ID);
+                O.BandStart = BandStart; O.BandCount = BandCount;
+                if (BandCount > 1)
+                {
+                    if (O.Fractions == null || O.Fractions.Length < BandCount) O.Fractions = new double[BandCount];
+                    System.Array.Copy(Fractions, O.Fractions, BandCount);
+                }
                 return O;
             }
 
@@ -181,7 +259,7 @@ namespace Pachyderm_Acoustic
         }
 
         /// <summary>
-        /// Ray for all octave bands.
+        /// Broadband ray carrying indexed spectral energies.
         /// </summary>
         public class BroadRay : Ray
         {
@@ -190,7 +268,8 @@ namespace Pachyderm_Acoustic
             public int Surf_ID;
             public int Source_ID;
             public double[] Decimation = new double[8];
-            public int[] Freq_Bands = new int[] { };
+            // Geometric octave groups (0 through 7), independent of spectral resolution.
+            public int[] Freq_Bands = new int[] { 0, 1, 2, 3, 4, 5, 6, 7 };
             //public int[] Octaves = new int[] { 0, 1, 2, 3, 4, 5, 6, 7 };
             //public int[] Third_Octaves = new int[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 };
 
@@ -205,11 +284,14 @@ namespace Pachyderm_Acoustic
                 dx = Direction.dx; dy = Direction.dy; dz = Direction.dz;
                 this.ThreadID = ThreadID_IN;
                 this.Ray_ID = ID;
-                t_sum += time;
+                t_sum = time;
                 Energy = new double[energy_in.Length];
                 energy_in.CopyTo(Energy, 0);
                 Source_ID = SrcID;
                 Surf_ID = -1;
+                Decimation = new double[8];
+                Freq_Bands = new int[] { 0, 1, 2, 3, 4, 5, 6, 7 };
+                poly_origin1 = poly_origin2 = 0;
             }
 
             public void reassign(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double[] energy_in, double time, int SrcID, int[] _Octaves)
@@ -218,11 +300,13 @@ namespace Pachyderm_Acoustic
                 dx = Direction.dx; dy = Direction.dy; dz = Direction.dz;
                 this.ThreadID = ThreadID_IN;
                 this.Ray_ID = ID;
-                t_sum += time;
+                t_sum = time;
                 Energy = new double[energy_in.Length];
                 energy_in.CopyTo(Energy, 0);
                 Source_ID = SrcID;
                 Surf_ID = -1;
+                Decimation = new double[8];
+                poly_origin1 = poly_origin2 = 0;
                 Freq_Bands = _Octaves;
             }
 
@@ -232,12 +316,14 @@ namespace Pachyderm_Acoustic
                 dx = Direction.dx; dy = Direction.dy; dz = Direction.dz;
                 this.ThreadID = ThreadID_IN;
                 this.Ray_ID = ID;
-                t_sum += time;
-                Energy = new double[8];
+                t_sum = time;
+                Energy = new double[energy_in.Length];
                 energy_in.CopyTo(Energy, 0);
                 Source_ID = SrcID;
                 Decimation = Decim;
                 Surf_ID = -1;
+                Freq_Bands = new int[] { 0, 1, 2, 3, 4, 5, 6, 7 };
+                poly_origin1 = poly_origin2 = 0;
             }
 
             public void reassign(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double[] energy_in, double time, double[] Decim, int SrcID, int[] _Octaves)
@@ -246,19 +332,20 @@ namespace Pachyderm_Acoustic
                 dx = Direction.dx; dy = Direction.dy; dz = Direction.dz;
                 this.ThreadID = ThreadID_IN;
                 this.Ray_ID = ID;
-                t_sum += time;
-                Energy = new double[8];
+                t_sum = time;
+                Energy = new double[energy_in.Length];
                 energy_in.CopyTo(Energy, 0);
                 Source_ID = SrcID;
                 Decimation = Decim;
                 Surf_ID = -1;
+                poly_origin1 = poly_origin2 = 0;
                 Freq_Bands = _Octaves;
             }
 
             public BroadRay(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double[] energy_in, double time, int SrcID)
                 : base(StartPt, Direction, ThreadID_IN, ID)
             {
-                t_sum += time;
+                t_sum = time;
                 Energy = new double[energy_in.Length];
                 energy_in.CopyTo(Energy,0);
                 Source_ID = SrcID;
@@ -268,7 +355,7 @@ namespace Pachyderm_Acoustic
             public BroadRay(double x, double y, double z, double dx, double dy, double dz, int ID, int ThreadID_IN, double[] energy_in, double time, int SrcID)
             : base(x, y, z, dx, dy, dz, ThreadID_IN, ID)
             {
-                t_sum += time;
+                t_sum = time;
                 Energy = new double[energy_in.Length];
                 energy_in.CopyTo(Energy, 0);
                 Source_ID = SrcID;
@@ -278,7 +365,7 @@ namespace Pachyderm_Acoustic
             public BroadRay(double x, double y, double z, double dx, double dy, double dz, int ID, int ThreadID_IN, double[] energy_in, double time, int SrcID, int[] _Octaves)
             : base(x, y, z, dx, dy, dz, ThreadID_IN, ID)
             {
-                t_sum += time;
+                t_sum = time;
                 Energy = new double[energy_in.Length];
                 energy_in.CopyTo(Energy, 0);
                 Source_ID = SrcID;
@@ -289,7 +376,7 @@ namespace Pachyderm_Acoustic
             //public BroadRay(double x, double y, double z, double dx, double dy, double dz, int ID, int ThreadID_IN, double[] energy_in, double time, double[] Decim, int SrcID)
             //: base(x, y, z, dx, dy, dz, ThreadID_IN, ID)
             //{
-            //    t_sum += time;
+            //    t_sum = time;
             //    Energy = new double[8];
             //    energy_in.CopyTo(Energy, 0);
             //    Source_ID = SrcID;
@@ -300,7 +387,7 @@ namespace Pachyderm_Acoustic
             //public BroadRay(double x, double y, double z, double dx, double dy, double dz, int ID, int ThreadID_IN, double[] energy_in, double time, double[] Decim, int SrcID, int[] _Octaves)
             //: base(x,y,z,dx,dy,dz, ThreadID_IN, ID)
             //{
-            //    t_sum += time;
+            //    t_sum = time;
             //    Energy = new double[8];
             //    energy_in.CopyTo(Energy, 0);
             //    Source_ID = SrcID;
@@ -318,9 +405,23 @@ namespace Pachyderm_Acoustic
                 t_sum += time;
             }
 
+            public int BandCount { get { return Energy.Length; } }
+            public int BandsPerGroup { get { return BandCount / Decimation.Length; } }
+            public int BandsPerOctave { get { return BandsPerGroup; } }
+            public bool ThirdOctave { get { return BandsPerOctave == 3; } }
+            public double OctaveEnergy(int octave)
+            {
+                int bandStart = octave * BandsPerGroup;
+                double energy = Energy[bandStart];
+                for (int component = 1; component < BandsPerGroup; component++) energy += Energy[bandStart + component];
+                return energy;
+            }
+
             public BroadRay Clone()
             {
-                return BroadRayPool.Instance.new_BroadRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Energy, t_sum, Source_ID, Surf_ID);
+                BroadRay ray = BroadRayPool.Instance.new_BroadRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, (double[])Energy.Clone(), t_sum, Source_ID, (int[])Freq_Bands.Clone(), Surf_ID);
+                ray.Decimation = (double[])Decimation.Clone();
+                return ray;
             }
 
             /// <summary>
@@ -330,9 +431,15 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public OctaveRay SplitRay(int Octave)
             {
-                //OctaveRay O = new OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Energy[Octave], t_sum, Octave, Source_ID, Decimation[Octave], Surf_ID);
-                OctaveRay O = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Energy[Octave], t_sum, Octave, Source_ID, Decimation[Octave], 0, Surf_ID);
-                this.Energy[Octave] = 0;
+                int bandStart = Octave * BandsPerGroup;
+                OctaveRay O = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, OctaveEnergy(Octave), t_sum, Octave, Source_ID, Decimation[Octave], 0, Surf_ID);
+                O.BandStart = bandStart; O.BandCount = BandsPerGroup;
+                if (O.BandCount > 1)
+                {
+                    if (O.Fractions == null || O.Fractions.Length < O.BandCount) O.Fractions = new double[O.BandCount];
+                    for (int i = 0; i < O.BandCount; i++) O.Fractions[i] = O.Intensity > 0 ? Energy[bandStart + i] / O.Intensity : 1.0 / O.BandCount;
+                }
+                for (int band = bandStart; band < bandStart + BandsPerGroup; band++) Energy[band] = 0;
                 return O;
             }
 
@@ -342,12 +449,37 @@ namespace Pachyderm_Acoustic
             /// <param name="Octave"></param>
             /// <param name="Scattering_Coef"></param>
             /// <returns></returns>
+            public OctaveRay SplitRay(int group, double[] coefficients)
+            {
+                int bandStart = group * BandsPerGroup;
+                OctaveRay branch = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, 0, t_sum, group, Source_ID, Decimation[group], 0, Surf_ID);
+                branch.BandStart = bandStart; branch.BandCount = BandsPerGroup;
+                if (branch.BandCount == 1) branch.Intensity = Energy[bandStart] * coefficients[bandStart];
+                else
+                {
+                    if (branch.Fractions == null || branch.Fractions.Length < branch.BandCount) branch.Fractions = new double[branch.BandCount];
+                    branch.Intensity = 0;
+                    for (int i = 0; i < branch.BandCount; i++) { branch.Fractions[i] = Energy[bandStart + i] * coefficients[bandStart + i]; branch.Intensity += branch.Fractions[i]; }
+                    for (int i = 0; i < branch.BandCount; i++) branch.Fractions[i] = branch.Intensity > 0 ? branch.Fractions[i] / branch.Intensity : 1.0 / branch.BandCount;
+                }
+                for (int band = bandStart; band < bandStart + BandsPerGroup; band++) Energy[band] *= (1 - coefficients[band]);
+                return branch;
+            }
+
             public OctaveRay SplitRay(int Octave, double E_Mod_Coef)
             {
-                //OctaveRay O = new OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Energy[Octave] * E_Mod_Coef,  t_sum, Octave, Source_ID, Decimation[Octave], Surf_ID);
-                OctaveRay O = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Energy[Octave] * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation[Octave], 0, Surf_ID);
-                this.Energy[Octave] *= (1 - E_Mod_Coef);
-                return O;
+                int bandStart = Octave * BandsPerGroup;
+                OctaveRay ray = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, OctaveEnergy(Octave) * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation[Octave], 0, Surf_ID);
+                ray.BandStart = bandStart; ray.BandCount = BandsPerGroup;
+                if (ray.BandCount > 1)
+                {
+                    if (ray.Fractions == null || ray.Fractions.Length < ray.BandCount) ray.Fractions = new double[ray.BandCount];
+                    ray.Intensity = 0;
+                    for (int i = 0; i < ray.BandCount; i++) { ray.Fractions[i] = Energy[bandStart + i] * E_Mod_Coef; ray.Intensity += ray.Fractions[i]; }
+                    for (int i = 0; i < ray.BandCount; i++) ray.Fractions[i] = ray.Intensity > 0 ? ray.Fractions[i] / ray.Intensity : 1.0 / ray.BandCount;
+                }
+                for (int band = bandStart; band < bandStart + BandsPerGroup; band++) Energy[band] *= (1 - E_Mod_Coef);
+                return ray;
             }
         }
 
@@ -450,6 +582,7 @@ namespace Pachyderm_Acoustic
                     R.y = 0;
                     R.z = 0;
                     R.Energy = new double[8];
+                    R.Decimation = new double[8]; R.Freq_Bands = new int[0];
                     R.t_sum = 0;
                     R.Ray_ID = 0;
                     R.Surf_ID = -1;
@@ -519,6 +652,7 @@ namespace Pachyderm_Acoustic
                 OR.Intensity = Intensity_in;
                 OR.t_sum = Time;
                 OR.Octave = octave;
+                OR.BandStart = octave; OR.BandCount = 1;
                 OR.Source_ID = SrcID;
                 OR.Decimation = Decimation_in;
                 OR.Decim_Inv = Decimation_Inv;
@@ -537,6 +671,7 @@ namespace Pachyderm_Acoustic
                 OR.Intensity = Intensity_in;
                 OR.t_sum = Time;
                 OR.Octave = octave;
+                OR.BandStart = octave; OR.BandCount = 1;
                 OR.Source_ID = SrcID;
                 OR.Decimation = Decimation_in;
                 OR.Decim_Inv = 1.0 / Decimation_in;
@@ -578,6 +713,8 @@ namespace Pachyderm_Acoustic
                     R.dz = 0;
                     R.Octave = 0;
                     R.Intensity = 0;
+                    R.BandStart = 0; R.BandCount = 1;
+                    R.Scatter_Mask = 0; R.Decimation_threshold = R.Decim_Inv = 0;
                     R.poly_origin1 = 0;
                     R.poly_origin2 = 0;
                     R.Ray_ID = 0;

@@ -67,9 +67,11 @@ namespace Pachyderm_Acoustic
 
             public Receiver_Bank(IList<Point> Pt, Source SrcPT, Scene Sc, int SampleRate_in, double COTime_in, Type Type, bool third_Oct)
             {
+                SrcPT = SrcPT.ForBandResolution(third_Oct);
                 SWL = SrcPT.SWL();
                 SrcType = SrcPT.Type();
                 Third_Oct = third_Oct;
+                Oct_choice = Enumerable.Range(0, third_Oct ? 24 : 8).ToArray();
                 SampleRate = SampleRate_in;
                 SampleCT = (int)Math.Floor(COTime_in * SampleRate_in / 1000);
                 this.CutOffTime = COTime_in;
@@ -81,8 +83,8 @@ namespace Pachyderm_Acoustic
 
                 for (int i = 0; i < arrPts.Length; i++)
                 {
-                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT.Origin, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
-                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT.Origin, RayCount, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT.Origin, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT.Origin, RayCount, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
 
                     if (arrPts[i].x > Max.x) Max.x = arrPts[i].x;
                     if (arrPts[i].y > Max.y) Max.y = arrPts[i].y;
@@ -92,6 +94,7 @@ namespace Pachyderm_Acoustic
                     if (arrPts[i].z < Min.z) Min.z = arrPts[i].z;
                 }
                 Third_Oct = third_Oct;
+                Oct_choice = Enumerable.Range(0, third_Oct ? 24 : 8).ToArray();
             }
 
             public virtual Receiver_Bank Duplicate(Source Src, Scene Room)
@@ -114,6 +117,7 @@ namespace Pachyderm_Acoustic
             private Receiver_Bank(int Rec_Count, int SampleRate_in, double CO_Time_in, double[] rho_c, int[] Octaves, Receiver_Bank.Type Type, bool third_Oct)
             {
                 Third_Oct = third_Oct;
+                Oct_choice = Enumerable.Range(0, third_Oct ? 24 : 8).ToArray();
                 SampleRate = SampleRate_in;
                 SampleCT = (int)Math.Ceiling(CO_Time_in * SampleRate_in / 1000);
                 this.CutOffTime = CO_Time_in;
@@ -121,7 +125,7 @@ namespace Pachyderm_Acoustic
                 Rec_Type = Type;
                 for (int i = 0; i < Rec_Count; i++)
                 {
-                    Rec_List[i] = new Spherical_Receiver(SampleRate_in, CO_Time_in, rho_c[i]);
+                    Rec_List[i] = new Spherical_Receiver(SampleRate_in, CO_Time_in, rho_c[i], Oct_choice.Length);
                 }
             }
 
@@ -139,6 +143,8 @@ namespace Pachyderm_Acoustic
             public Receiver_Bank(IEnumerable<Point> Pt, Source SrcPT, Scene Sc, int SampleRate_in, double COTime_in, Type Type, bool third_Oct)
             {
                 Third_Oct = third_Oct;
+                Oct_choice = Enumerable.Range(0, third_Oct ? 24 : 8).ToArray();
+                SrcPT = SrcPT.ForBandResolution(third_Oct);
                 SWL = SrcPT.SWL();
                 SampleRate = SampleRate_in;
                 SampleCT = (int)Math.Floor(COTime_in * SampleRate_in / 1000);
@@ -151,8 +157,8 @@ namespace Pachyderm_Acoustic
 
                 for (int i = 0; i < arrPts.Length; i++)
                 {
-                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT.Origin, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
-                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT.Origin, RayCount, Sc.Attenuation(arrPts[i]), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT.Origin, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT.Origin, RayCount, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
 
                     if (arrPts[i].x > Max.x) Max.x = arrPts[i].x;
                     if (arrPts[i].y > Max.y) Max.y = arrPts[i].y;
@@ -241,99 +247,32 @@ namespace Pachyderm_Acoustic
                 {
                     //7a. Write the Speed of Sound for this receiver: double
                     BW.Write(Rec_List[q].Sound_Speed);
+                    double[][] Hist = new double[SWL.Length][];
+                    double[][] HistP = new double[SWL.Length][];
+                    for (int band = 0; band < SWL.Length; band++)
+                    {
+                        Hist[band] = Rec_List[q].GetEnergyHistogram(band);
+                        HistP[band] = Rec_List[q].GetRMSPressureHistogram(band);
+                    }
 
-                    double[] Hist0 = Rec_List[q].GetEnergyHistogram(0);
-                    double[] Hist1 = Rec_List[q].GetEnergyHistogram(1);
-                    double[] Hist2 = Rec_List[q].GetEnergyHistogram(2);
-                    double[] Hist3 = Rec_List[q].GetEnergyHistogram(3);
-                    double[] Hist4 = Rec_List[q].GetEnergyHistogram(4);
-                    double[] Hist5 = Rec_List[q].GetEnergyHistogram(5);
-                    double[] Hist6 = Rec_List[q].GetEnergyHistogram(6);
-                    double[] Hist7 = Rec_List[q].GetEnergyHistogram(7);
-
-                    double[] HistP0 = Rec_List[q].GetRMSPressureHistogram(0);
-                    double[] HistP1 = Rec_List[q].GetRMSPressureHistogram(1);
-                    double[] HistP2 = Rec_List[q].GetRMSPressureHistogram(2);
-                    double[] HistP3 = Rec_List[q].GetRMSPressureHistogram(3);
-                    double[] HistP4 = Rec_List[q].GetRMSPressureHistogram(4);
-                    double[] HistP5 = Rec_List[q].GetRMSPressureHistogram(5);
-                    double[] HistP6 = Rec_List[q].GetRMSPressureHistogram(6);
-                    double[] HistP7 = Rec_List[q].GetRMSPressureHistogram(7);
-
+                    //7b. Write the echogram sample and directional sample:(double + 3double) * 8
                     for (int j = 0; j < SampleCT; j++)
                     {
-                        //7b. Write the echogram sample and directional sample:(double + 3double) * 8
-                        BW.Write(Hist0[j]);
-                        BW.Write(HistP0[j]);
-                        BW.Write(Rec_List[q].Directions_Pos(0, j, 0));
-                        BW.Write(Rec_List[q].Directions_Pos(0, j, 1));
-                        BW.Write(Rec_List[q].Directions_Pos(0, j, 2));
-                        BW.Write(Rec_List[q].Directions_Neg(0, j, 0));
-                        BW.Write(Rec_List[q].Directions_Neg(0, j, 1));
-                        BW.Write(Rec_List[q].Directions_Neg(0, j, 2));
+                        for (int band = 0; band < SWL.Length; band++)
+                        {
 
-                        BW.Write(Hist1[j]);
-                        BW.Write(HistP1[j]);
-                        BW.Write(Rec_List[q].Directions_Pos(1, j, 0));
-                        BW.Write(Rec_List[q].Directions_Pos(1, j, 1));
-                        BW.Write(Rec_List[q].Directions_Pos(1, j, 2));
-                        BW.Write(Rec_List[q].Directions_Neg(1, j, 0));
-                        BW.Write(Rec_List[q].Directions_Neg(1, j, 1));
-                        BW.Write(Rec_List[q].Directions_Neg(1, j, 2));
+                            BW.Write(Hist[band][j]);
+                            BW.Write(HistP[band][j]);
 
-                        BW.Write(Hist2[j]);
-                        BW.Write(HistP2[j]);
-                        BW.Write(Rec_List[q].Directions_Pos(2, j, 0));
-                        BW.Write(Rec_List[q].Directions_Pos(2, j, 1));
-                        BW.Write(Rec_List[q].Directions_Pos(2, j, 2));
-                        BW.Write(Rec_List[q].Directions_Neg(2, j, 0));
-                        BW.Write(Rec_List[q].Directions_Neg(2, j, 1));
-                        BW.Write(Rec_List[q].Directions_Neg(2, j, 2));
+                            BW.Write(Rec_List[q].Directions_Pos(band, j, 0));
+                            BW.Write(Rec_List[q].Directions_Pos(band, j, 1));
+                            BW.Write(Rec_List[q].Directions_Pos(band, j, 2));
+                            BW.Write(Rec_List[q].Directions_Neg(band, j, 0));
+                            BW.Write(Rec_List[q].Directions_Neg(band, j, 1));
+                            BW.Write(Rec_List[q].Directions_Neg(band, j, 2));
 
-                        BW.Write(Hist3[j]);
-                        BW.Write(HistP3[j]);
-                        BW.Write(Rec_List[q].Directions_Pos(3, j, 0));
-                        BW.Write(Rec_List[q].Directions_Pos(3, j, 1));
-                        BW.Write(Rec_List[q].Directions_Pos(3, j, 2));
-                        BW.Write(Rec_List[q].Directions_Neg(3, j, 0));
-                        BW.Write(Rec_List[q].Directions_Neg(3, j, 1));
-                        BW.Write(Rec_List[q].Directions_Neg(3, j, 2));
 
-                        BW.Write(Hist4[j]);
-                        BW.Write(HistP4[j]);
-                        BW.Write(Rec_List[q].Directions_Pos(4, j, 0));
-                        BW.Write(Rec_List[q].Directions_Pos(4, j, 1));
-                        BW.Write(Rec_List[q].Directions_Pos(4, j, 2));
-                        BW.Write(Rec_List[q].Directions_Neg(4, j, 0));
-                        BW.Write(Rec_List[q].Directions_Neg(4, j, 1));
-                        BW.Write(Rec_List[q].Directions_Neg(4, j, 2));
-
-                        BW.Write(Hist5[j]);
-                        BW.Write(HistP5[j]);
-                        BW.Write(Rec_List[q].Directions_Pos(5, j, 0));
-                        BW.Write(Rec_List[q].Directions_Pos(5, j, 1));
-                        BW.Write(Rec_List[q].Directions_Pos(5, j, 2));
-                        BW.Write(Rec_List[q].Directions_Neg(5, j, 0));
-                        BW.Write(Rec_List[q].Directions_Neg(5, j, 1));
-                        BW.Write(Rec_List[q].Directions_Neg(5, j, 2));
-
-                        BW.Write(Hist6[j]);
-                        BW.Write(HistP6[j]);
-                        BW.Write(Rec_List[q].Directions_Pos(6, j, 0));
-                        BW.Write(Rec_List[q].Directions_Pos(6, j, 1));
-                        BW.Write(Rec_List[q].Directions_Pos(6, j, 2));
-                        BW.Write(Rec_List[q].Directions_Neg(6, j, 0));
-                        BW.Write(Rec_List[q].Directions_Neg(6, j, 1));
-                        BW.Write(Rec_List[q].Directions_Neg(6, j, 2));
-
-                        BW.Write(Hist7[j]);
-                        BW.Write(HistP7[j]);
-                        BW.Write(Rec_List[q].Directions_Pos(7, j, 0));
-                        BW.Write(Rec_List[q].Directions_Pos(7, j, 1));
-                        BW.Write(Rec_List[q].Directions_Pos(7, j, 2));
-                        BW.Write(Rec_List[q].Directions_Neg(7, j, 0));
-                        BW.Write(Rec_List[q].Directions_Neg(7, j, 1));
-                        BW.Write(Rec_List[q].Directions_Neg(7, j, 2));
+                        } 
                     }
                 }
             }
@@ -362,21 +301,20 @@ namespace Pachyderm_Acoustic
                 //6. Write the cut off time:double
                 double CutoffTime = BR.ReadDouble();
 
-                Receiver_Bank Rec = new Receiver_Bank(Rec_CT, SampleRate, CutoffTime, rho_c, new int[] { 0, 1, 2, 3, 4, 5, 6, 7 }, Rec_typ, false);
+                Receiver_Bank Rec = new Receiver_Bank(Rec_CT, SampleRate, CutoffTime, rho_c, new int[] { 0, 1, 2, 3, 4, 5, 6, 7 }, Rec_typ, SWL.Length == 24);
 
-                double v = double.Parse(version.Substring(0, 3));
+                double v = double.Parse(version.Substring(0, 3), System.Globalization.CultureInfo.InvariantCulture);
 
                 for (int q = 0; q < Rec_CT; q++)
                 {
                     Rec.Rec_List[q].Origin = RecPts.ElementAt<Hare.Geometry.Point>(q);
-                    Rec.Rec_List[q].Recs.Energy[0] = new double[SampleCT];
-                    Rec.Rec_List[q].Recs.Energy[1] = new double[SampleCT];
-                    Rec.Rec_List[q].Recs.Energy[2] = new double[SampleCT];
-                    Rec.Rec_List[q].Recs.Energy[3] = new double[SampleCT];
-                    Rec.Rec_List[q].Recs.Energy[4] = new double[SampleCT];
-                    Rec.Rec_List[q].Recs.Energy[5] = new double[SampleCT];
-                    Rec.Rec_List[q].Recs.Energy[6] = new double[SampleCT];
-                    Rec.Rec_List[q].Recs.Energy[7] = new double[SampleCT];
+                    Rec.Rec_List[q].Recs = new Spherical_Receiver.Directional_Histogram(SampleRate, SampleCT, SWL.Length);
+                    Rec.Rec_List[q].Reflection_Analysis_Data = new double[3][][];
+                    for (int type = 0; type < 3; type++)
+                    {
+                        Rec.Rec_List[q].Reflection_Analysis_Data[type] = new double[SWL.Length][];
+                        for (int band = 0; band < SWL.Length; band++) Rec.Rec_List[q].Reflection_Analysis_Data[type][band] = new double[SampleCT];
+                    }
 
                     //if (v == 1.7)
                     //{
@@ -390,7 +328,7 @@ namespace Pachyderm_Acoustic
                     for (int j = 0; j < SampleCT; j++)
                     {
                         //7b. Write the echogram sample and directional sample:(double + 3double) * 8
-                        for (int oct = 0; oct < 8; oct++)
+                        for (int oct = 0; oct < SWL.Length; oct++)
                         {
                             Rec.Rec_List[q].Recs.Energy[oct][j] = BR.ReadDouble();
                             if (v == 1.7)
@@ -418,6 +356,9 @@ namespace Pachyderm_Acoustic
 
                 //while (! t.IsCompleted) await Task.Delay(1000);
 
+                Rec.SampleCT = SampleCT;
+                Rec.SWL = (double[])SWL.Clone();
+                Rec.delay_ms = delayms;
                 Rec.Create_Filter(VB);
                 //while (! t.IsCompleted) await Task.Delay(1000);
                 return Rec;
@@ -520,14 +461,16 @@ namespace Pachyderm_Acoustic
             /// <param name="Rec">a receiver bank clone to combine with this receiver bank instance</param>
             public virtual void Combine_Clones(Receiver_Bank Rec)
             {
-                //C_Sound = SoundSpeed;
+                if (Third_Oct != Rec.Third_Oct || Rec.Count != Count || Rec.Duration() != Duration()) throw new ArgumentException("Receiver banks must have matching bands, receivers and duration.");
                 for (int R = 0; R < Rec.Count; R++)
                 {
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < SWL.Length; oct++)
                     {
                         for (int T = 0; T < Rec.Duration(); T++)
                         {
                             Rec_List[R].Combine_Sample(T, Rec.Rec_List[R].Energy(T, oct), Rec.Rec_List[R].Pressure_rms(T, oct), Rec.Rec_List[R].Directions_Pos(oct, T), Rec.Rec_List[R].Directions_Neg(oct, T), oct);
+                            if (Rec_List[R].Reflection_Analysis_Data != null && Rec.Rec_List[R].Reflection_Analysis_Data != null)
+                                for (int type = 0; type < 3; type++) Rec_List[R].Reflection_Analysis_Data[type][oct][T] += Rec.Rec_List[R].Reflection_Analysis_Data[type][oct][T];
                         }
                     }
                 }
@@ -614,7 +557,7 @@ namespace Pachyderm_Acoustic
                 {
                     for (int rec = 0; rec < a_pts.Length; rec++)
                     {
-                        for (int t = 0; t <= A.Rec_List[rec].Recs.SampleCT; t++) A.Rec_List[rec].Combine_Sample(t, B.Rec_List[rec].Energy(t, oct), B.Rec_List[rec].Pressure_rms(t, oct), B.Rec_List[rec].Directions_Pos(oct, t), B.Rec_List[rec].Directions_Neg(oct, t), oct);
+                        for (int t = 0; t < A.Rec_List[rec].Recs.SampleCT; t++) A.Rec_List[rec].Combine_Sample(t, B.Rec_List[rec].Energy(t, oct), B.Rec_List[rec].Pressure_rms(t, oct), B.Rec_List[rec].Directions_Pos(oct, t), B.Rec_List[rec].Directions_Neg(oct, t), oct);
                     }
                 }
 
@@ -669,7 +612,8 @@ namespace Pachyderm_Acoustic
 
             public virtual void Set_Power(double[] factor)
             {
-                for(int i = 0; i < 8; i++) SWL[i] = AcousticalMath.SPL_Intensity(AcousticalMath.Intensity_SPL(SWL[i]) * factor[i]);
+                if (factor == null || factor.Length != SWL.Length) throw new ArgumentException("Power factors must match the receiver band count.");
+                for(int i = 0; i < SWL.Length; i++) SWL[i] = AcousticalMath.SPL_Intensity(AcousticalMath.Intensity_SPL(SWL[i]) * factor[i]);
                 for (int i = 0; i < Rec_List.Length; i++) Rec_List[i].Set_Power(factor);
             }
 
@@ -685,9 +629,9 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public double[] PowerModFactor(double[] new_SWL)
             {
-                double[] factor = new double[8];
+                double[] factor = new double[SWL.Length];
                 if (this.SWL == null) SWL = new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 };
-                for (int i = 0; i < 8; i++) factor[i] = Utilities.AcousticalMath.Intensity_SPL(new_SWL[i]) / Utilities.AcousticalMath.Intensity_SPL(this.SWL[i]);
+                for (int i = 0; i < SWL.Length; i++) factor[i] = Utilities.AcousticalMath.Intensity_SPL(new_SWL[i]) / Utilities.AcousticalMath.Intensity_SPL(this.SWL[i]);
                 return factor;
             }
         }
@@ -713,7 +657,26 @@ namespace Pachyderm_Acoustic
             protected internal double SizeMod;
             public double[][][] Reflection_Analysis_Data;
 
-            public Spherical_Receiver()
+        //    public int BandCount { get { return Recs.Energy.Length; } }
+        //public void ConfigureBands(bool thirdOctave, double[] attenuation = null)
+        //{
+        //    if (attenuation != null) Atten = (double[])attenuation.Clone();
+        //    if (Recs != null && Recs.Energy.Length == (thirdOctave ? 24 : 8)) return;
+        //    Recs = thirdOctave ? (Histogram)new Directional_Histogram_ThirdOctave(SampleRate, CO_Time) : new Directional_Histogram(SampleRate, CO_Time);
+        //    ConfigureReflectionAnalysis();
+        //}
+
+        //protected internal void ConfigureReflectionAnalysis()
+        //{
+        //    Reflection_Analysis_Data = new double[3][][];
+        //    for (int type = 0; type < 3; type++)
+        //    {
+        //        Reflection_Analysis_Data[type] = new double[Recs.Energy.Length][];
+        //        for (int b = 0; b < Recs.Energy.Length; b++) Reflection_Analysis_Data[type][b] = new double[Recs.SampleCT];
+        //    }
+        //}
+
+        public Spherical_Receiver()
             { }
 
             /// <summary>
@@ -723,16 +686,22 @@ namespace Pachyderm_Acoustic
             /// <param name="CSound_in"> the speed of sound</param>
             /// <param name="CO_Time_in">the Cut Off Time in ms.</param>
             public Spherical_Receiver(int SampleRate_in, double CO_Time_in, double rho_c)
+                : this(SampleRate_in, CO_Time_in, rho_c, 8)
+            { }
+
+            public Spherical_Receiver(int SampleRate_in, double CO_Time_in, double rho_c, int bandCount)
             {
+                if (bandCount != 8 && bandCount != 24) throw new ArgumentOutOfRangeException(nameof(bandCount));
+                Atten = new double[bandCount];
                 Rho_C = rho_c;
                 CO_Time = CO_Time_in;
                 SampleRate = SampleRate_in;
-                Recs = new Directional_Histogram(SampleRate, CO_Time);
+                Recs = new Directional_Histogram(SampleRate, CO_Time, bandCount);
                 Reflection_Analysis_Data = new double[3][][];
-                Reflection_Analysis_Data[0] = new double[8][];
-                Reflection_Analysis_Data[1] = new double[8][];
-                Reflection_Analysis_Data[2] = new double[8][];
-                for(int oct = 0; oct < 8; oct++) { Reflection_Analysis_Data[0][oct] = new double[(int)(SampleRate * (CO_Time / 1000.0))]; Reflection_Analysis_Data[1][oct] = new double[(int)(SampleRate * (CO_Time / 1000.0))]; Reflection_Analysis_Data[2][oct] = new double[(int)(SampleRate * (CO_Time / 1000))]; }
+                Reflection_Analysis_Data[0] = new double[bandCount][];
+                Reflection_Analysis_Data[1] = new double[bandCount][];
+                Reflection_Analysis_Data[2] = new double[bandCount][];
+                for(int oct = 0; oct < bandCount; oct++) { Reflection_Analysis_Data[0][oct] = new double[(int)(SampleRate * (CO_Time / 1000.0))]; Reflection_Analysis_Data[1][oct] = new double[(int)(SampleRate * (CO_Time / 1000.0))]; Reflection_Analysis_Data[2][oct] = new double[(int)(SampleRate * (CO_Time / 1000))]; }
             }
 
             /// <summary>
@@ -747,6 +716,7 @@ namespace Pachyderm_Acoustic
             /// <param name="COTime_in"></param>
             public Spherical_Receiver(Point Center, Point SrcCenter, double[] Attenuation, double C_Sound_in, double rho, int SampleRate_in, double COTime_in)
             {
+                if (Attenuation == null || (Attenuation.Length != 8 && Attenuation.Length != 24)) throw new ArgumentException("Provide an octave or third-octave attenuation spectrum.", nameof(Attenuation));
                 D_Length = (Center - SrcCenter).Length();
                 Radius = 1;
                 Radius2 = Radius * Radius;
@@ -755,15 +725,14 @@ namespace Pachyderm_Acoustic
                 Origin = new Hare.Geometry.Point(Center.x, Center.y, Center.z);
                 Sound_Speed = C_Sound_in;
                 Rho_C = C_Sound_in * rho;
-                Atten = new double[8];
-                for (int o = 0; o < 8; o++) Atten[o] = Attenuation[o];
+                Atten = (double[])Attenuation.Clone();
                 SizeMod = 1 / Math.PI;
-                Recs = new Directional_Histogram(SampleRate, CO_Time);
+                Recs = new Directional_Histogram(SampleRate, CO_Time, Atten.Length);
                 Reflection_Analysis_Data = new double[3][][];
-                Reflection_Analysis_Data[0] = new double[8][];
-                Reflection_Analysis_Data[1] = new double[8][];
-                Reflection_Analysis_Data[2] = new double[8][];
-                for (int oct = 0; oct < 8; oct++) { Reflection_Analysis_Data[0][oct] = new double[(int)(SampleRate * (CO_Time / 1000.0))]; Reflection_Analysis_Data[1][oct] = new double[(int)(SampleRate * (CO_Time / 1000.0))]; Reflection_Analysis_Data[2][oct] = new double[(int)(SampleRate * (CO_Time / 1000.0))]; }
+                Reflection_Analysis_Data[0] = new double[Atten.Length][];
+                Reflection_Analysis_Data[1] = new double[Atten.Length][];
+                Reflection_Analysis_Data[2] = new double[Atten.Length][];
+                for (int oct = 0; oct < Atten.Length; oct++) { Reflection_Analysis_Data[0][oct] = new double[(int)(SampleRate * (CO_Time / 1000.0))]; Reflection_Analysis_Data[1][oct] = new double[(int)(SampleRate * (CO_Time / 1000.0))]; Reflection_Analysis_Data[2][oct] = new double[(int)(SampleRate * (CO_Time / 1000.0))]; }
             }
 
             /// <summary>
@@ -818,18 +787,21 @@ namespace Pachyderm_Acoustic
                     double tsphere = (t2 - t1) * 0.5;
                     double RayTime = t * Inv_C_Sound + R.t_sum;
                     double raydist = RayTime * C_Sound;
-                    foreach (int oct in R.Freq_Bands)
+                    foreach (int group in R.Freq_Bands)
+                    for (int component = 0; component < (R.ThirdOctave ? 3 : 1); component++)
                     {
+                        int oct = R.ThirdOctave ? 3 * group + component : group;
                         double energy = R.Energy[oct] * Math.Pow(10, -.1 * Atten[oct] * raydist) * SizeMod * tsphere; //* t
                         Recs.Add(RayTime, energy, -R.dx, -R.dy, -R.dz, Rho_C, oct);
                         int sample = (int)(RayTime * SampleRate);
-                        if (sample < Reflection_Analysis_Data[0][oct].Length) Reflection_Analysis_Data[0][oct][sample] += energy;
+                        if (sample >= 0 && sample < Reflection_Analysis_Data[0][oct].Length)
+                            lock (Reflection_Analysis_Data[0][oct]) Reflection_Analysis_Data[0][oct][sample] += energy;
                     }
                 }
             }
 
             /// <summary>
-            /// Checks receiver for an intersection with a ray 
+            /// Checks receiver for an intersection with a ray
             /// </summary>
             /// <param name="Length">The length of the ray at the reflection point before potential intersection</param>
             /// <param name="R">the ray.</param>
@@ -843,7 +815,7 @@ namespace Pachyderm_Acoustic
                 double c = Hare_math.Dot(mx, my, mz, mx, my, mz) - Radius2;
                 if (c > 0 && b > 0) return;
                 double discr = b * b - c;
-                if (discr < 0) return;                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+                if (discr < 0) return;
                 double t1 = -b - Math.Sqrt(discr);
                 double t2 = -b + Math.Sqrt(discr);
 
@@ -852,9 +824,23 @@ namespace Pachyderm_Acoustic
                 {
                     double tsphere = (t2 - t1) * 0.5;
                     double Raytime = t * Inv_C_Sound + R.t_sum;
+                    if (R.BandCount > 1)
+                    {
+                        int thirdSample = (int)(Raytime * SampleRate);
+                        for (int cband = 0; cband < R.BandCount; cband++)
+                        {
+                            int band = R.BandStart + cband;
+                            double e = (R.Intensity * R.Fractions[cband]) * Math.Pow(10, -.1 * Atten[band] * Raytime * C_Sound) * SizeMod * tsphere;
+                            Recs.Add(Raytime, e, -R.dx, -R.dy, -R.dz, Rho_C, band);
+                            int kind = R.IsSpecular ? (R.WasScattered ? 2 : 0) : 1;
+                            if (thirdSample >= 0 && thirdSample < Reflection_Analysis_Data[kind][band].Length)
+                                lock (Reflection_Analysis_Data[kind][band]) Reflection_Analysis_Data[kind][band][thirdSample] += e;
+                        }
+                        return;
+                    }
                     double energy = R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * Raytime * C_Sound) * SizeMod * tsphere; // t
                     Recs.Add(Raytime, energy, -R.dx, -R.dy, -R.dz, Rho_C, R.Octave);
-                    int sample = (int)(Raytime * SampleRate); 
+                    int sample = (int)(Raytime * SampleRate);
                     if (sample < Reflection_Analysis_Data[0][0].Length)
                     {
                         if (R.IsSpecular)
@@ -928,7 +914,7 @@ namespace Pachyderm_Acoustic
 
             public double[][][] Analysis_Histogram
             {
-                get 
+                get
                 {
                     return Reflection_Analysis_Data;
                 }
@@ -998,8 +984,10 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public virtual double Energy(int t, int oct)
             {
-                if (oct == 8) return Recs.Energy[0][t] + Recs.Energy[1][t] + Recs.Energy[2][t] + Recs.Energy[3][t] + Recs.Energy[4][t] + Recs.Energy[5][t] + Recs.Energy[6][t] + Recs.Energy[7][t];
-                return Recs.Energy[oct][t];
+                if (oct < Recs.Energy.Length) return Recs.Energy[oct][t];
+                double sum = 0;
+                for (int band = 0; band < Recs.Energy.Length; band++) sum += Recs.Energy[band][t];
+                return sum;
             }
 
             /// <summary>
@@ -1010,8 +998,11 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public virtual double Pressure_rms(int t, int oct)
             {
-                if (oct == 8) return Recs.Pressure[0][t] + Recs.Pressure[1][t] + Recs.Pressure[2][t] + Recs.Pressure[3][t] + Recs.Pressure[4][t] + Recs.Pressure[5][t] + Recs.Pressure[6][t] + Recs.Pressure[7][t];
-                return Recs.Pressure[oct][t];
+                if (oct < Recs.Pressure.Length) return Recs.Pressure[oct][t];
+                double sum = 0;
+                for (int band = 0; band < Recs.Pressure.Length; band++)
+                    sum += Recs.Pressure[band][t];
+                return sum;
             }
 
             /// <summary>
@@ -1035,7 +1026,9 @@ namespace Pachyderm_Acoustic
             /// <param name="Octave"></param>
             public void Add(int Sample, double Energy_in, Vector direction, int Octave)
             {
-                Recs.Add(Sample, Energy_in, direction.dx, direction.dy, direction.dz, Rho_C, Octave);
+                Vector positive = new Vector(Math.Max(0, direction.dx) * Energy_in, Math.Max(0, direction.dy) * Energy_in, Math.Max(0, direction.dz) * Energy_in);
+                Vector negative = new Vector(Math.Min(0, direction.dx) * Energy_in, Math.Min(0, direction.dy) * Energy_in, Math.Min(0, direction.dz) * Energy_in);
+                Recs.Combine_Sample(Sample, Energy_in, Math.Sqrt(Math.Max(0, Energy_in) * Rho_C), positive, negative, Octave);
             }
 
             public void Combine_Sample(int sample, double Energy_in, double Pressure_in, Vector direction_pos, Vector direction_neg, int Octave)// float p_real, float p_imag,
@@ -1045,11 +1038,11 @@ namespace Pachyderm_Acoustic
 
             public double Sound_Speed
             {
-                get 
+                get
                 {
                     return C_Sound;
                 }
-                set 
+                set
                 {
                     C_Sound = value;
                     Inv_C_Sound = 1 / value;
@@ -1083,6 +1076,9 @@ namespace Pachyderm_Acoustic
             public virtual void Set_Power(double[] factor)
             {
                 Recs.Set_Power(factor);
+                if (Reflection_Analysis_Data != null)
+                    for (int type = 0; type < 3; type++) for (int band = 0; band < Reflection_Analysis_Data[type].Length; band++)
+                        for (int t = 0; t < Reflection_Analysis_Data[type][band].Length; t++) Reflection_Analysis_Data[type][band][t] *= factor[band];
             }
 
             public void Scale(double ray_ct)
@@ -1113,16 +1109,20 @@ namespace Pachyderm_Acoustic
                 protected internal double CO_Time;
                 protected internal int SampleRate;
                 protected internal int SampleCT;
-                 
+
                 public Histogram(int SampleRate_in, int SampleCT)
+                    : this(SampleRate_in, SampleCT, 8)
+                { }
+
+                public Histogram(int SampleRate_in, int SampleCT, int bandCount)
                 {
                     SampleRate = SampleRate_in;
                     this.SampleCT = SampleCT;
                     CO_Time = (double)SampleCT / SampleRate;
-                    Energy = new double[8][];
-                    Pressure = new double[8][];
+                    Energy = new double[bandCount][];
+                    Pressure = new double[Energy.Length][];
 
-                    for (int o = 0; o < 8; o++)
+                    for (int o = 0; o < Energy.Length; o++)
                     {
                         Energy[o] = new double[SampleCT];
                         Pressure[o] = new double[SampleCT];
@@ -1130,14 +1130,18 @@ namespace Pachyderm_Acoustic
                 }
 
                 public Histogram(int SampleRate_in, double COTime_in)
+                    : this(SampleRate_in, COTime_in, 8)
+                { }
+
+                public Histogram(int SampleRate_in, double COTime_in, int bandCount)
                 {
                     SampleRate = SampleRate_in;
                     CO_Time = COTime_in / 1000;
                     SampleCT = (int)(CO_Time * SampleRate);
-                    Energy = new double[8][];
-                    Pressure = new double[8][];
+                    Energy = new double[bandCount][];
+                    Pressure = new double[Energy.Length][];
 
-                    for (int o = 0; o < 8; o++)
+                    for (int o = 0; o < Energy.Length; o++)
                     {
                         Energy[o] = new double[SampleCT];
                         Pressure[o] = new double[SampleCT];
@@ -1158,18 +1162,26 @@ namespace Pachyderm_Acoustic
                 /// <param name="Octave">the index of the octave band.</param>
                 public virtual void Add(double time, double Energy_in, double dx, double dy, double dz, double Rho_C, int Octave)
                 {
+                    lock (Energy[Octave])
+                    {
                     int sample = (int)(time * SampleRate);
                     if (sample >= Energy[Octave].Length) return;
                     if (sample < 0) return;
                     Energy[Octave][sample] += Energy_in;
                     Pressure[Octave][sample] += Math.Sqrt(Math.Max(0, Energy_in) * Rho_C);
+
+                    }
                 }
 
                 public virtual void Combine_Sample(int Sample, double Energy_in, double Pressure_in, Vector direction_pos, Vector direction_neg, int Octave)
                 {
+                    lock (Energy[Octave])
+                    {
                     if (Sample >= Energy[Octave].Length) return;
                     Energy[Octave][Sample] += Energy_in;
                     Pressure[Octave][Sample] += Pressure_in;
+
+                    }
                 }
 
                 public virtual void Create_Filter(double Rho_C)
@@ -1179,7 +1191,7 @@ namespace Pachyderm_Acoustic
                         return;
                     }
 
-                    F = Audio.Pach_SP.ETCToFilter(this.Pressure, new double[8] {120, 120, 120, 120, 120, 120, 120, 120 }, this.SampleRate, 44100);
+                    F = Audio.Pach_SP.ETCToFilter(this.Pressure, Enumerable.Repeat(120.0, Energy.Length).ToArray(), this.SampleRate, 44100);
                     Array.Resize(ref F, F.Length - 4096);
                 }
 
@@ -1218,8 +1230,8 @@ namespace Pachyderm_Acoustic
 
                 public virtual void Set_Power(double[] factor)
                 {
-                    double[] p_factor = new double[8];
-                    for(int oct = 0; oct < 8; oct++) p_factor[oct] = Math.Sqrt(factor[oct]);
+                    double[] p_factor = new double[Energy.Length];
+                    for(int oct = 0; oct < Energy.Length; oct++) p_factor[oct] = Math.Sqrt(factor[oct]);
                     for (int i = 0; i < Energy.Length; i++) for (int j = 0; j < Energy[i].Length; j++)
                         {
                             Energy[i][j] *= factor[i];
@@ -1234,14 +1246,14 @@ namespace Pachyderm_Acoustic
                 /// <returns></returns>
                 public virtual double[] GetRMSPressureHistogram(int Octave)
                 {
-                    if (Octave < 8)
+                    if (Octave < Energy.Length)
                     {
                         return Pressure[Octave];
                     }
                     else
                     {
                         double[] Sum_Pressure = new double[(Energy[0].Length)];
-                        for (int Oct = 0; Oct < 8; Oct++)
+                        for (int Oct = 0; Oct < Energy.Length; Oct++)
                         {
                             for (int idx = 0; idx < Pressure[Oct].Length; idx++)
                             {
@@ -1258,15 +1270,15 @@ namespace Pachyderm_Acoustic
                 /// <param name="Octave">the octave band index</param>
                 /// <returns></returns>
                 public virtual double[] GetEnergyHistogram(int Octave)
-                {   
+                {
                     if (Octave < Energy.Length)
                     {
                         return Energy[Octave];
                     }
-                    else 
+                    else
                     {
                         double[] Sum_Energy = new double[(Energy[0].Length)];
-                        for (int Oct = 0; Oct < 8; Oct++)
+                        for (int Oct = 0; Oct < Energy.Length; Oct++)
                         {
                             for (int idx = 0; idx < Energy[Oct].Length; idx++)
                             {
@@ -1355,9 +1367,9 @@ namespace Pachyderm_Acoustic
                     return 0;
                 }
 
-                public virtual bool HasFilter() 
+                public virtual bool HasFilter()
                 {
-                    return F != null; 
+                    return F != null;
                 }
             }
 
@@ -1391,7 +1403,11 @@ namespace Pachyderm_Acoustic
                 /// <param name="Octave">the index of the octave band.</param>
                 public override void Add(double time, double Energy_in, double dx, double dy, double dz, double Rho_C, int Octave)
                 {
+                    lock (Energy[Octave])
+                    {
                     Energy[Octave][0] += Energy_in;
+
+                    }
                 }
 
                 public override bool HasFilter()
@@ -1404,305 +1420,30 @@ namespace Pachyderm_Acoustic
             /// This class stores all energy detections in a compact, reduced sampling rate series of histograms.
             /// </summary>
             [Serializable]
-            protected internal class Directional_Histogram_ThirdOctave : Histogram
+            protected internal class Directional_Histogram_ThirdOctave : Directional_Histogram
             {
-
-                public double[][][] Dir_Rec_Pos;
-                public double[][][] Dir_Rec_Neg;
-                public double[][] Fdir;
-                public Directional_Histogram_ThirdOctave(int SampleRate_in, int SampleCT)
-                    : base(SampleRate_in, SampleCT)
-                {
-                    SampleRate = SampleRate_in;
-                    this.SampleCT = SampleCT;
-                    CO_Time = (double)SampleCT / SampleRate;
-                    Energy = new double[24][];
-                    Pressure = new double[24][];
-
-                    for (int o = 0; o < 24; o++)
-                    {
-                        Energy[o] = new double[SampleCT];
-                        Pressure[o] = new double[SampleCT];
-                    }
-
-                    Dir_Rec_Pos = new double[3][][];
-                    Dir_Rec_Neg = new double[3][][];
-                    for (int i = 0; i < 3; i++)
-                    {
-                        Dir_Rec_Pos[i] = new double[8][];
-                        Dir_Rec_Neg[i] = new double[8][];
-                        for (int oct = 0; oct < 8; oct++)
-                        {
-                            Dir_Rec_Pos[i][oct] = new double[SampleCT];
-                            Dir_Rec_Neg[i][oct] = new double[SampleCT];
-                        }
-                    }
-                }
-
-                /// <summary>
-                /// gets the histogram of aggregated vector directions.
-                /// </summary>
-                /// <param name="SampleRate_in"></param>
-                /// <param name="C_Sound_in"></param>
-                /// <param name="COTime_in"></param>
-                public Directional_Histogram_ThirdOctave(int SampleRate_in, double COTime_in)
-                : base(SampleRate_in, COTime_in)
-                {
-                    SampleRate = SampleRate_in;
-                    CO_Time = COTime_in / 1000;
-                    SampleCT = (int)(CO_Time * SampleRate);
-                    Energy = new double[24][];
-                    for (int o = 0; o < 24; o++)
-                    {
-                        Energy[o] = new double[(int)(SampleRate * CO_Time)];
-                        Pressure[o] = new double[(int)(SampleRate * CO_Time)];
-                    }
-                    Dir_Rec_Pos = new double[3][][];
-                    Dir_Rec_Neg = new double[3][][];
-                    for (int i = 0; i < 3; i++)
-                    {
-                        Dir_Rec_Pos[i] = new double[8][];
-                        Dir_Rec_Neg[i] = new double[8][];
-                        for (int oct = 0; oct < 8; oct++)
-                        {
-                            Dir_Rec_Pos[i][oct] = new double[SampleCT];
-                            Dir_Rec_Neg[i][oct] = new double[SampleCT];
-                        }
-                    }
-                }
-
-                public override string Type()
-                {
-                    return "Type;Map_Data";
-                }
-
-                public override void Combine_Sample(int Sample, double Energy_in, double Pressure_in, Vector direction_pos, Vector direction_neg, int Octave)// float p_real, float p_imag,
-                {
-                    if (Sample >= Energy[Octave].Length) return;
-                    if (Sample < 0) Sample = 0;
-                    Energy[Octave][Sample] += Energy_in;
-                    Pressure[Octave][Sample] += Pressure_in;
-                    Dir_Rec_Pos[0][Octave][Sample] += (direction_pos.dx) / 3.0;
-                    Dir_Rec_Pos[1][Octave][Sample] += (direction_pos.dy) / 3.0;
-                    Dir_Rec_Pos[2][Octave][Sample] += (direction_pos.dz) / 3.0;
-                    Dir_Rec_Neg[0][Octave][Sample] += (direction_neg.dx) / 3.0;
-                    Dir_Rec_Neg[1][Octave][Sample] += (direction_neg.dy) / 3.0;
-                    Dir_Rec_Neg[2][Octave][Sample] += (direction_neg.dz) / 3.0;
-                }
-
-                public override void Scale(double ray_ct)
-                {
-                    for (int oct = 0; oct < Energy.Length; oct++) for (int i = 0; i < Energy[oct].Length; i++)
-                        {
-                            Energy[oct][i] /= ray_ct;
-                            Pressure[oct][i] /= Math.Sqrt(ray_ct);
-                        }
-                    for (int dir = 0; dir < 3; dir++) for (int oct = 0; oct < Dir_Rec_Pos[dir].Length; oct++) for (int i = 0; i < Dir_Rec_Pos[dir][oct].Length; i++)
-                            {
-                                Dir_Rec_Pos[dir][oct][i] /= ray_ct;
-                                Dir_Rec_Neg[dir][oct][i] /= ray_ct;
-                            }
-                }
-
-                /// <summary>
-                /// Returns the energy response of the simulation.
-                /// </summary>
-                /// <param name="Octave">the octave band index</param>
-                /// <returns></returns>
-                public override double[] GetEnergyHistogram(int Octave)
-                {
-                    if (Octave < 8)
-                    {
-                        return Energy[Octave];
-                    }
-                    else
-                    {
-                        double[] Sum_Energy = new double[(Energy[0].Length)];
-                        for (int Oct = 0; Oct < 8; Oct++)
-                        {
-                            for (int idx = 0; idx < Energy[Oct].Length; idx++)
-                            {
-                                Sum_Energy[idx] += Energy[Oct][idx];
-                            }
-                        }
-                        return Sum_Energy;
-                    }
-                }
-
-                public override void Add(double time, double Energy_in, double dx, double dy, double dz, double Rho_C, int Octave)
-                {
-                    int sample = (int)(time * SampleRate);
-                    if (sample >= Energy[Octave].Length) return;
-                    Energy[Octave][sample] += Energy_in;
-                    Pressure[Octave][sample] += Math.Sqrt(Energy_in * Rho_C);
-                    if (dx > 0) Dir_Rec_Pos[0][Octave][sample] += (float)(dx * Energy_in);
-                    else Dir_Rec_Neg[0][Octave][sample] += (float)(dx * Energy_in);
-                    if (dy > 0) Dir_Rec_Pos[1][Octave][sample] += (float)(dy * Energy_in);
-                    else Dir_Rec_Neg[1][Octave][sample] += (float)(dy * Energy_in);
-                    if (dz > 0) Dir_Rec_Pos[2][Octave][sample] += (float)(dz * Energy_in);
-                    else Dir_Rec_Neg[2][Octave][sample] += (float)(dz * Energy_in);
-                }
-
-                /// <summary>
-                /// Adds the direction of the arrival.
-                /// </summary>
-                /// <param name="octave">the octave of the arriving ray.</param>
-                /// <param name="sample">the time point of arrival</param>
-                /// <param name="V">the direction of the arrival.</param>
-                public override void Add_direction(int octave, int sample, Vector VPos, Vector VNeg)
-                {
-                    this.Dir_Rec_Pos[0][octave][sample] = (float)VPos.dx;
-                    this.Dir_Rec_Pos[1][octave][sample] = (float)VPos.dy;
-                    this.Dir_Rec_Pos[2][octave][sample] = (float)VPos.dz;
-                    this.Dir_Rec_Neg[0][octave][sample] = (float)VNeg.dx;
-                    this.Dir_Rec_Neg[1][octave][sample] = (float)VNeg.dy;
-                    this.Dir_Rec_Neg[2][octave][sample] = (float)VNeg.dz;
-                }
-
-                /// <summary>
-                /// the direction of the sound at a given instant in the energy response.
-                /// </summary>
-                /// <param name="oct">octave band index</param>
-                /// <param name="t">the sample in time of the energy response to reference</param>
-                /// <returns></returns>
-                public override Vector Directions_Pos(int oct, int t)
-                {
-                    if (oct < 8) return new Vector(Dir_Rec_Pos[0][oct][t], Dir_Rec_Pos[1][oct][t], Dir_Rec_Pos[2][oct][t]);
-
-                    Vector D = new Vector(Dir_Rec_Pos[0][0][t], Dir_Rec_Pos[1][0][t], Dir_Rec_Pos[2][0][t]);
-                    D.dx += Dir_Rec_Pos[0][1][t] + Dir_Rec_Pos[0][2][t] + Dir_Rec_Pos[0][3][t] + Dir_Rec_Pos[0][4][t] + Dir_Rec_Pos[0][5][t] + Dir_Rec_Pos[0][6][t] + Dir_Rec_Pos[0][7][t];
-                    D.dy += Dir_Rec_Pos[1][1][t] + Dir_Rec_Pos[1][2][t] + Dir_Rec_Pos[1][3][t] + Dir_Rec_Pos[1][4][t] + Dir_Rec_Pos[1][5][t] + Dir_Rec_Pos[1][6][t] + Dir_Rec_Pos[1][7][t];
-                    D.dz += Dir_Rec_Pos[2][1][t] + Dir_Rec_Pos[2][2][t] + Dir_Rec_Pos[2][3][t] + Dir_Rec_Pos[2][4][t] + Dir_Rec_Pos[2][5][t] + Dir_Rec_Pos[2][6][t] + Dir_Rec_Pos[2][7][t];
-                    return D;
-                }
-
-                /// <summary>
-                /// the direction of the sound at a given instant in the energy response.
-                /// </summary>
-                /// <param name="oct">octave band index</param>
-                /// <param name="t">the sample in time of the energy response to reference</param>
-                /// <returns></returns>
-                public override Vector Directions_Neg(int oct, int t)
-                {
-                    if (oct < 8) return new Vector(Dir_Rec_Neg[0][oct][t], Dir_Rec_Neg[1][oct][t], Dir_Rec_Neg[2][oct][t]);
-
-                    Vector D = new Vector(Dir_Rec_Neg[0][0][t], Dir_Rec_Neg[1][0][t], Dir_Rec_Neg[2][0][t]);
-                    D.dx += Dir_Rec_Neg[0][1][t] + Dir_Rec_Neg[0][2][t] + Dir_Rec_Neg[0][3][t] + Dir_Rec_Neg[0][4][t] + Dir_Rec_Neg[0][5][t] + Dir_Rec_Neg[0][6][t] + Dir_Rec_Neg[0][7][t];
-                    D.dy += Dir_Rec_Neg[1][1][t] + Dir_Rec_Neg[1][2][t] + Dir_Rec_Neg[1][3][t] + Dir_Rec_Neg[1][4][t] + Dir_Rec_Neg[1][5][t] + Dir_Rec_Neg[1][6][t] + Dir_Rec_Neg[1][7][t];
-                    D.dz += Dir_Rec_Neg[2][1][t] + Dir_Rec_Neg[2][2][t] + Dir_Rec_Neg[2][3][t] + Dir_Rec_Neg[2][4][t] + Dir_Rec_Neg[2][5][t] + Dir_Rec_Neg[2][6][t] + Dir_Rec_Neg[2][7][t];
-                    return D;
-                }
-
-                public override void Divide(double divisor)
-                {
-                    for (int i = 0; i < Energy.Length; i++)
-                    {
-                        for (int j = 0; j < Energy[i].Length; j++)
-                        {
-                            this.Energy[i][j] /= divisor;
-                            this.Pressure[i][j] /= divisor;
-                            for (int k = 0; k < 3; k++) this.Dir_Rec_Pos[k][i][j] /= (float)divisor;
-                            for (int k = 0; k < 3; k++) this.Dir_Rec_Neg[k][i][j] /= (float)divisor;
-                        }
-                    }
-                }
-
-                /// <summary>
-                /// the direction of the sound at a given instant in the energy response.
-                /// </summary>
-                /// <param name="oct">octave band index</param>
-                /// <param name="t">the sample in time of the energy response to reference</param>
-                /// <param name="c">0 for x, 1 for y, 2 for z</param>
-                /// <returns></returns>
-                public override double Directions_Pos(int oct, int t, int c)
-                {
-                    return Dir_Rec_Pos[c][oct][t];
-                }
-
-                /// <summary>
-                /// Creates a filter with a custom leve/EQ. This is useful for auralization using a source with a colored spectrum.
-                /// </summary>
-                /// <param name="SWL"></param>
-                /// <param name="Rho_C"></param>
-                /// <returns></returns>
-                public override double[][] Create_Filter(double[] SWL, double Rho_C)
-                {
-                    //DirPos & DirNeg refer to arrival directions of incoming sound. Filter refers to direction sound comes from from reference of the receiver.
-
-                    double[][] F_ = new double[7][];
-                    F_[0] = Audio.Pach_SP.ETCToFilter(this.Pressure, SWL, this.SampleRate, 44100);// "Filter Progress: Creating Omnidirectional..");
-                    Array.Resize(ref F_[0], F_[0].Length - 4096);
-
-                    for (int dir = 0; dir < 3; dir++)
-                    {
-                        double[][] temp_ptcP = new double[8][];
-                        double[][] temp_ptcN = new double[8][];
-                        for (int oct = 0; oct < 8; oct++)
-                        {
-                            temp_ptcP[oct] = new double[this.Pressure[oct].Length];
-                            temp_ptcN[oct] = new double[this.Pressure[oct].Length];
-                            for (int t = 0; t < temp_ptcP[oct].Length; t++)
-                            {
-                                temp_ptcP[oct][t] = this.Energy[oct][t] == 0 ? 0 : this.Pressure[oct][t] * this.Dir_Rec_Neg[dir][oct][t] / this.Energy[oct][t];
-                                temp_ptcN[oct][t] = this.Energy[oct][t] == 0 ? 0 : this.Pressure[oct][t] * this.Dir_Rec_Pos[dir][oct][t] / this.Energy[oct][t];
-                            }
-                        }
-                        F_[2 * dir + 1] = Audio.Pach_SP.ETCToFilter(temp_ptcP, SWL, this.SampleRate, 44100);// string.Format("Filter Progress: Creating Positive {0}.", new string[3] { "X", "Y", "Z" }[dir]));
-                        Array.Resize(ref F_[2 * dir + 1], F_[2 * dir + 1].Length - 4096);
-                        F_[2 * dir + 2] = Audio.Pach_SP.ETCToFilter(temp_ptcN, SWL, this.SampleRate, 44100);// string.Format("Filter Progress: Creating Negative {0}.", new string[3] { "X", "Y", "Z" }[dir]));
-                        Array.Resize(ref F_[2 * dir + 2], F_[2 * dir + 2].Length - 4096);
-                    }
-                    return F_;
-                }
-
-                public override double[] Create_Filter(double[] SWL, double Rho_C, int dim)
-                {
-                    double[][] temp = new double[8][];
-                    string msg;
-                    if (dim < 1 || dim > 6)
-                    {
-                        temp = this.Pressure;
-                        msg = "Filter Progress: Creating Omnidirectional..";
-                    }
-                    else
-                    {
-                        int d = (int)Math.Ceiling((double)dim / 2) - 1;
-                        double[][] tref = dim.IsOdd() ? Dir_Rec_Neg[d] : Dir_Rec_Pos[d];
-                        msg = string.Format(dim.IsOdd() ? "Filter Progress: Creating Positive {0}." : "Filter Progress: Creating Negative {0}.", new string[3] { "X", "Y", "Z" }[d]);
-
-                        for (int oct = 0; oct < 8; oct++)
-                        {
-                            for (int t = 0; t < temp[oct].Length; t++)
-                            {
-                                temp[oct][t] = this.Pressure[oct][t] * tref[oct][t] / this.Energy[oct][t];
-                            }
-                        }
-                    }
-
-                    double[] F = Audio.Pach_SP.ETCToFilter(temp, SWL, this.SampleRate, 44100);// msg);
-                    Array.Resize(ref F, F.Length - 4096);
-                    return F;
-                }
-
+                public Directional_Histogram_ThirdOctave(int rate, int samples) : base(rate, samples, 24) { }
+                public Directional_Histogram_ThirdOctave(int rate, double cutoff) : base(rate, cutoff, 24) { }
             }
 
-                /// <summary>
-                /// This class stores all energy detections in a compact, reduced sampling rate series of histograms.
-                /// </summary>
-                [Serializable]
+            [Serializable]
             protected internal class Directional_Histogram : Histogram
             {
                 public double[][][] Dir_Rec_Pos;
                 public double[][][] Dir_Rec_Neg;
                 public double[][] Fdir;
                 public Directional_Histogram(int SampleRate_in, int SampleCT)
-                : base(SampleRate_in, SampleCT)
+                    : this(SampleRate_in, SampleCT, 8)
+                { }
+
+                public Directional_Histogram(int SampleRate_in, int SampleCT, int bandCount)
+                : base(SampleRate_in, SampleCT, bandCount)
                 {
                     SampleRate = SampleRate_in;
                     this.SampleCT = SampleCT;
-                    Energy = new double[8][];
+                    Energy = new double[bandCount][];
 
-                    for (int o = 0; o < 8; o++)
+                    for (int o = 0; o < Energy.Length; o++)
                     {
                         Energy[o] = new double[SampleCT];
                     }
@@ -1710,9 +1451,9 @@ namespace Pachyderm_Acoustic
                     Dir_Rec_Neg = new double[3][][];
                     for (int i = 0; i < 3; i++)
                     {
-                        Dir_Rec_Pos[i] = new double[8][];
-                        Dir_Rec_Neg[i] = new double[8][];
-                        for (int oct = 0; oct < 8; oct++)
+                        Dir_Rec_Pos[i] = new double[Energy.Length][];
+                        Dir_Rec_Neg[i] = new double[Energy.Length][];
+                        for (int oct = 0; oct < Energy.Length; oct++)
                         {
                             Dir_Rec_Pos[i][oct] = new double[SampleCT];
                             Dir_Rec_Neg[i][oct] = new double[SampleCT];
@@ -1727,13 +1468,17 @@ namespace Pachyderm_Acoustic
                 /// <param name="C_Sound_in"></param>
                 /// <param name="COTime_in"></param>
                 public Directional_Histogram(int SampleRate_in, double COTime_in)
-                : base(SampleRate_in, COTime_in)
+                    : this(SampleRate_in, COTime_in, 8)
+                { }
+
+                public Directional_Histogram(int SampleRate_in, double COTime_in, int bandCount)
+                : base(SampleRate_in, COTime_in, bandCount)
                 {
                     SampleRate = SampleRate_in;
                     CO_Time = COTime_in / 1000;
                     SampleCT = (int)(CO_Time * SampleRate);
-                    Energy = new double[8][];
-                    for (int o = 0; o < 8; o++)
+                    Energy = new double[bandCount][];
+                    for (int o = 0; o < Energy.Length; o++)
                     {
                         Energy[o] = new double[(int)(SampleRate * CO_Time)];
                     }
@@ -1741,9 +1486,9 @@ namespace Pachyderm_Acoustic
                     Dir_Rec_Neg = new double[3][][];
                     for (int i = 0; i < 3; i++)
                     {
-                        Dir_Rec_Pos[i] = new double[8][];
-                        Dir_Rec_Neg[i] = new double[8][];
-                        for (int oct = 0; oct < 8; oct++)
+                        Dir_Rec_Pos[i] = new double[Energy.Length][];
+                        Dir_Rec_Neg[i] = new double[Energy.Length][];
+                        for (int oct = 0; oct < Energy.Length; oct++)
                         {
                             Dir_Rec_Pos[i][oct] = new double[SampleCT];
                             Dir_Rec_Neg[i][oct] = new double[SampleCT];
@@ -1758,6 +1503,8 @@ namespace Pachyderm_Acoustic
 
                 public override void Combine_Sample(int Sample, double Energy_in, double Pressure_in, Vector direction_pos, Vector direction_neg, int Octave)// float p_real, float p_imag,
                 {
+                    lock (Energy[Octave])
+                    {
                     if (Sample >= Energy[Octave].Length) return;
                     if (Sample < 0) Sample = 0;
                     Energy[Octave][Sample] += Energy_in;
@@ -1768,6 +1515,8 @@ namespace Pachyderm_Acoustic
                     Dir_Rec_Neg[0][Octave][Sample] += (direction_neg.dx);
                     Dir_Rec_Neg[1][Octave][Sample] += (direction_neg.dy);
                     Dir_Rec_Neg[2][Octave][Sample] += (direction_neg.dz);
+
+                    }
                 }
 
                 public override void Scale(double ray_ct)
@@ -1791,14 +1540,14 @@ namespace Pachyderm_Acoustic
                 /// <returns></returns>
                 public override double[] GetEnergyHistogram(int Octave)
                 {
-                    if (Octave < 8)
+                    if (Octave < Energy.Length)
                     {
                         return Energy[Octave];
                     }
                     else
                     {
                         double[] Sum_Energy = new double[(Energy[0].Length)];
-                        for (int Oct = 0; Oct < 8; Oct++)
+                        for (int Oct = 0; Oct < Energy.Length; Oct++)
                         {
                             for (int idx = 0; idx < Energy[Oct].Length; idx++)
                             {
@@ -1811,8 +1560,10 @@ namespace Pachyderm_Acoustic
 
                 public override void Add(double time, double Energy_in, double dx, double dy, double dz, double Rho_C, int Octave)
                 {
+                    lock (Energy[Octave])
+                    {
                     int sample = (int)(time * SampleRate);
-                    if (sample >= Energy[Octave].Length) return;
+                    if (sample < 0 || sample >= Energy[Octave].Length) return;
                     Energy[Octave][sample] += Energy_in;
                     Pressure[Octave][sample] += Math.Sqrt(Energy_in * Rho_C);
                     if (dx > 0) Dir_Rec_Pos[0][Octave][sample] += (float)(dx * Energy_in);
@@ -1821,6 +1572,8 @@ namespace Pachyderm_Acoustic
                     else Dir_Rec_Neg[1][Octave][sample] += (float)(dy * Energy_in);
                     if (dz > 0) Dir_Rec_Pos[2][Octave][sample] += (float)(dz * Energy_in);
                     else Dir_Rec_Neg[2][Octave][sample] += (float)(dz * Energy_in);
+
+                    }
                 }
 
                 /// <summary>
@@ -1847,14 +1600,11 @@ namespace Pachyderm_Acoustic
                 /// <returns></returns>
                 public override Vector Directions_Pos(int oct, int t)
                 {
-                    if (oct < 8) return new Vector(Dir_Rec_Pos[0][oct][t], Dir_Rec_Pos[1][oct][t], Dir_Rec_Pos[2][oct][t]);
-                    if (t > Dir_Rec_Pos[0][0].Length-1) return new Vector();
-                    Vector D = new Vector(Dir_Rec_Pos[0][0][t], Dir_Rec_Pos[1][0][t], Dir_Rec_Pos[2][0][t]);
-                    D.dx += Dir_Rec_Pos[0][1][t] + Dir_Rec_Pos[0][2][t] + Dir_Rec_Pos[0][3][t] + Dir_Rec_Pos[0][4][t] + Dir_Rec_Pos[0][5][t] + Dir_Rec_Pos[0][6][t] + Dir_Rec_Pos[0][7][t];
-                    D.dy += Dir_Rec_Pos[1][1][t] + Dir_Rec_Pos[1][2][t] + Dir_Rec_Pos[1][3][t] + Dir_Rec_Pos[1][4][t] + Dir_Rec_Pos[1][5][t] + Dir_Rec_Pos[1][6][t] + Dir_Rec_Pos[1][7][t];
-                    D.dz += Dir_Rec_Pos[2][1][t] + Dir_Rec_Pos[2][2][t] + Dir_Rec_Pos[2][3][t] + Dir_Rec_Pos[2][4][t] + Dir_Rec_Pos[2][5][t] + Dir_Rec_Pos[2][6][t] + Dir_Rec_Pos[2][7][t];
-                    return D;
-                }
+                    if (oct < Energy.Length) return new Vector(Dir_Rec_Pos[0][oct][t], Dir_Rec_Pos[1][oct][t], Dir_Rec_Pos[2][oct][t]);
+                    Vector result = new Vector(0, 0, 0);
+                    for (int b = 0; b < Energy.Length; b++) result += Directions_Pos(b, t);
+                    return result;
+            }
 
                 /// <summary>
                 /// the direction of the sound at a given instant in the energy response.
@@ -1864,15 +1614,11 @@ namespace Pachyderm_Acoustic
                 /// <returns></returns>
                 public override Vector Directions_Neg(int oct, int t)
                 {
-                    if (oct < 8) return new Vector(Dir_Rec_Neg[0][oct][t], Dir_Rec_Neg[1][oct][t], Dir_Rec_Neg[2][oct][t]);
-
-                    if (t > Dir_Rec_Neg[0][0].Length-1) return new Vector();
-                    Vector D = new Vector(Dir_Rec_Neg[0][0][t], Dir_Rec_Neg[1][0][t], Dir_Rec_Neg[2][0][t]);
-                    D.dx += Dir_Rec_Neg[0][1][t] + Dir_Rec_Neg[0][2][t] + Dir_Rec_Neg[0][3][t] + Dir_Rec_Neg[0][4][t] + Dir_Rec_Neg[0][5][t] + Dir_Rec_Neg[0][6][t] + Dir_Rec_Neg[0][7][t];
-                    D.dy += Dir_Rec_Neg[1][1][t] + Dir_Rec_Neg[1][2][t] + Dir_Rec_Neg[1][3][t] + Dir_Rec_Neg[1][4][t] + Dir_Rec_Neg[1][5][t] + Dir_Rec_Neg[1][6][t] + Dir_Rec_Neg[1][7][t];
-                    D.dz += Dir_Rec_Neg[2][1][t] + Dir_Rec_Neg[2][2][t] + Dir_Rec_Neg[2][3][t] + Dir_Rec_Neg[2][4][t] + Dir_Rec_Neg[2][5][t] + Dir_Rec_Neg[2][6][t] + Dir_Rec_Neg[2][7][t];
-                    return D;
-                }
+                    if (oct < Energy.Length) return new Vector(Dir_Rec_Neg[0][oct][t], Dir_Rec_Neg[1][oct][t], Dir_Rec_Neg[2][oct][t]);
+                    Vector result = new Vector(0, 0, 0);
+                    for (int b = 0; b < Energy.Length; b++) result += Directions_Neg(b, t);
+                    return result;
+            }
 
                 public override void Divide(double divisor)
                 {
@@ -1915,9 +1661,9 @@ namespace Pachyderm_Acoustic
 
                     for (int dir = 0; dir < 3; dir++)
                     {
-                        double[][] temp_ptcP = new double[8][];
-                        double[][] temp_ptcN = new double[8][];
-                        for (int oct = 0; oct < 8; oct++)
+                        double[][] temp_ptcP = new double[Energy.Length][];
+                        double[][] temp_ptcN = new double[Energy.Length][];
+                        for (int oct = 0; oct < Energy.Length; oct++)
                         {
                             temp_ptcP[oct] = new double[this.Pressure[oct].Length];
                             temp_ptcN[oct] = new double[this.Pressure[oct].Length];
@@ -1927,7 +1673,7 @@ namespace Pachyderm_Acoustic
                                 temp_ptcN[oct][t] = this.Energy[oct][t] == 0 ? 0 : this.Pressure[oct][t] * this.Dir_Rec_Pos[dir][oct][t] / this.Energy[oct][t];
                             }
                         }
-                        F_[2 * dir + 1] = Audio.Pach_SP.ETCToFilter(temp_ptcP, SWL, this.SampleRate, 44100); 
+                        F_[2 * dir + 1] = Audio.Pach_SP.ETCToFilter(temp_ptcP, SWL, this.SampleRate, 44100);
                         Array.Resize(ref F_[2 * dir + 1], F_[2 * dir + 1].Length - 4096);
                         F_[2 * dir + 2] = Audio.Pach_SP.ETCToFilter(temp_ptcN, SWL, this.SampleRate, 44100);
                         Array.Resize(ref F_[2 * dir + 2], F_[2 * dir + 2].Length - 4096);
@@ -1938,7 +1684,7 @@ namespace Pachyderm_Acoustic
                 public override double[] Create_Filter(double[] SWL, double Rho_C, int dim)
                 {
                     //DirPos & DirNeg refer to arrival directions of incoming sound. Filter refers to direction sound comes from from reference of the receiver.
-                    double[][] temp = new double[8][];
+                    double[][] temp = new double[Energy.Length][];
                     string msg;
                     if (dim < 1 || dim > 6)
                     {
@@ -1951,11 +1697,12 @@ namespace Pachyderm_Acoustic
                         double[][] tref = dim.IsOdd() ? Dir_Rec_Neg[d] : Dir_Rec_Pos[d];
                         msg = string.Format(dim.IsOdd() ? "Filter Progress: Creating Positive {0}." : "Filter Progress: Creating Negative {0}.", new string[3] { "X", "Y", "Z" }[d]);
 
-                        for (int oct = 0; oct < 8; oct++)
+                        for (int oct = 0; oct < Energy.Length; oct++)
                         {
+                            temp[oct] = new double[Pressure[oct].Length];
                             for (int t = 0; t < temp[oct].Length; t++)
                             {
-                                temp[oct][t] = this.Pressure[oct][t] * tref[oct][t] / this.Energy[oct][t]; 
+                                temp[oct][t] = this.Energy[oct][t] == 0 ? 0 : this.Pressure[oct][t] * tref[oct][t] / this.Energy[oct][t];
                             }
                         }
                     }
@@ -1967,15 +1714,15 @@ namespace Pachyderm_Acoustic
                 public override void Create_Filter(double Rho_C)
                 {
                     //DirPos & DirNeg refer to arrival directions of incoming sound. Filter refers to direction sound comes from from reference of the receiver.
-                    F = Audio.Pach_SP.ETCToFilter(this.Pressure, new double[8] {120, 120, 120, 120, 120, 120, 120, 120 }, this.SampleRate, 44100);
+                    F = Audio.Pach_SP.ETCToFilter(this.Pressure, Enumerable.Repeat(120.0, Energy.Length).ToArray(), this.SampleRate, 44100);
                     Array.Resize(ref F, F.Length - 4096);
                     Fdir = new double[6][];
 
                     for (int dir = 0; dir < 3; dir++)
                     {
-                        double[][] temp_ptcP = new double[8][];
-                        double[][] temp_ptcN = new double[8][];
-                        for (int oct = 0; oct < 8; oct++)
+                        double[][] temp_ptcP = new double[Energy.Length][];
+                        double[][] temp_ptcN = new double[Energy.Length][];
+                        for (int oct = 0; oct < Energy.Length; oct++)
                         {
                             temp_ptcP[oct] = new double[this.Pressure[oct].Length];
                             temp_ptcN[oct] = new double[this.Pressure[oct].Length];
@@ -1986,9 +1733,9 @@ namespace Pachyderm_Acoustic
                             }
                         }
 
-                        Fdir[2 * dir] = Audio.Pach_SP.ETCToFilter(temp_ptcP, new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }, this.SampleRate, 44100);
+                        Fdir[2 * dir] = Audio.Pach_SP.ETCToFilter(temp_ptcP, Enumerable.Repeat(120.0, Energy.Length).ToArray(), this.SampleRate, 44100);
                         Array.Resize(ref Fdir[2*dir], Fdir[2 * dir].Length - 4096);
-                        Fdir[2 * dir + 1] = Audio.Pach_SP.ETCToFilter(temp_ptcN, new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }, this.SampleRate, 44100);
+                        Fdir[2 * dir + 1] = Audio.Pach_SP.ETCToFilter(temp_ptcN, Enumerable.Repeat(120.0, Energy.Length).ToArray(), this.SampleRate, 44100);
                         Array.Resize(ref Fdir[2 * dir + 1], Fdir[2 * dir + 1].Length - 4096);
                     }
                 }
@@ -2031,6 +1778,8 @@ namespace Pachyderm_Acoustic
         {
             int RayCount;
 
+            public void SetRayCount(int count) { RayCount = count; }
+
             public Expanding_Receiver(Point Point, Point SrcPoint, int RCT, double[] Attenuation, double Speed_of_Sound, double rho, int SampleRate, double COTime)
                 : base(Point, SrcPoint, Attenuation, Speed_of_Sound, rho, SampleRate, COTime)
             {
@@ -2044,13 +1793,13 @@ namespace Pachyderm_Acoustic
             }
 
             /// <summary>
-            /// Checks receiver for an intersection with a ray 
+            /// Checks receiver for an intersection with a ray
             /// </summary>
             /// <param name="R">the ray.</param>
             /// <param name="EndPt">The point at which the ray intersects the model after potential receiver intersection.</param>
             public override void CheckRay(OctaveRay R, Hare.Geometry.Point EndPt)
             {
-                double Radius = (R.t_sum * C_Sound) * Math.Sqrt(6.28 / (RayCount));
+                double Radius = (R.t_sum * C_Sound) * Math.Sqrt(6.28 / RayCount);
                 double Radius2 = Radius * Radius;
                 double mx = R.x - Origin.x;
                 double my = R.y - Origin.y;
@@ -2069,6 +1818,20 @@ namespace Pachyderm_Acoustic
                 if (t > 0 && t * t < SqDistance(EndPt.x, EndPt.y, EndPt.z, R.x, R.y, R.z))
                 {
                     double Raydist = t * Inv_C_Sound + R.t_sum;
+                    if (R.BandCount > 1)
+                    {
+                        for (int cband = 0; cband < R.BandCount; cband++)
+                        {
+                            int band = R.BandStart + cband;
+                            double energy = (R.Intensity * R.Fractions[cband]) * Math.Pow(10, -.1 * Atten[band] * t) / (Math.PI * Radius2);
+                            Recs.Add(Raydist, energy, -R.dx, -R.dy, -R.dz, Rho_C, band);
+                            int kind = R.IsSpecular ? (R.WasScattered ? 2 : 0) : 1;
+                            int sample = (int)(Raydist * Recs.SampleRate);
+                            if (sample >= 0 && sample < Reflection_Analysis_Data[kind][band].Length)
+                                lock (Reflection_Analysis_Data[kind][band]) Reflection_Analysis_Data[kind][band][sample] += energy;
+                        }
+                        return;
+                    }
                     double Ei = R.Intensity * Math.Pow(10,-.1 * Atten[R.Octave] * t) / (Math.PI * Radius2);
                     Recs.Add(Raydist, Ei, -R.dx, -R.dy, -R.dz, Rho_C, R.Octave);
                 }
@@ -2083,7 +1846,7 @@ namespace Pachyderm_Acoustic
             /// <param name="EndPt">The point at which the ray intersects the model after potential receiver intersection.</param>
             public override void CheckBroadbandRay(BroadRay R, Hare.Geometry.Point EndPt)
             {
-                double Radius = (R.t_sum * C_Sound) * Math.Sqrt(6.28 / (RayCount));
+                double Radius = (R.t_sum * C_Sound) * Math.Sqrt(6.28 / RayCount);
                 double Radius2 = Radius * Radius;
                 double mx = R.x - Origin.x, my = R.y - Origin.y, mz = R.z - Origin.z;
                 double RayLength = Hare_math.distance(EndPt.x, EndPt.y, EndPt.z, R.x, R.y, R.z);
@@ -2104,14 +1867,19 @@ namespace Pachyderm_Acoustic
                     double RayTime = t * Inv_C_Sound + R.t_sum;
                     double Area = Math.PI * Radius2;
 
-                    Recs.Add(RayTime, (R.Energy[0] * Math.Pow(10,-.1 * Atten[0] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 0);
-                    Recs.Add(RayTime, (R.Energy[1] * Math.Pow(10,-.1 * Atten[1] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 1);
-                    Recs.Add(RayTime, (R.Energy[2] * Math.Pow(10,-.1 * Atten[2] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 2);
-                    Recs.Add(RayTime, (R.Energy[3] * Math.Pow(10,-.1 * Atten[3] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 3);
-                    Recs.Add(RayTime, (R.Energy[4] * Math.Pow(10,-.1 * Atten[4] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 4);
-                    Recs.Add(RayTime, (R.Energy[5] * Math.Pow(10,-.1 * Atten[5] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 5);
-                    Recs.Add(RayTime, (R.Energy[6] * Math.Pow(10,-.1 * Atten[6] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 6);
-                    Recs.Add(RayTime, (R.Energy[7] * Math.Pow(10,-.1 * Atten[7] * t) / Area), -R.dx, -R.dy, -R.dz, Rho_C, 7);
+                    foreach (int group in R.Freq_Bands)
+                        for (int component = 0; component < (R.ThirdOctave ? 3 : 1); component++)
+                        {
+                            int band = R.ThirdOctave ? 3 * group + component : group;
+                            double energy = R.Energy[band] * Math.Pow(10, -.1 * Atten[band] * t) / Area;
+                            Recs.Add(RayTime, energy, -R.dx, -R.dy, -R.dz, Rho_C, band);
+                            if (R.ThirdOctave)
+                            {
+                                int sample = (int)(RayTime * Recs.SampleRate);
+                                if (sample >= 0 && sample < Reflection_Analysis_Data[0][band].Length)
+                                    lock (Reflection_Analysis_Data[0][band]) Reflection_Analysis_Data[0][band][sample] += energy;
+                            }
+                        }
                 }
                 return;
             }

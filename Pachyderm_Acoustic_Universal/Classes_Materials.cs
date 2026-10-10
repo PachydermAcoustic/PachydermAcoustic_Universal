@@ -43,6 +43,20 @@ namespace Pachyderm_Acoustic
             public abstract System.Numerics.Complex Reflection_Narrow(double frequency, Hare.Geometry.Vector Dir, Hare.Geometry.Vector Normal);
             public abstract double Coefficient_A_Broad(int Octave);
             public abstract double[] Coefficient_A_Broad();
+            public virtual double[] Coefficient_A_Broad(bool thirdOctave)
+            {
+                if (!thirdOctave) return Coefficient_A_Broad();
+                double[] spectrum = new double[24];
+                for (int b = 0; b < 24; b++) spectrum[b] = Coefficient_A_Broad(b, true);
+                return spectrum;
+            }
+            public virtual double Coefficient_A_Broad(int band, bool thirdOctave)
+            {
+                if (!thirdOctave) return Coefficient_A_Broad(band);
+                double r = Reflection_Narrow(Utilities.AcousticalMath.ThirdOctaveCenters()[band]).Magnitude;
+                return Math.Max(0, Math.Min(1, 1 - r * r));
+            }
+
             public abstract System.Numerics.Complex[] Reflection_Spectrum(int sample_frequency, int length, Hare.Geometry.Vector Normal, Hare.Geometry.Vector Dir, int threadid);
             public abstract (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0);
             /// <summary>
@@ -68,6 +82,7 @@ namespace Pachyderm_Acoustic
             public abstract void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, double[] Transmission = null);
             public abstract void Scatter_Late(ref OctaveRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false);
             public abstract void Scatter_VeryLate(ref OctaveRay Ray, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, bool Transmit = false);
+
         }
 
         public class Basic_Material : Material
@@ -80,6 +95,7 @@ namespace Pachyderm_Acoustic
 
             public Basic_Material(double[] ABS)//, double[] Phase_Delay)
             {
+                if (ABS == null || (ABS.Length != 8 && ABS.Length != 24)) throw new ArgumentException("Absorption must contain 8 or 24 bands.", nameof(ABS));
                 //Interpolate a transfer function...
                 double rt2 = Math.Sqrt(2);
 
@@ -96,7 +112,7 @@ namespace Pachyderm_Acoustic
                 f.Add(62.5 * Math.Pow(2, 8));
                 f.Add(24000);
 
-                if (Abs.Length == 8)
+                if (ABS.Length == 8)
                 {
                     Abs = ABS;
 
@@ -119,12 +135,12 @@ namespace Pachyderm_Acoustic
 
                     for (int oct = 0; oct < 24; oct++)
                     {
-                        double f_center = 50 * Math.Pow(2, oct / 3.0);
-                        Abs_3rd[oct] = Alpha.Interpolate(f_center);
+                        double f_center = Utilities.AcousticalMath.ThirdOctaveCenters()[oct];
+                        Abs_3rd[oct] = Math.Max(0, Math.Min(1, Alpha.Interpolate(f_center)));
                         Ref_3rd[oct] = 1 - Abs_3rd[oct];
                     }
                 }
-                else if (Abs.Length == 24)
+                else if (ABS.Length == 24)
                 {
                     Abs_3rd = ABS;
                     for (int oct = 0; oct < 8; oct++)
@@ -150,6 +166,14 @@ namespace Pachyderm_Acoustic
 
                 while (pr.Count < f.Count) pr.Add(1 - Abs[7]);
 
+                if (ABS.Length == 24)
+                {
+                    f.Clear(); pr.Clear();
+                    f.Add(0); pr.Add(Math.Sqrt(Ref_3rd[0]));
+                    double[] centers = Utilities.AcousticalMath.ThirdOctaveCenters();
+                    for (int b = 0; b < 24; b++) { f.Add(centers[b]); pr.Add(Math.Sqrt(Ref_3rd[b])); }
+                    f.Add(24000); pr.Add(Math.Sqrt(Ref_3rd[23]));
+                }
                 Transfer_Function = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaSorted(f.ToArray(), pr.ToArray());
             }
 
@@ -167,40 +191,43 @@ namespace Pachyderm_Acoustic
 
             public override void Absorb(ref OctaveRay Ray, Hare.Geometry.Vector Normal)
             {
-                Ray.Intensity *= (Ref[Ray.Octave]);
+                if (Ray.BandCount == 1) Ray.Intensity *= Ref[Ray.BandStart];
+                else
+                {
+                    double total = 0;
+                    for (int i = 0; i < Ray.BandCount; i++) { Ray.Fractions[i] = Ray.Intensity * Ray.Fractions[i] * Ref_3rd[Ray.BandStart + i]; total += Ray.Fractions[i]; }
+                    Ray.Intensity = total;
+                    for (int i = 0; i < Ray.BandCount; i++) Ray.Fractions[i] = total > 0 ? Ray.Fractions[i] / total : 1.0 / Ray.BandCount;
+                }
             }
 
             public override void Absorb(ref OctaveRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
             {
                 cos_theta = Hare.Geometry.Hare_math.Dot(Normal.dx, Normal.dy, Normal.dz, Ray.dx, Ray.dy, Ray.dz);
-                Ray.Intensity *= (Ref[Ray.Octave]);
+                if (Ray.BandCount == 1) Ray.Intensity *= Ref[Ray.BandStart];
+                else
+                {
+                    double total = 0;
+                    for (int i = 0; i < Ray.BandCount; i++) { Ray.Fractions[i] = Ray.Intensity * Ray.Fractions[i] * Ref_3rd[Ray.BandStart + i]; total += Ray.Fractions[i]; }
+                    Ray.Intensity = total;
+                    for (int i = 0; i < Ray.BandCount; i++) Ray.Fractions[i] = total > 0 ? Ray.Fractions[i] / total : 1.0 / Ray.BandCount;
+                }
             }
 
             public override void Absorb(ref BroadRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
             {
                 cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
-
-                Ray.Energy[0] *= (Ref[0]);
-                Ray.Energy[1] *= (Ref[1]);
-                Ray.Energy[2] *= (Ref[2]);
-                Ray.Energy[3] *= (Ref[3]);
-                Ray.Energy[4] *= (Ref[4]);
-                Ray.Energy[5] *= (Ref[5]);
-                Ray.Energy[6] *= (Ref[6]);
-                Ray.Energy[7] *= (Ref[7]);
+                double[] reflection = Ray.ThirdOctave ? Ref_3rd : Ref;
+                for (int b = 0; b < Ray.Energy.Length; b++) Ray.Energy[b] *= reflection[b];
             }
 
             public override void Absorb(ref BroadRay Ray, Hare.Geometry.Vector Normal)
             {
-                Ray.Energy[0] *= (Ref[0]);
-                Ray.Energy[1] *= (Ref[1]);
-                Ray.Energy[2] *= (Ref[2]);
-                Ray.Energy[3] *= (Ref[3]);
-                Ray.Energy[4] *= (Ref[4]);
-                Ray.Energy[5] *= (Ref[5]);
-                Ray.Energy[6] *= (Ref[6]);
-                Ray.Energy[7] *= (Ref[7]);
+                double[] reflection = Ray.ThirdOctave ? Ref_3rd : Ref;
+                for (int b = 0; b < Ray.Energy.Length; b++) Ray.Energy[b] *= reflection[b];
             }
+
+            public override double Coefficient_A_Broad(int band, bool thirdOctave) { return thirdOctave ? Abs_3rd[band] : Abs[band]; }
 
             public override double[] Coefficient_A_Broad()
             {
@@ -1447,7 +1474,8 @@ namespace Pachyderm_Acoustic
                 double cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
                 int index = 18 - (int)Math.Round(Math.Acos(Math.Abs(cos_theta)) / angle_incr);
 
-                for (int oct = 0; oct < 8; oct++) Ray.Energy[oct] *= (1 - Ang_Coef_Oct[oct][index]);
+                for (int band = 0; band < Ray.Energy.Length; band++)
+                    Ray.Energy[band] *= Ray.ThirdOctave ? Math.Pow(Reflection_Narrow(Utilities.AcousticalMath.ThirdOctaveCenters()[band], new Hare.Geometry.Vector(Ray.dx, Ray.dy, Ray.dz), Normal).Magnitude, 2) : (1 - Ang_Coef_Oct[band][index]);
             }
 
             public override void Absorb(ref BroadRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
@@ -1455,7 +1483,8 @@ namespace Pachyderm_Acoustic
                 cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
                 int index = 18 - (int)Math.Round(Math.Acos(Math.Abs(cos_theta)) / angle_incr);
 
-                for (int oct = 0; oct < 8; oct++) Ray.Energy[oct] *= (1 - Ang_Coef_Oct[oct][index]);
+                for (int band = 0; band < Ray.Energy.Length; band++)
+                    Ray.Energy[band] *= Ray.ThirdOctave ? Math.Pow(Reflection_Narrow(Utilities.AcousticalMath.ThirdOctaveCenters()[band], new Hare.Geometry.Vector(Ray.dx, Ray.dy, Ray.dz), Normal).Magnitude, 2) : (1 - Ang_Coef_Oct[band][index]);
             }
 
             public override void Absorb(ref OctaveRay Ray, Hare.Geometry.Vector Normal)
@@ -1463,7 +1492,16 @@ namespace Pachyderm_Acoustic
                 double cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
                 int index = 18 - (int)Math.Round(Math.Acos(Math.Abs(cos_theta)) / angle_incr);
 
-                Ray.Intensity *= (1 - Ang_Coef_Oct[Ray.Octave][index]);
+                if (Ray.ThirdOctave)
+                {
+                    double[] f = Utilities.AcousticalMath.ThirdOctaveCenters();
+                    Hare.Geometry.Vector direction = new Hare.Geometry.Vector(Ray.dx, Ray.dy, Ray.dz);
+                    double total = 0;
+                    for (int i = 0; i < Ray.BandCount; i++) { Ray.Fractions[i] = Ray.Intensity * Ray.Fractions[i] * Math.Pow(Reflection_Narrow(f[Ray.BandStart + i], direction, Normal).Magnitude, 2); total += Ray.Fractions[i]; }
+                    Ray.Intensity = total;
+                    for (int i = 0; i < Ray.BandCount; i++) Ray.Fractions[i] = total > 0 ? Ray.Fractions[i] / total : 1.0 / Ray.BandCount;
+                }
+                else Ray.Intensity *= (1 - Ang_Coef_Oct[Ray.Octave][index]);
             }
 
             public override void Absorb(ref OctaveRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
@@ -1471,7 +1509,16 @@ namespace Pachyderm_Acoustic
                 cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
                 int index = 18 - (int)Math.Round(Math.Acos(Math.Abs(cos_theta)) / angle_incr);
 
-                Ray.Intensity *= (1 - Ang_Coef_Oct[Ray.Octave][index]);
+                if (Ray.ThirdOctave)
+                {
+                    double[] f = Utilities.AcousticalMath.ThirdOctaveCenters();
+                    Hare.Geometry.Vector direction = new Hare.Geometry.Vector(Ray.dx, Ray.dy, Ray.dz);
+                    double total = 0;
+                    for (int i = 0; i < Ray.BandCount; i++) { Ray.Fractions[i] = Ray.Intensity * Ray.Fractions[i] * Math.Pow(Reflection_Narrow(f[Ray.BandStart + i], direction, Normal).Magnitude, 2); total += Ray.Fractions[i]; }
+                    Ray.Intensity = total;
+                    for (int i = 0; i < Ray.BandCount; i++) Ray.Fractions[i] = total > 0 ? Ray.Fractions[i] / total : 1.0 / Ray.BandCount;
+                }
+                else Ray.Intensity *= (1 - Ang_Coef_Oct[Ray.Octave][index]);
             }
 
             public override double Coefficient_A_Broad(int Octave)
@@ -2944,7 +2991,7 @@ namespace Pachyderm_Acoustic
 
                 for (int oct = 0; oct < 8; oct++)
                 {
-                    if (Ray.Energy[oct] == 0) continue;
+                    if (Ray.OctaveEnergy(oct) == 0) continue;
                     // 3. Apply Scattering.
                     //// a. Create new source for scattered energy (E * Scattering).
                     //// b. Modify E (E * 1 - Scattering).
@@ -2990,17 +3037,20 @@ namespace Pachyderm_Acoustic
                     R.dz = vect.dz;
                     R.SetScattered();
 
-                    if (Transmission != null && Transmission[oct] > 0)
+                    bool transmissive = false;
+                    if (Transmission != null)
+                        for (int band = R.BandStart; band < R.BandStart + R.BandCount; band++)
+                            transmissive |= Transmission[band] > 0;
+                    if (transmissive)
                     {
-                        OctaveRay tr = Ray.SplitRay(oct, Transmission[oct]);
+                        OctaveRay tr = Ray.SplitRay(oct, Transmission);
                         Rays.Enqueue(tr);
                         tr.SetSpecular();
-                        OctaveRay td = R.SplitRay(Transmission[oct]);
+                        OctaveRay td = R.SplitRay(Transmission);
                         td.Reverse();
                         td.SetScattered();
                         Rays.Enqueue(td);
                     }
-
                     Rays.Enqueue(R);
                 }
                 Ray.dx -= Normal.dx * Cos_Theta * 2;

@@ -49,58 +49,12 @@ namespace Pachyderm_Acoustic
             /// <param name="ID">The identifier of the source</param>
             public Source(double[] power_In_db, Point Source, int ID, bool Third_Octave)
             {
+                if (power_In_db == null || (power_In_db.Length != 8 && power_In_db.Length != 24))
+                    throw new ArgumentException("A source spectrum must have 8 or 24 bands.", nameof(power_In_db));
                 S_ID = ID;
                 Center = Source;
-                if (Third_Octave)
-                {
-                    if (power_In_db.Length == 24) 
-                    {
-                        SourcePower = new double[24];
-                        SPL = new double[24];
-                        for (int i = 0; i < 24; i++)
-                        {
-                            SPL[i] = power_In_db[i];
-                            SourcePower[i] = 1E-12 * Math.Pow(10, .1 * SPL[i]);
-                        }
-                    }
-                    else
-                    {
-                        //...an interpolation algorithm for octave to third octave 
-                        double[] freq = new double[9] {16, 63, 125, 250, 500, 1000, 2000, 4000, 8000 };
-                        power_In_db.Reverse();
-                        Array.Resize(ref power_In_db, 9);
-                        power_In_db[8] = double.Epsilon;
-                        power_In_db.Reverse();
-                        MathNet.Numerics.Interpolation.CubicSpline powerspline = MathNet.Numerics.Interpolation.CubicSpline.InterpolateAkimaInplace(freq, power_In_db);
-                        SourcePower = new double[24];
-                        for (int oct = 1; oct < 9; oct++)
-                        {
-                            double total = 0;
-                            for (int third = 1; third < 4; third++)
-                            {
-                                double f = 20 * Math.Pow(2, oct + (double)third / 3.0);
-                                SourcePower[3 * oct + third - 4] = 1E-12 * Math.Pow(10, .1 * powerspline.Interpolate(f)) / 3.0;
-                                total += SourcePower[3 * oct + third - 4] = 1E-12 * Math.Pow(10, .1 * powerspline.Interpolate(f)) / 3.0;
-                            }
-                            double ideal = 1E-12 * Math.Pow(10, .1 * power_In_db[1]);
-                            for (int third = 1; third < 4; third++)
-                            {
-                                SourcePower[3 * oct + third - 4] *= ideal / total;
-                                SPL[3 * oct + third - 4] = 10 * Math.Log10(SourcePower[3 * oct + third - 4] / 1E-12);
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    SourcePower = new double[8];
-
-                    for (int i = 0; i < 8; i++)
-                    {
-                        SPL[i] = power_In_db[i];
-                        SourcePower[i] = 1E-12 * Math.Pow(10, .1 * SPL[i]);
-                    }
-                }
+                SourcePower = AcousticalMath.ConvertBandEnergy(power_In_db.Select(v => 1E-12 * Math.Pow(10, .1 * v)).ToArray(), Third_Octave);
+                SPL = SourcePower.Select(v => 10 * Math.Log10(v / 1E-12)).ToArray();
             }
 
             /// <summary>
@@ -113,15 +67,30 @@ namespace Pachyderm_Acoustic
             {
                 S_ID = ID;
                 Center = Source;
+                SourcePower = AcousticalMath.ConvertBandEnergy(Enumerable.Repeat(1.0, 8).ToArray(), Third_Octave);
+                SPL = SourcePower.Select(v => 10 * Math.Log10(v / 1E-12)).ToArray();
+            }
 
-                int no_of_bands = Third_Octave ? 24 : 8;
-                double oct_mod = Third_Octave ? Math.Log(3) : 0;
+            public int BandCount { get { return SourcePower.Length; } }
+            public bool ThirdOctave { get { return BandCount == 24; } }
 
-                for(int band = 0; band < no_of_bands; band++)
-                {
-                    SPL[band] = 120 - oct_mod;
-                    SourcePower[band] = 1E-12 * Math.Pow(10, .1 * SPL[band]);
-                }
+            /// <summary>
+            /// Copy the spectrum for a simulation without changing the supplied source.
+            /// Geometry and directivity data are shared; the power arrays are independent.
+            /// </summary>
+            internal virtual Source ForBandResolution(bool thirdOctave)
+            {
+                Source copy = (Source)MemberwiseClone();
+                copy.SourcePower = AcousticalMath.ConvertBandEnergy(SourcePower, thirdOctave);
+                copy.SPL = SourcePower.Length == copy.SourcePower.Length ? (double[])SPL.Clone()
+                    : copy.SourcePower.Select(power => 10 * Math.Log10(power / 1E-12)).ToArray();
+                return copy;
+            }
+
+            public virtual void SetBandResolution(bool thirdOctave)
+            {
+                SourcePower = AcousticalMath.ConvertBandEnergy(SourcePower, thirdOctave);
+                SPL = SourcePower.Select(v => 10 * Math.Log10(v / 1E-12)).ToArray();
             }
 
             public virtual void AppendPts(ref List<Point> SPT)
@@ -147,8 +116,8 @@ namespace Pachyderm_Acoustic
             public virtual double[] Dir_Filter(int threadid, int random, Vector Direction, int sample_frequency, int length_starttofinish)
             {
                 double[] power = DirPower(threadid, random, Direction);
-                double[] OUT = new double[8];
-                for (int oct = 0; oct < 8; oct++) OUT[oct] = Math.Sqrt(Math.Abs(power[oct]));
+                double[] OUT = new double[power.Length];
+                for (int oct = 0; oct < power.Length; oct++) OUT[oct] = Math.Sqrt(Math.Abs(power[oct]));
                 return Audio.Pach_SP.Magnitude_Filter(OUT, sample_frequency, length_starttofinish, threadid);
             }
 
@@ -185,8 +154,8 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public virtual double SWL(int octave)
             {
-                if (octave < 8) return SPL[octave];
-                return 10 * Math.Log10(Math.Pow(10, .1 * SPL[0]) + Math.Pow(10, .1 * SPL[1]) + Math.Pow(10, .1 * SPL[2]) + Math.Pow(10, .1 * SPL[3]) + Math.Pow(10, .1 * SPL[4]) + Math.Pow(10, .1 * SPL[5]) + Math.Pow(10, .1 * SPL[6]) + Math.Pow(10, .1 * SPL[7]));
+                if (octave < SPL.Length) return SPL[octave];
+                return 10 * Math.Log10(SourcePower.Sum() / 1E-12);
             }
 
             public virtual double[] SWL()
@@ -417,8 +386,12 @@ namespace Pachyderm_Acoustic
                 {
                     if (oct < Bands[0] || oct > Bands[1])
                     {
-                        base.SourcePower[oct] = 0;
-                        base.SPL[oct] = 0;
+                        for (int t = 0; t < (ThirdOctave ? 3 : 1); t++)
+                        {
+                            int band = ThirdOctave ? 3 * oct + t : oct;
+                            base.SourcePower[band] = 0;
+                            base.SPL[band] = 0;
+                        }
                     }
                 }
 
@@ -453,7 +426,7 @@ namespace Pachyderm_Acoustic
                 }
                 X_Event X = new X_Event();
 
-                double[] RayPower = new double[8];
+                double[] RayPower = new double[BandCount];
 
                 Hare.Geometry.Point Pt = T.Polys[base.rayct % T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
                 Hare.Geometry.Vector P = new Vector(Pt.x, Pt.y, Pt.z);
@@ -461,7 +434,7 @@ namespace Pachyderm_Acoustic
 
                 for (int oct = 0; oct < 8; oct++)
                 {
-                    if (base.SPL[oct] == 0)
+                    if (ThirdOctave ? SourcePower[3 * oct] + SourcePower[3 * oct + 1] + SourcePower[3 * oct + 2] == 0 : base.SPL[oct] == 0)
                     {
                         RayPower[oct] = 0;
                     }
@@ -472,6 +445,14 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
+                if (ThirdOctave)
+                {
+                    for (int o = 7; o >= 0; o--)
+                    {
+                        double gain = RayPower[o];
+                        for (int t = 0; t < 3; t++) RayPower[3 * o + t] = gain * SourcePower[3 * o + t];
+                    }
+                }
                 base.rayct++;
 
                 //return new BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, RayPower, 0, Source_ID());
@@ -494,10 +475,10 @@ namespace Pachyderm_Acoustic
                     if (Balloon == null) Balloon = new Voxel_Grid(_S.Balloons(new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }), 1);
                 }
                 X_Event X = new X_Event();
-                double[] RayPower = new double[8];
+                double[] RayPower = new double[BandCount];
                 for (int oct = 0; oct < 8; oct++)
                 {
-                    if (base.SPL[oct] == 0)
+                    if (ThirdOctave ? SourcePower[3 * oct] + SourcePower[3 * oct + 1] + SourcePower[3 * oct + 2] == 0 : base.SPL[oct] == 0)
                     {
                         RayPower[oct] = 0;
                     }
@@ -505,6 +486,14 @@ namespace Pachyderm_Acoustic
                     {
                         Balloon.Shoot(new Ray(new Hare.Geometry.Point(0, 0, 0), DIR, thread, random), oct, out X);
                         RayPower[oct] = 1E-12 * Math.Pow(10, .1 * X.t);
+                    }
+                }
+                if (ThirdOctave)
+                {
+                    for (int o = 7; o >= 0; o--)
+                    {
+                        double gain = RayPower[o];
+                        for (int t = 0; t < 3; t++) RayPower[3 * o + t] = gain * SourcePower[3 * o + t];
                     }
                 }
                 return RayPower;
@@ -656,13 +645,13 @@ namespace Pachyderm_Acoustic
             public override BroadRay Directions(int thread, ref Random random)
             {
                 Vector d = Dir_Random(ref random);
-                return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, d.dx, d.dy, d.dz, random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID());
+                return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, d.dx, d.dy, d.dz, random.Next(), thread, ThirdOctave ? (double[])SourcePower.Clone() : new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID());
             }
 
             public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
                 Vector d = Dir_Random(ref random);
-                return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, d.dx, d.dy, d.dy, random.Next(), thread, new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID(), Octaves);
+                return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, d.dx, d.dy, d.dy, random.Next(), thread, ThirdOctave ? (double[])SourcePower.Clone() : new double[8] { 1, 1, 1, 1, 1, 1, 1, 1 }, 0, Source_ID(), Octaves);
             }
         }
 
@@ -678,16 +667,33 @@ namespace Pachyderm_Acoustic
                 :base(new double[8] { 0, 0, 0, 0, 0, 0, 0, 0 }, new Point(0,0,0), id, third_octave)
             {
                 Third_Octave = third_octave;
-                Sources = sources;
+                if (sources == null || sources.Count == 0) throw new ArgumentException("A source cluster requires at least one source.");
+                Sources = sources.Select(source => source.ForBandResolution(third_octave)).ToList();
                 for(int i = 0; i < Sources.Count; i++)
                 {
                     Center += Sources[i].Origin;
-                    for (int o = 0; o < 8; o++) this.SPL[o] = Math.Max(Sources[i].SWL()[o], SPL[o]);
-                    for (int o = 0; o < 8; o++) this.SourcePower[o] = Math.Max(Sources[i].SoundPower[o], SourcePower[o]);
+                    for (int o = 0; o < BandCount; o++) this.SPL[o] = Math.Max(Sources[i].SWL()[o], SPL[o]);
+                    for (int o = 0; o < BandCount; o++) this.SourcePower[o] = Math.Max(Sources[i].SoundPower[o], SourcePower[o]);
                     revolution += Sources[i].Revolution_Period();
                 }
                 Center /= Sources.Count;
                 this.type = "Cluster";
+                if (third_octave) SetBandResolution(true);
+            }
+
+            internal override Source ForBandResolution(bool thirdOctave)
+            {
+                SourceCluster copy = (SourceCluster)base.ForBandResolution(thirdOctave);
+                copy.Sources = Sources.Select(source => source.ForBandResolution(thirdOctave)).ToList();
+                copy.SetBandResolution(thirdOctave);
+                return copy;
+            }
+
+            public override void SetBandResolution(bool thirdOctave)
+            {
+                base.SetBandResolution(thirdOctave);
+                Third_Octave = thirdOctave;
+                foreach (Source source in Sources) source.SetBandResolution(thirdOctave);
             }
 
             public override double[] DirPower(int threadid, int random, Vector Direction)
@@ -711,7 +717,7 @@ namespace Pachyderm_Acoustic
             public override BroadRay Directions(int thread, ref Random random)
             {
                 rayct++;
-                return Sources[rayct%Sources.Count].Directions(thread, ref random);
+                return Sources[rayct % Sources.Count].Directions(thread, ref random);
             }
 
             public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
