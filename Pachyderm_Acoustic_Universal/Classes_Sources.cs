@@ -81,9 +81,7 @@ namespace Pachyderm_Acoustic
             internal virtual Source ForBandResolution(bool thirdOctave)
             {
                 Source copy = (Source)MemberwiseClone();
-                copy.SourcePower = AcousticalMath.ConvertBandEnergy(SourcePower, thirdOctave);
-                copy.SPL = SourcePower.Length == copy.SourcePower.Length ? (double[])SPL.Clone()
-                    : copy.SourcePower.Select(power => 10 * Math.Log10(power / 1E-12)).ToArray();
+                copy.SetBandResolution(thirdOctave);
                 return copy;
             }
 
@@ -376,12 +374,15 @@ namespace Pachyderm_Acoustic
         public class DirectionalSource : GeodesicSource
         {
             Balloon _S;
+            // Keep the native spectrum for octave directivity weighting after band conversion.
+            readonly double[] directivityReferenceLevels;
             Hare.Geometry.Voxel_Grid Balloon;
 
             public DirectionalSource(Balloon S, double[] power_in_db, Point Source, int[] Bands, int ID, bool Third_Oct)
                 :base(power_in_db, Source, ID, Third_Oct)
             {
                 _S = S;
+                directivityReferenceLevels = (double[])power_in_db.Clone();
                 for (int oct = 0; oct < 8; oct++)
                 {
                     if (oct < Bands[0] || oct > Bands[1])
@@ -422,38 +423,29 @@ namespace Pachyderm_Acoustic
             {
                 lock (balloonlock)
                 {
-                    if (Balloon == null) Balloon = new Voxel_Grid(_S.Balloons(new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }), 1);
+                    if (Balloon == null || Balloon.Model.Length != BandCount) Balloon = new Voxel_Grid(_S.Balloons(Enumerable.Repeat(120.0, BandCount).ToArray(), directivityReferenceLevels), 1);
                 }
                 X_Event X = new X_Event();
 
                 double[] RayPower = new double[BandCount];
 
-                Hare.Geometry.Point Pt = T.Polys[base.rayct % T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
+                Hare.Geometry.Point Pt = T.Polys[++base.rayct % T.Polygon_Count].GetRandomPoint(random.NextDouble(), random.NextDouble(), 0);
                 Hare.Geometry.Vector P = new Vector(Pt.x, Pt.y, Pt.z);
                 P.Normalize();
 
-                for (int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < BandCount; oct++)
                 {
-                    if (ThirdOctave ? SourcePower[3 * oct] + SourcePower[3 * oct + 1] + SourcePower[3 * oct + 2] == 0 : base.SPL[oct] == 0)
+                    if (SourcePower[oct] == 0)
                     {
                         RayPower[oct] = 0;
                     }
                     else
                     {
                         Balloon.Shoot(new Ray(new Hare.Geometry.Point(0, 0, 0), P, thread, random.Next()), oct, out X);
-                        RayPower[oct] = 1E-12 * Math.Pow(10, .1 * X.t);
+                        RayPower[oct] = SourcePower[oct] * 1E-12 * Math.Pow(10, .1 * X.t);
                     }
                 }
 
-                if (ThirdOctave)
-                {
-                    for (int o = 7; o >= 0; o--)
-                    {
-                        double gain = RayPower[o];
-                        for (int t = 0; t < 3; t++) RayPower[3 * o + t] = gain * SourcePower[3 * o + t];
-                    }
-                }
-                base.rayct++;
 
                 //return new BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, RayPower, 0, Source_ID());
                 return BroadRayPool.Instance.new_BroadRay(Origin.x, Origin.y, Origin.z, P.dx, P.dy, P.dz, random.Next(), thread, RayPower, 0, Source_ID());
@@ -472,30 +464,23 @@ namespace Pachyderm_Acoustic
             {
                 lock (balloonlock)
                 {
-                    if (Balloon == null) Balloon = new Voxel_Grid(_S.Balloons(new double[8] { 120, 120, 120, 120, 120, 120, 120, 120 }), 1);
+                    if (Balloon == null || Balloon.Model.Length != BandCount) Balloon = new Voxel_Grid(_S.Balloons(Enumerable.Repeat(120.0, BandCount).ToArray(), directivityReferenceLevels), 1);
                 }
                 X_Event X = new X_Event();
                 double[] RayPower = new double[BandCount];
-                for (int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < BandCount; oct++)
                 {
-                    if (ThirdOctave ? SourcePower[3 * oct] + SourcePower[3 * oct + 1] + SourcePower[3 * oct + 2] == 0 : base.SPL[oct] == 0)
+                    if (SourcePower[oct] == 0)
                     {
                         RayPower[oct] = 0;
                     }
                     else
                     {
                         Balloon.Shoot(new Ray(new Hare.Geometry.Point(0, 0, 0), DIR, thread, random), oct, out X);
-                        RayPower[oct] = 1E-12 * Math.Pow(10, .1 * X.t);
+                        RayPower[oct] = SourcePower[oct] * 1E-12 * Math.Pow(10, .1 * X.t);
                     }
                 }
-                if (ThirdOctave)
-                {
-                    for (int o = 7; o >= 0; o--)
-                    {
-                        double gain = RayPower[o];
-                        for (int t = 0; t < 3; t++) RayPower[3 * o + t] = gain * SourcePower[3 * o + t];
-                    }
-                }
+
                 return RayPower;
             }
 
@@ -504,6 +489,20 @@ namespace Pachyderm_Acoustic
                 double[] H = DirPower (threadid, random, Direction);
                 for (int i = 0; i < H.Length; i++) H[i] = AcousticalMath.Pressure_Intensity(H[i], this.Rho_C);
                 return H;
+            }
+
+            internal override Source ForBandResolution(bool thirdOctave)
+            {
+                DirectionalSource copy = (DirectionalSource)base.ForBandResolution(thirdOctave);
+                copy.Balloon = null;
+                copy.balloonlock = new object();
+                return copy;
+            }
+
+            public override void SetBandResolution(bool thirdOctave)
+            {
+                base.SetBandResolution(thirdOctave);
+                Balloon = null;
             }
 
             public override void Lighten()
@@ -683,7 +682,7 @@ namespace Pachyderm_Acoustic
 
             internal override Source ForBandResolution(bool thirdOctave)
             {
-                SourceCluster copy = (SourceCluster)base.ForBandResolution(thirdOctave);
+                SourceCluster copy = (SourceCluster)MemberwiseClone();
                 copy.Sources = Sources.Select(source => source.ForBandResolution(thirdOctave)).ToList();
                 copy.SetBandResolution(thirdOctave);
                 return copy;

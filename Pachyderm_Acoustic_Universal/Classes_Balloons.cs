@@ -41,16 +41,16 @@ namespace Pachyderm_Acoustic
 
             public Balloon(string[] ballooncodes, Hare.Geometry.Point Center) //, double[] SWL
             {
-                string[][][] balloons = new string[8][][];
+                string[][][] balloons = new string[ballooncodes.Length][][];
                 Code = ballooncodes;
 
-                int minstable = 8;
+                int minstable = ballooncodes.Length;
 
-                if (ballooncodes.Length == 8)
+                if (ballooncodes.Length == 8 || ballooncodes.Length == 24)
                 {
-                    for (int oct = 0; oct < 8; oct++)
+                    for (int oct = 0; oct < ballooncodes.Length; oct++)
                     {
-                        if (ballooncodes[oct] == null) continue;
+                        if (string.IsNullOrWhiteSpace(ballooncodes[oct])) continue;
                         minstable = Math.Min(minstable, oct);
                         string[] lines = ballooncodes[oct].Split(new char[1] { ';' }, StringSplitOptions.RemoveEmptyEntries);
                         balloons[oct] = new string[lines.Length][];
@@ -60,6 +60,7 @@ namespace Pachyderm_Acoustic
                         }
                     }
                 }
+                if (minstable == ballooncodes.Length) throw new ArgumentException("No directivity samples supplied.", nameof(ballooncodes));
                 int umax, vmax;
 
                 if (balloons[minstable][0].Length == 19) //[36].Count == 36 || balloons[4].Count == 19 || balloons[4].Count == 10)
@@ -76,7 +77,7 @@ namespace Pachyderm_Acoustic
                 }
                 else throw new Exception("Balloon Resolution - the number of samples in the balloon is non-standard. This is not supported in Pachyderm at this time...");
 
-                for (int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < ballooncodes.Length; oct++)
                 {
                     if (balloons[oct] == null)
                     {
@@ -89,8 +90,8 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                m_HareMesh = new Topology[8];
-                for (int oct = 0; oct < 8; oct++)
+                m_HareMesh = new Topology[ballooncodes.Length];
+                for (int oct = 0; oct < ballooncodes.Length; oct++)
                 {
                     Vector[,] Magnitude = new Vector[umax, vmax];
                     double[,] mag = new double[umax, vmax];
@@ -172,7 +173,7 @@ namespace Pachyderm_Acoustic
                     //foreach (Hare.Geometry.Point[] Poly in list) m_HareMesh[oct].Add_Polygon(Poly);
                     m_HareMesh[oct].Build_Topology(list.ToArray());
                     m_HareMesh[oct].Finish_Topology();
-                    if (oct == 4)
+                    if (oct == (ballooncodes.Length == 24 ? 13 : 4))
                     {
                         m_DisplayMesh = new Topology(new Hare.Geometry.Point(Minx, Miny, Minz), new Hare.Geometry.Point(Maxx, Maxy, Maxz));
                         foreach (Hare.Geometry.Point[] Poly in list) m_DisplayMesh.Add_Polygon(Poly);
@@ -184,7 +185,13 @@ namespace Pachyderm_Acoustic
 
             public virtual Topology[] Balloons(double[] spl_values)
             {
-                Topology[] Balloon = new Topology[8];
+                return Balloons(spl_values, null);
+            }
+
+            public virtual Topology[] Balloons(double[] spl_values, double[] referenceLevels)
+            {
+                string[] codes = Utilities.AcousticalMath.ConvertBandEnergy(Code, spl_values.Length == 24, true, referenceLevels);
+                Topology[] Balloon = new Topology[spl_values.Length];
 
                 int umax, vmax;
                 switch (Type)
@@ -201,19 +208,19 @@ namespace Pachyderm_Acoustic
                         throw new Exception("Balloon type not valid for this version of CLF.");
                 }
 
-                for (int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < spl_values.Length; oct++)
                 {
                     string[] values;
-                    if (Code[oct] != "")
+                    if (!string.IsNullOrWhiteSpace(codes[oct]))
                     {
-                        values = Code[oct].Split(';');
+                        values = codes[oct].Split(';');
                     }
                     else
                     {
-                        values = new string[umax * vmax];
+                        values = new string[vmax];
                         for (int i = 0; i < values.Length; i++)
                         {
-                            values[i] = "0";
+                            values[i] = string.Join(" ", Enumerable.Repeat("40", umax));
                         }
                     }
 
@@ -298,129 +305,51 @@ namespace Pachyderm_Acoustic
                     Balloon[oct] = new Topology(new Hare.Geometry.Point(Minx, Miny, Minz), new Hare.Geometry.Point(Maxx, Maxy, Maxz));
                     foreach (Hare.Geometry.Point[] p in list) Balloon[oct].Add_Polygon(p);
                 }
-                Balloon[0].Finish_Topology(new List<Point>());
-                Balloon[1].Finish_Topology(new List<Point>());
-                Balloon[2].Finish_Topology(new List<Point>());
-                Balloon[3].Finish_Topology(new List<Point>());
-                Balloon[4].Finish_Topology(new List<Point>());
-                Balloon[5].Finish_Topology(new List<Point>());
-                Balloon[6].Finish_Topology(new List<Point>());
-                Balloon[7].Finish_Topology(new List<Point>());
+                foreach (Topology mesh in Balloon) mesh.Finish_Topology(new List<Point>());
                 return Balloon;
             }
 
             public static string[] Read_Generic(string Path)
             {
-                System.IO.StreamReader SR = new System.IO.StreamReader(Path);
-                List<string[]>[] balloons = new List<string[]>[8];
-                string[] Code = new string[10];
-                string[] BANDS = new string[0];
-                int[] BandIDS = new int[0];
-                while (!SR.EndOfStream)
+                string[] lines = System.IO.File.ReadAllLines(Path);
+                bool thirdOctave = lines.Any(line => line.Contains("THIRDOCTAVEBANDS") || line.Contains("THIRD_OCTAVE_BANDS"));
+                double[] centers = thirdOctave ? Utilities.AcousticalMath.ThirdOctaveCenters() : Utilities.AcousticalMath.OctaveCenters();
+                string[] code = new string[centers.Length + 2];
+                int[] bandIds = new int[0];
+                for (int i = 0; i < lines.Length; i++)
                 {
-                    string line = SR.ReadLine();
-                    int oct = -1;
-                    switch (line)
+                    string line = lines[i].Trim();
+                    if (line.Length == 0) continue;
+                    string[] parts = line.Replace('<', ' ').Replace('>', ' ').Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                    int BandId(string label)
                     {
-                        case "63":
-                            oct = 0;
-                            break;
-                        case "125":
-                            oct = 1;
-                            break;
-                        case "250":
-                            oct = 2;
-                            break;
-                        case "500":
-                            oct = 3;
-                            break;
-                        case "1k":
-                            oct = 4;
-                            break;
-                        case "2k":
-                            oct = 5;
-                            break;
-                        case "4k":
-                            oct = 6;
-                            break;
-                        case "8k":
-                            oct = 7;
-                            break;
-                        case "":
-                            continue;
-                        default:
-                            line = line.Replace('<', ' ');
-                            line = line.Replace('>', ' ');
-                            string[] divided = line.Split(new char[1] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                            if (divided[0] == "OCTAVEBANDS")
-                            {
-                                BANDS = new string[divided.Length - 3];
-                                Array.ConstrainedCopy(divided, 2, BANDS, 0, BANDS.Length);
-                                BandIDS = new int[BANDS.Length];
-                                for (int i = 0; i < BANDS.Length; i++)
-                                {
-                                    BandIDS[i] = Utilities.PachTools.OctaveStr2Int(BANDS[i]);
-                                }
-                            }
-                            if (BANDS.Length == 0) continue;
-
-                            int codeindex;
-                            if (divided[0] == "NOMSPL_AT_1M")
-                            {
-                                codeindex = 8;
-                            }
-                            else if (divided[0] == "MAXSPL_AT_1M")
-                            {
-                                codeindex = 9;
-                            }
-                            else
-                            {
-                                continue;
-                            }
-
-                            if (oct > 0) continue;
-                            Code[codeindex] = "";
-                            for (int testoct = 0; testoct < 8; testoct++)
-                            {
-                                bool band0 = true;
-                                int bandoct = 0;
-                                for (bandoct = 0; bandoct < BandIDS.Length; bandoct++)
-                                {
-                                    if (testoct == BandIDS[bandoct])
-                                    {
-                                        Code[codeindex] += double.Parse(divided[bandoct + 2]) + 11 + ";";
-                                        band0 = false;
-                                        break;
-                                    }
-                                }
-                                if (band0) Code[codeindex] += "0;";
-                            }
-                            break;
+                        label = label.Trim().ToLowerInvariant().Replace("hz", "");
+                        double multiplier = label.EndsWith("k") ? 1000 : 1;
+                        if (multiplier == 1000) label = label.Substring(0, label.Length - 1);
+                        if (!double.TryParse(label, NumberStyles.Float, CultureInfo.InvariantCulture, out double frequency)) return -1;
+                        frequency *= multiplier;
+                        for (int b = 0; b < centers.Length; b++) if (Math.Abs(centers[b] - frequency) <= 0.6) return b;
+                        return -1;
                     }
-
-                    if (oct < 0) continue;
-
-                    string balloonline = SR.ReadLine();
-                    while (balloonline != "")
+                    if (parts[0] == "OCTAVEBANDS" || parts[0] == "THIRDOCTAVEBANDS" || parts[0] == "THIRD_OCTAVE_BANDS")
                     {
-                        Code[oct] += balloonline + ";";
-                        balloonline = SR.ReadLine();
+                        bandIds = parts.Skip(2).Select(BandId).Where(b => b >= 0).ToArray();
+                        continue;
                     }
+                    if (parts[0] == "NOMSPL_AT_1M" || parts[0] == "MAXSPL_AT_1M")
+                    {
+                        double[] values = Enumerable.Repeat(0.0, centers.Length).ToArray();
+                        for (int b = 0; b < bandIds.Length; b++) values[bandIds[b]] = double.Parse(parts[b + 2], CultureInfo.InvariantCulture) + 11;
+                        code[centers.Length + (parts[0] == "NOMSPL_AT_1M" ? 0 : 1)] = Utilities.PachTools.EncodeSourcePower(values);
+                        continue;
+                    }
+                    int band = BandId(line);
+                    if (band < 0) continue;
+                    List<string> rows = new List<string>();
+                    while (++i < lines.Length && !string.IsNullOrWhiteSpace(lines[i])) rows.Add(lines[i]);
+                    code[band] = string.Join(";", rows) + ";";
                 }
-
-                return Code;
-                ///
-                /// Balloon63
-                /// Balloon125
-                /// Balloon250
-                /// Balloon500
-                /// Balloon1k
-                /// Balloon2k
-                /// Balloon4k
-                /// Balloon8k
-                /// Nominal SWL
-                /// Max SWL
-                ///
+                return code;
             }
 
             public static string[] Read_BRAS_csv(string Path)
@@ -544,14 +473,14 @@ namespace Pachyderm_Acoustic
 
             public void Update_Position(Hare.Geometry.Point Center)
             {
-                for (int i = 0; i < m_HareMesh[4].Vertex_Count; i++)
+                for (int i = 0; i < m_HareMesh[m_HareMesh.Length == 24 ? 13 : 4].Vertex_Count; i++)
                 {
-                    Point Po = m_HareMesh[4][i];
+                    Point Po = m_HareMesh[m_HareMesh.Length == 24 ? 13 : 4][i];
                     Point P = new Point(Po.x, Po.y, Po.z) / 90; //new Point((float)(Po.x + Center.x - CurrentPos.x), (float)(Po.y + Center.y - CurrentPos.y), (float)(Po.z + Center.z - CurrentPos.z));
                     m_DisplayMesh.Set_Vertex(i, P);
                 }
                 Update_Aim();
-                for (int i = 0; i < m_HareMesh[4].Vertex_Count; i++)
+                for (int i = 0; i < m_HareMesh[m_HareMesh.Length == 24 ? 13 : 4].Vertex_Count; i++)
                 {
                     Point Po = m_DisplayMesh[i];
                     Point P = new Point((float)(Po.x + Center.x), (float)(Po.y + Center.y), (float)(Po.z + Center.z)); //new Point((float)(Po.x + Center.x - CurrentPos.x), (float)(Po.y + Center.y - CurrentPos.y), (float)(Po.z + Center.z - CurrentPos.z));
@@ -592,16 +521,16 @@ namespace Pachyderm_Acoustic
             {
                 code = Ballooncode_in;
                 Type = Type_in;
-                if (SWL_in != "" || SWL_in != null)
+                if (!string.IsNullOrWhiteSpace(SWL_in))
                 {
                     SWL = SWL_in;
                 }
                 else
                 {
-                    SWL_in = "120; 120; 120; 120; 120; 120; 120; 120";
+                    SWL = string.Join(";", Enumerable.Repeat("120", code.Length));
                 }
                 string[] swl = SWL.Split(';');
-                double[] swl_values = new double[8];
+                double[] swl_values = new double[code.Length];
 
                 Vector upper = new Vector(0, 1, 0);
 
@@ -620,12 +549,12 @@ namespace Pachyderm_Acoustic
                         throw new Exception();
                 }
 
-                m_HareMesh = new Topology[8];
-                for (int oct = 1; oct < 9; oct++)
+                m_HareMesh = new Topology[code.Length];
+                for (int oct = 1; oct <= code.Length; oct++)
                 {
                     string[] values;
                     swl_values[oct - 1] = double.Parse(swl[oct - 1]);
-                    if (code[oct - 1] != "")
+                    if (!string.IsNullOrWhiteSpace(code[oct - 1]))
                     {
                         values = code[oct - 1].Split(';');
                     }
@@ -693,7 +622,7 @@ namespace Pachyderm_Acoustic
 
                     m_HareMesh[oct - 1] = new Topology(new Hare.Geometry.Point(Minx, Miny, Minz), new Hare.Geometry.Point(Maxx, Maxy, Maxz));
                     foreach (Hare.Geometry.Point[] Poly in list) m_HareMesh[oct - 1].Add_Polygon(Poly);
-                    if (oct == 4)
+                    if (oct == (code.Length == 24 ? 14 : 4))
                     {
                         m_DisplayMesh = new Topology(new Hare.Geometry.Point(Minx, Miny, Minz), new Hare.Geometry.Point(Maxx, Maxy, Maxz));
                         foreach (Hare.Geometry.Point[] Poly in list) m_DisplayMesh.Add_Polygon(Poly);
@@ -704,7 +633,13 @@ namespace Pachyderm_Acoustic
 
             public override Topology[] Balloons(double[] spl_values)
             {
-                Topology[] Balloon = new Topology[8];
+                return Balloons(spl_values, null);
+            }
+
+            public override Topology[] Balloons(double[] spl_values, double[] referenceLevels)
+            {
+                string[] codes = Utilities.AcousticalMath.ConvertBandEnergy(code, spl_values.Length == 24, false, referenceLevels);
+                Topology[] Balloon = new Topology[spl_values.Length];
 
                 int umax, vmax;
                 switch (Type)
@@ -721,12 +656,12 @@ namespace Pachyderm_Acoustic
                         throw new Exception("Balloon type not valid for this version of CLF.");
                 }
 
-                for (int oct = 1; oct < 9; oct++)
+                for (int oct = 1; oct <= spl_values.Length; oct++)
                 {
                     string[] values;
-                    if (code[oct - 1] != "")
+                    if (!string.IsNullOrWhiteSpace(codes[oct - 1]))
                     {
-                        values = code[oct - 1].Split(';');
+                        values = codes[oct - 1].Split(';');
                     }
                     else
                     {
@@ -819,14 +754,7 @@ namespace Pachyderm_Acoustic
                     Balloon[oct - 1] = new Topology(new Hare.Geometry.Point(Minx, Miny, Minz), new Hare.Geometry.Point(Maxx, Maxy, Maxz));
                     foreach (Hare.Geometry.Point[] p in list) Balloon[oct - 1].Add_Polygon(p);
                 }
-                Balloon[0].Finish_Topology(new List<Point>());
-                Balloon[1].Finish_Topology(new List<Point>());
-                Balloon[2].Finish_Topology(new List<Point>());
-                Balloon[3].Finish_Topology(new List<Point>());
-                Balloon[4].Finish_Topology(new List<Point>());
-                Balloon[5].Finish_Topology(new List<Point>());
-                Balloon[6].Finish_Topology(new List<Point>());
-                Balloon[7].Finish_Topology(new List<Point>());
+                foreach (Topology mesh in Balloon) mesh.Finish_Topology(new List<Point>());
                 return Balloon;
             }
         }

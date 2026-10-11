@@ -464,6 +464,8 @@ namespace Pachyderm_Acoustic.Source_Constructions
     {
         readonly double Width, Height, Depth, SoundSpeed, VertexScale;
         readonly Cabinet_Diffraction DED;
+        public bool ThirdOctave { get { return DED.ThirdOctave; } set { DED.ThirdOctave = value; } }
+        private double[] BandFrequencies { get { return ThirdOctave ? Utilities.AcousticalMath.ThirdOctaveCenters() : Cabinet_Diffraction.Frequencies; } }
         static readonly Trihedral_Cone Cone = new Trihedral_Cone(4);
         readonly Dictionary<double, Complex[,]> Patterns = new Dictionary<double, Complex[,]>();
 
@@ -499,10 +501,10 @@ namespace Pachyderm_Acoustic.Source_Constructions
         internal Func<Vector, Complex> PrepareField(Hare.Geometry.Point driver, int octave, double diameter, double distance)
         {
             if (!(diameter > 0) || double.IsInfinity(diameter) || double.IsNaN(driver.x + driver.y + driver.z) || double.IsInfinity(driver.x + driver.y + driver.z) || Math.Abs(driver.y) > 1E-9 || Math.Abs(driver.x) + diameter / 2 > Width / 2 + 1E-9 || Math.Abs(driver.z) + diameter / 2 > Height / 2 + 1E-9) throw new ArgumentException("Driver must fit on the front baffle.");
-            octave = Math.Max(0, Math.Min(7, octave));
+            octave = Math.Max(0, Math.Min(BandFrequencies.Length - 1, octave));
             var baseline = DED.PrepareField(driver, octave, diameter, distance);
             if (VertexScale == 0) return baseline;
-            double k = 2 * Math.PI * Cabinet_Diffraction.Frequencies[octave] / SoundSpeed;
+            double k = 2 * Math.PI * BandFrequencies[octave] / SoundSpeed;
             double ka = k / Math.Sqrt(1 / (Width * Width) + 1 / (Height * Height) + 1 / (Depth * Depth)), activation = Math.Pow(ka, 4) / (16 + Math.Pow(ka, 4));
             var corners = new Hare.Geometry.Point[4]; var tables = new Complex[4][,]; var drive = new Complex[4];
             for (int i = 0; i < 4; i++)
@@ -511,7 +513,7 @@ namespace Pachyderm_Acoustic.Source_Constructions
                 corners[i] = new Hare.Geometry.Point(sx * Width / 2, 0, sz * Height / 2);
                 double x = Width / 2 - sx * driver.x, z = Height / 2 - sz * driver.z, r = Math.Sqrt(x * x + z * z);
                 tables[i] = Pattern(Math.Atan2(z, x));
-                drive[i] = VertexScale * activation * (k * r) * (k * r) / (16 + (k * r) * (k * r)) * 0.5 * DED.PistonFactor(Cabinet_Diffraction.Frequencies[octave], 0, diameter) * Complex.FromPolarCoordinates(1 / r, -k * r);
+                drive[i] = VertexScale * activation * (k * r) * (k * r) / (16 + (k * r) * (k * r)) * 0.5 * DED.PistonFactor(BandFrequencies[octave], 0, diameter) * Complex.FromPolarCoordinates(1 / r, -k * r);
             }
             return direction =>
             {
@@ -542,7 +544,7 @@ namespace Pachyderm_Acoustic.Source_Constructions
             return PrepareField(driver, octave, driverDiameter, distance)(direction);
         }
 
-        public string[] Driver_Balloon(Hare.Geometry.Point driver, double driverDiameter) => Cabinet_Diffraction.Balloon(Width, Height, Depth, SoundSpeed, (octave, distance) => PrepareField(driver, octave, driverDiameter, distance));
+        public string[] Driver_Balloon(Hare.Geometry.Point driver, double driverDiameter) => Cabinet_Diffraction.Balloon(Width, Height, Depth, SoundSpeed, (octave, distance) => PrepareField(driver, octave, driverDiameter, distance), ThirdOctave);
         readonly Vector[] Nodes, Normals;
         readonly Vector[][] Quadrature;
         readonly double[][] Weights;

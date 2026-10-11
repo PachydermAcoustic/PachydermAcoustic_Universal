@@ -30,7 +30,13 @@ namespace Pachyderm_Acoustic
             private readonly int SamplesPerWavelength;
             private readonly bool HighFrequencyContinuation;
             private readonly Cabinet_Diffraction DED;
-            private readonly Band[] Bands = new Band[8];
+            private readonly Band[] Bands = new Band[24];
+            public bool ThirdOctave
+            {
+                get { return DED.ThirdOctave; }
+                set { if (value != ThirdOctave) { Array.Clear(Bands, 0, Bands.Length); DED.ThirdOctave = value; } }
+            }
+            private double[] BandFrequencies { get { return ThirdOctave ? Utilities.AcousticalMath.ThirdOctaveCenters() : Cabinet_Diffraction.Frequencies; } }
 
             private sealed class Band
             {
@@ -91,7 +97,7 @@ namespace Pachyderm_Acoustic
             //Log-frequency continuation at the available octave centers: 500 Hz -> 1 kHz -> 2 kHz.
             private double NumericalWeight(int octave)
             {
-                return !HighFrequencyContinuation || octave <= 3 ? 1 : octave == 4 ? 0.5 : 0;
+                return !HighFrequencyContinuation ? 1 : Math.Max(0, Math.Min(1, 1 - Math.Log(BandFrequencies[octave] / 500.0, 2) / 2));
             }
 
             private static bool Finite(Complex value)
@@ -117,14 +123,14 @@ namespace Pachyderm_Acoustic
             {
                 ValidateDriver(driver, diameter);
                 double radius = diameter * 0.5;
-                double k = 2.0 * Math.PI * Cabinet_Diffraction.Frequencies[octave] / SoundSpeed;
+                double k = 2.0 * Math.PI * BandFrequencies[octave] / SoundSpeed;
                 Band band;
                 lock (Bands)
                 {
                     band = Bands[octave];
                     if (band == null)
                     {
-                        double spacing = Math.Min(0.7 * Math.Max(Width, Math.Max(Height, Depth)) / (1.5 * SamplesPerWavelength), SoundSpeed / (Cabinet_Diffraction.Frequencies[octave] * SamplesPerWavelength));
+                        double spacing = Math.Min(0.7 * Math.Max(Width, Math.Max(Height, Depth)) / (1.5 * SamplesPerWavelength), SoundSpeed / (BandFrequencies[octave] * SamplesPerWavelength));
                         int nx = Math.Max(2, (int)Math.Ceiling(0.7 * Width / spacing)), ny = Math.Max(2, (int)Math.Ceiling(0.7 * Depth / spacing)), nz = Math.Max(2, (int)Math.Ceiling(0.7 * Height / spacing));
                         List<Point> integration = new List<Point>(), sources = new List<Point>();
                         List<Hare.Geometry.Vector> normals = new List<Hare.Geometry.Vector>();
@@ -136,7 +142,7 @@ namespace Pachyderm_Acoustic
                                     Point p = origin + u * ((i + 0.5) / nu) + v * ((j + 0.5) / nv);
                                     sources.Add(new Point(0.7 * p.x, -Depth * 0.5 + 0.7 * (p.y + Depth * 0.5), 0.7 * p.z));
                                 }
-                            double step = Math.Min(SoundSpeed / (8 * Cabinet_Diffraction.Frequencies[octave]), inset * 0.5);
+                            double step = Math.Min(SoundSpeed / (8 * BandFrequencies[octave]), inset * 0.5);
                             var qu = new MathNet.Numerics.Integration.GaussLegendreRule(0, 1, Math.Max(8, (int)Math.Ceiling(u.Length() / step)));
                             var qv = new MathNet.Numerics.Integration.GaussLegendreRule(0, 1, Math.Max(8, (int)Math.Ceiling(v.Length() / step)));
                             for (int i = 0; i < qu.Order; i++) for (int j = 0; j < qv.Order; j++)
@@ -212,7 +218,7 @@ namespace Pachyderm_Acoustic
                 ValidateDriver(driver, driverDiameter);
                 Point receiver = driver + direction * (distance / length);
                 if (Math.Abs(receiver.x) <= Width / 2 && receiver.y <= 0 && receiver.y >= -Depth && Math.Abs(receiver.z) <= Height / 2) throw new ArgumentException("Receiver must be outside the cabinet.");
-                octave = Math.Max(0, Math.Min(7, octave));
+                octave = Math.Max(0, Math.Min(BandFrequencies.Length - 1, octave));
                 double weight = NumericalWeight(octave);
                 if (weight == 0) return DED.Pressure(driver, direction, octave, driverDiameter, distance);
                 Complex pressure = Prepare(driver, octave, driverDiameter).At(receiver);
@@ -229,7 +235,7 @@ namespace Pachyderm_Acoustic
                     if (weight == 1) return direction => field.At(driver + direction * distance);
                     var edgeField = DED.PrepareField(driver, octave, driverDiameter, distance);
                     return direction => weight * field.At(driver + direction * distance) + (1 - weight) * edgeField(direction);
-                });
+                }, ThirdOctave);
             }
         }
 
@@ -257,6 +263,9 @@ namespace Pachyderm_Acoustic
             private readonly double Height;
             private readonly double Depth;
             private readonly double SoundSpeed;
+
+            public bool ThirdOctave { get; set; }
+            private double[] BandFrequencies { get { return ThirdOctave ? Utilities.AcousticalMath.ThirdOctaveCenters() : Frequencies; } }
 
             internal static readonly double[] Frequencies = new double[]{ 62.5, 125, 250, 500, 1000, 2000, 4000, 8000 };
 
@@ -450,9 +459,9 @@ namespace Pachyderm_Acoustic
             /// </summary>
             private List<EdgeElement> EdgeElements(Hare.Geometry.Point driver, int octave, bool driven = false)
             {
-                octave = Math.Max(0, Math.Min( 7, octave));
+                octave = Math.Max(0, Math.Min(BandFrequencies.Length - 1, octave));
 
-                double wavelength = SoundSpeed / Frequencies[octave];
+                double wavelength = SoundSpeed / BandFrequencies[octave];
 
                 //Urban correction to Vanderkooy method - specify elementary edge spacing much smaller
                 //than wavelength.
@@ -553,8 +562,8 @@ namespace Pachyderm_Acoustic
                 if (length <= 1E-12) return System.Numerics.Complex.Zero;
 
                 direction /= length;
-                octave = Math.Max(0, Math.Min( 7, octave));
-                double frequency = Frequencies[octave];
+                octave = Math.Max(0, Math.Min(BandFrequencies.Length - 1, octave));
+                double frequency = BandFrequencies[octave];
                 double k = 2.0 * Math.PI * frequency / SoundSpeed;
                 Hare.Geometry.Point receiver = driver + direction * distance;
 
@@ -608,10 +617,10 @@ namespace Pachyderm_Acoustic
             /// </summary>
             public System.Numerics.Complex Pressure(Hare.Geometry.Point driver, Hare.Geometry.Vector direction, int octave, double driverDiameter, double distance)
             {
-                octave = Math.Max(0, Math.Min(7, octave));
+                octave = Math.Max(0, Math.Min(BandFrequencies.Length - 1, octave));
                 List<EdgeElement> edgeElements = EdgeElements(driver, octave);
                 List<EdgeElement> drivenElements = EdgeElements(driver, octave, true);
-                System.Numerics.Complex[] driven = DrivenEdgeDrive(edgeElements, drivenElements, Frequencies[octave], driverDiameter);
+                System.Numerics.Complex[] driven = DrivenEdgeDrive(edgeElements, drivenElements, BandFrequencies[octave], driverDiameter);
 
                 return Pressure(driver, direction, octave, driverDiameter, distance, edgeElements, drivenElements, driven);
             }
@@ -624,28 +633,29 @@ namespace Pachyderm_Acoustic
             /// </summary>
             public string[] Driver_Balloon(Hare.Geometry.Point driver, double driverDiameter)
             {
-                return Balloon(Width, Height, Depth, SoundSpeed, (octave, distance) => PrepareField(driver, octave, driverDiameter, distance));
+                return Balloon(Width, Height, Depth, SoundSpeed, (octave, distance) => PrepareField(driver, octave, driverDiameter, distance), ThirdOctave);
             }
 
             internal Func<Hare.Geometry.Vector, System.Numerics.Complex> PrepareField(Hare.Geometry.Point driver, int octave, double driverDiameter, double distance)
             {
                 List<EdgeElement> edgeElements = EdgeElements(driver, octave);
                 List<EdgeElement> drivenElements = EdgeElements(driver, octave, true);
-                System.Numerics.Complex[] driven = DrivenEdgeDrive(edgeElements, drivenElements, Frequencies[octave], driverDiameter);
+                System.Numerics.Complex[] driven = DrivenEdgeDrive(edgeElements, drivenElements, BandFrequencies[octave], driverDiameter);
                 return direction => Pressure(driver, direction, octave, driverDiameter, distance, edgeElements, drivenElements, driven);
             }
-            internal static string[] Balloon(double width, double height, double depth, double sound_speed, Func<int, double, Func<Hare.Geometry.Vector, System.Numerics.Complex>> prepare)
+            internal static string[] Balloon(double width, double height, double depth, double sound_speed, Func<int, double, Func<Hare.Geometry.Vector, System.Numerics.Complex>> prepare, bool thirdOctave = false)
             {
                 const int umax = 37;
                 const int vmax = 72;
 
-                string[] result = new string[8];
+                double[] frequencies = thirdOctave ? Utilities.AcousticalMath.ThirdOctaveCenters() : Frequencies;
+                string[] result = new string[frequencies.Length];
 
                 double largestDimension = Math.Max(width, Math.Max(height, depth));
 
-                for (int octave = 0; octave < 8; octave++)
+                for (int octave = 0; octave < frequencies.Length; octave++)
                 {
-                    double wavelength = sound_speed / Frequencies[octave];
+                    double wavelength = sound_speed / frequencies[octave];
                     double referenceDistance = Math.Max(1.0, Math.Max(10.0 * largestDimension, 2.0 * largestDimension * largestDimension / wavelength));
 
                     var field = prepare(octave, referenceDistance);

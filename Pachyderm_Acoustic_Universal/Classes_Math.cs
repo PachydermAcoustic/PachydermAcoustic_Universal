@@ -1529,6 +1529,76 @@ namespace Pachyderm_Acoustic
                 return output;
             }
 
+            /// <summary>Convert linear relative gains, weighting each third band by its reference energy.
+            /// Octave gains repeat into thirds; a silent triplet uses equal weights.</summary>
+            public static double[] ConvertBandEnergy(double[] gains, bool thirdOctave, double[] referenceEnergy)
+            {
+                double[] output = ConvertBandEnergy(gains, thirdOctave);
+                if (referenceEnergy == null || referenceEnergy.Length != gains.Length ||
+                    referenceEnergy.Any(v => double.IsNaN(v) || double.IsInfinity(v) || v < 0))
+                    throw new ArgumentException("Expected a finite, nonnegative reference energy for each gain.", nameof(referenceEnergy));
+                if (gains.Length == output.Length) return output;
+                if (thirdOctave)
+                {
+                    for (int b = 0; b < output.Length; b++) output[b] *= 3;
+                    return output;
+                }
+                double[] weights = (double[])referenceEnergy.Clone();
+                for (int o = 0; o < 8; o++)
+                {
+                    double peak = Math.Max(weights[3 * o], Math.Max(weights[3 * o + 1], weights[3 * o + 2]));
+                    for (int t = 0; t < 3; t++) weights[3 * o + t] = peak > 0 ? weights[3 * o + t] / peak : 1;
+                }
+                double[] weighted = ConvertBandEnergy(gains.Select((v, b) => v * weights[b]).ToArray(), false);
+                double[] reference = ConvertBandEnergy(weights, false);
+                for (int o = 0; o < 8; o++) output[o] = weighted[o] / reference[o];
+                return output;
+            }
+
+            /// <summary>Convert serialized directivity gains or attenuations using the same band-energy converter.
+            /// Reference levels are in dB; absent or octave-only levels imply equal within-octave weights.</summary>
+            public static string[] ConvertBandEnergy(string[] codes, bool thirdOctave, bool attenuation, double[] referenceLevels = null)
+            {
+                if (codes == null || (codes.Length != 8 && codes.Length != 24))
+                    throw new ArgumentException("Expected 8 or 24 directivity bands.", nameof(codes));
+                if (referenceLevels != null && ((referenceLevels.Length != 8 && referenceLevels.Length != 24) ||
+                    referenceLevels.Any(v => double.IsNaN(v) || double.IsPositiveInfinity(v))))
+                    throw new ArgumentException("Expected 8 or 24 finite reference levels, or negative infinity for silence.", nameof(referenceLevels));
+                int count = thirdOctave ? 24 : 8;
+                if (codes.Length == count) return (string[])codes.Clone();
+                if (thirdOctave) return Enumerable.Range(0, count).Select(b => codes[b / 3]).ToArray();
+
+                string[][][] rows = codes.Select(c => (c ?? "").Split(new char[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(row => row.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)).ToArray()).ToArray();
+                string[][] template = rows.FirstOrDefault(v => v.Length > 0);
+                if (template == null) return Enumerable.Repeat("", count).ToArray();
+                if (rows.Any(v => v.Length > 0 && (v.Length != template.Length ||
+                    v.Where((row, index) => row.Length != template[index].Length).Any())))
+                    throw new ArgumentException("Directivity bands must use the same angular sample layout.", nameof(codes));
+                double[] weights = Enumerable.Repeat(1.0, codes.Length).ToArray();
+                if (referenceLevels != null && referenceLevels.Length == 24)
+                    for (int o = 0; o < 8; o++)
+                    {
+                        double peak = Math.Max(referenceLevels[3 * o], Math.Max(referenceLevels[3 * o + 1], referenceLevels[3 * o + 2]));
+                        if (!double.IsNegativeInfinity(peak))
+                            for (int t = 0; t < 3; t++) weights[3 * o + t] = Math.Pow(10, (referenceLevels[3 * o + t] - peak) / 10);
+                    }
+                string[][][] output = Enumerable.Range(0, count).Select(b => template.Select(row => new string[row.Length]).ToArray()).ToArray();
+                double sign = attenuation ? -1 : 1;
+                double[] gains = new double[codes.Length];
+                for (int row = 0; row < template.Length; row++)
+                    for (int cell = 0; cell < template[row].Length; cell++)
+                    {
+                        for (int b = 0; b < codes.Length; b++)
+                            gains[b] = rows[b].Length == 0 ? 1 : Math.Pow(10, sign * double.Parse(rows[b][row][cell], System.Globalization.CultureInfo.InvariantCulture) / 10);
+                        double[] converted = ConvertBandEnergy(gains, false, weights);
+                        for (int b = 0; b < count; b++)
+                            output[b][row][cell] = (sign * 10 * Math.Log10(Math.Max(1E-12, converted[b]))).ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+                    }
+                return Enumerable.Range(0, count).Select(b => rows.Skip(3 * b).Take(3).All(v => v.Length == 0) ? "" :
+                    string.Join(";", output[b].Select(row => string.Join(" ", row))) + ";").ToArray();
+            }
+
             /// <summary>
             /// Standard octave band center frequencies, 63 Hz to 8000 Hz (8 bands).
             /// </summary>
