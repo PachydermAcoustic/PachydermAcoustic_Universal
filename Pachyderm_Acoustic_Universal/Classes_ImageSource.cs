@@ -492,13 +492,15 @@ namespace Pachyderm_Acoustic
                     double[][] Absorption = new double[Sequence.Length][];
                     for (int q = 0; q < Sequence.Length; q++)
                         Absorption[q] = Sequence[q] >= Room.ObjectCount ? new double[BandCount] : Room.AbsorptionValue[Room.ObjectMembers[Sequence[q]][0]].Coefficient_A_Broad(ThirdOctave);
-                    ThreadPaths[rec_id, Threadid].Add(new Compound_Path(PathVertices.ToArray(), source.Source_ID(), Sequence, H, mintime, Room.Rho_C(0), ref Direct_Time[rec_id], Threadid, Absorption));
+                    ThreadPaths[rec_id, Threadid].Add(new Compound_Path(PathVertices.ToArray(), source.Source_ID(), Sequence, H, mintime, Room.Rho_C(0), ref Direct_Time[rec_id], Threadid, Absorption)
+                    { CoherentSpeaker = Src is SourceCluster cluster && cluster.CoherentSpeakers && source.IsSpeaker, SteeringDelaySeconds = source.SpeakerDelaySeconds });
                 }
                 else
                 {
                     //Assumed either a convex, or planar reflection
                     double[] H_in = new double[BandCount]; for (int oct = 0; oct < BandCount; oct++) H_in[oct] = H[0][oct][0];
-                    ThreadPaths[rec_id, Threadid].Add(new Specular_Path(PathVertices[0], Sequence, Seq_Polys, Room, source, c_sound, H_in, Trans_Mod[0], ref Direct_Time[rec_id], Threadid, Rnd[Threadid].Next(), Oct_choice));
+                    ThreadPaths[rec_id, Threadid].Add(new Specular_Path(PathVertices[0], Sequence, Seq_Polys, Room, source, c_sound, H_in, Trans_Mod[0], ref Direct_Time[rec_id], Threadid, Rnd[Threadid].Next(), Oct_choice)
+                    { CoherentSpeaker = Src is SourceCluster cluster && cluster.CoherentSpeakers && source.IsSpeaker, SteeringDelaySeconds = source.SpeakerDelaySeconds });
                 }
             }
         }
@@ -1379,7 +1381,8 @@ namespace Pachyderm_Acoustic
         public void Write_Data(ref System.IO.BinaryWriter BW)
         {
             //1. Write an indicator to signify that there is image source data
-            BW.Write("Image-Source_Data");
+            bool coherent = ValidPaths.Any(paths => paths.Any(path => path.CoherentSpeaker));
+            BW.Write(coherent ? "Image-Source_Data coherent" : "Image-Source_Data");
 
             for (int q = 0; q < ValidPaths.Length; q++)
             {
@@ -1392,6 +1395,13 @@ namespace Pachyderm_Acoustic
                 for (int i = 0; i < ValidPaths[q].Count; i++)
                 {
 
+                    if (coherent)
+                    {
+                        BW.Write(ValidPaths[q][i].CoherentSpeaker);
+                        double[] delays = ValidPaths[q][i].SteeringDelaySeconds ?? new double[] { 0 };
+                        BW.Write(delays.Length);
+                        foreach (double delay in delays) BW.Write(delay);
+                    }
                     //V2 procedure: Introducing pressure based simulation...
                     //3a.1 Write an enumeration for the kind of reflection it is(0 for specular, 1 for compound). (int)
                     if (ValidPaths[q][i] is Specular_Path)
@@ -1518,6 +1528,11 @@ namespace Pachyderm_Acoustic
         /// <returns></returns>
         public static ImageSourceData Read_Data(ref System.IO.BinaryReader BR, int Rec_CT, Direct_Sound Direct, bool Edges, double[] RhoC, int Src_ID, string version, IProgressFeedback VB)
         {
+            return Read_Data(ref BR, Rec_CT, Direct, Edges, RhoC, Src_ID, version, VB, false);
+        }
+
+        public static ImageSourceData Read_Data(ref System.IO.BinaryReader BR, int Rec_CT, Direct_Sound Direct, bool Edges, double[] RhoC, int Src_ID, string version, IProgressFeedback VB, bool coherentSpeakers)
+        {
             ImageSourceData IS = new ImageSourceData();
             int BandCount = Direct.SWL.Length;
             IS.BandCount = BandCount;
@@ -1534,6 +1549,15 @@ namespace Pachyderm_Acoustic
                 int PathCt = BR.ReadInt32();
                 for (int i = 0; i < PathCt; i++)
                 {
+                    bool coherent = coherentSpeakers && BR.ReadBoolean();
+                    double[] delays = null;
+                    if (coherentSpeakers)
+                    {
+                        int count = BR.ReadInt32();
+                        if (count != 1 && count != 8 && count != 24) throw new System.IO.InvalidDataException("Invalid speaker-delay band count.");
+                        delays = new double[count];
+                        for (int band = 0; band < count; band++) delays[band] = BR.ReadDouble();
+                    }
                     //3.1 Write the kind of reflection (0 = simple specular reflection, 1 = compound path (made from many paths)
                     int ReflectionType = BR.ReadInt16();
                     if (ReflectionType == 0)
@@ -1582,7 +1606,8 @@ namespace Pachyderm_Acoustic
                             Sequence[r] = BR.ReadInt32();
                         }
 
-                        IS.ValidPaths[q].Add(new Specular_Path(PTS, Energy, prms, Filter, Time, Sequence, Direct.Min_Time(q), Src_ID));
+                        IS.ValidPaths[q].Add(new Specular_Path(PTS, Energy, prms, Filter, Time, Sequence, Direct.Min_Time(q), Src_ID)
+                        { CoherentSpeaker = coherent, SteeringDelaySeconds = delays });
                     }
                     else if (ReflectionType == 1)
                     {
@@ -1703,7 +1728,8 @@ namespace Pachyderm_Acoustic
                             H[j+1] = H_Dir[j];
                         }
 
-                        IS.ValidPaths[q].Add(new Compound_Path(PTS, Src_ID, sequence, H, T, RhoC[q], ref Direct.Time_Pt[q], 0));
+                        IS.ValidPaths[q].Add(new Compound_Path(PTS, Src_ID, sequence, H, T, RhoC[q], ref Direct.Time_Pt[q], 0)
+                        { CoherentSpeaker = coherent, SteeringDelaySeconds = delays });
                     }
                 }
             }
@@ -1791,6 +1817,38 @@ namespace Pachyderm_Acoustic
     public abstract class Deterministic_Reflection
     {
         protected string Identifier;
+        public bool CoherentSpeaker = false;
+        public double[] SteeringDelaySeconds = null;
+        public double FilterTime { get { return TravelTime + (CoherentSpeaker && SteeringDelaySeconds != null ? SteeringDelaySeconds.Min() : 0); } }
+
+        public int FilterSample(int sampleFrequency)
+        {
+            return CoherentSpeaker ? (int)Math.Floor(FilterTime * sampleFrequency) : (int)Math.Ceiling(TravelTime * sampleFrequency);
+        }
+
+        protected double[] ApplySourceDelay(double[] filter, int sampleFrequency, int threadid)
+        {
+            if (!CoherentSpeaker) return filter;
+            double minimum = SteeringDelaySeconds == null ? 0 : SteeringDelaySeconds.Min();
+            double[] relative = SteeringDelaySeconds == null ? new double[] { 0 } : SteeringDelaySeconds.Select(delay => delay - minimum).ToArray();
+            double fraction = FilterTime - Math.Floor(FilterTime * sampleFrequency) / sampleFrequency;
+            return Audio.Pach_SP.Fractional_Delay(filter, relative, Math.Max(0, fraction), sampleFrequency, threadid);
+        }
+
+        public double[] CoherentBandPressure(int band, int sampleFrequency, double rhoC)
+        {
+            if (!CoherentSpeaker) throw new InvalidOperationException("The path is not part of a coherent speaker group.");
+            bool third = this is Specular_Path specular ? specular.prms.Length == 24 : (this as Compound_Path).H.Length == 24;
+            double[] filter = Create_Filter(Enumerable.Repeat(120.0, third ? 24 : 8).ToArray(), sampleFrequency, 16384, 0, 0);
+            double[] reference = this is Specular_Path spec ? Audio.Pach_SP.Filter.Transfer_Function(spec.prms, sampleFrequency, 16384, 0) : filter;
+            reference = third ? Audio.Pach_SP.FIR_Third_Bandpass(reference, band, sampleFrequency, 0) : Audio.Pach_SP.FIR_Bandpass(reference, band, sampleFrequency, 0);
+            double[] pressure = third ? Audio.Pach_SP.FIR_Third_Bandpass(filter, band, sampleFrequency, 0) : Audio.Pach_SP.FIR_Bandpass(filter, band, sampleFrequency, 0);
+            double sum = reference.Sum(value => value * value);
+            double target = Energy(band, sampleFrequency).Sum() * rhoC;
+            double scale = sum > 0 ? Math.Sqrt(Math.Max(0, target) / sum) : 0;
+            for (int sample = 0; sample < pressure.Length; sample++) pressure[sample] *= scale;
+            return pressure;
+        }
 
         public override string ToString()
         {
@@ -1946,7 +2004,7 @@ namespace Pachyderm_Acoustic
         public override void Create_Filter(int length, int threadid)
         {
             double[] baseFilter = Audio.Pach_SP.Filter.Transfer_Function(prms, 44100, length, threadid);
-            F = Apply_Special_Filter(baseFilter, 44100, threadid);
+            F = ApplySourceDelay(Apply_Special_Filter(baseFilter, 44100, threadid), 44100, threadid);
         }
 
         public override double[] Create_Filter(double[] SWL, int SampleFrequency, int length, int dim, int threadid)
@@ -1955,7 +2013,7 @@ namespace Pachyderm_Acoustic
             for (int i = 0; i < BandCount; i++) tf_spec[i] = prms[i] * Math.Pow(10, (120 - SWL[i]) / 20);
 
             double[] baseFilter = Audio.Pach_SP.Filter.Transfer_Function(tf_spec, SampleFrequency, length, threadid);
-            return Apply_Special_Filter(baseFilter, SampleFrequency, threadid);
+            return ApplySourceDelay(Apply_Special_Filter(baseFilter, SampleFrequency, threadid), SampleFrequency, threadid);
         }
 
         public override double[][] Create_Filter(double[] SWL, int SampleFrequency, int length, int threadid)
@@ -1964,7 +2022,7 @@ namespace Pachyderm_Acoustic
             for (int i = 0; i < BandCount; i++) tf_spec[i] = prms[i] * Math.Pow(10, (120 - SWL[i]) / 20);
 
             double[] baseFilter = Audio.Pach_SP.Filter.Transfer_Function(tf_spec, SampleFrequency, length, threadid);
-            return new double[1][] { Apply_Special_Filter(baseFilter, SampleFrequency, threadid) };
+            return new double[1][] { ApplySourceDelay(Apply_Special_Filter(baseFilter, SampleFrequency, threadid), SampleFrequency, threadid) };
         }
 
         private double[] Apply_Special_Filter(double[] baseFilter, int sampleFrequency, int threadid)
@@ -2252,10 +2310,10 @@ namespace Pachyderm_Acoustic
         public override double[][] Create_Filter(double[] SWL, int SampleFrequency, int LengthofPulse, int Threadid)
         {
             double[][] Fdir_out = new double[6][];
-            double[] F_out = Audio.Pach_SP.ETCToFilter(H, SWL, 44100, SampleFrequency);//FFT_Convolution_double(H, pulse, Threadid);
+            double[] F_out = ApplySourceDelay(Audio.Pach_SP.ETCToFilter(H, SWL, 44100, SampleFrequency), SampleFrequency, Threadid);
             for (int i = 0; i < 6; i++)
             {
-                Fdir_out[i] = Audio.Pach_SP.ETCToFilter(Hdir[i], SWL, 44100, SampleFrequency);//Audio.Pach_SP.FFT_Convolution_double(Hdir[i], pulse, Threadid);
+                Fdir_out[i] = ApplySourceDelay(Audio.Pach_SP.ETCToFilter(Hdir[i], SWL, 44100, SampleFrequency), SampleFrequency, Threadid);
             }
             return new double[7][] { F_out, Fdir_out[0], Fdir_out[1], Fdir_out[2], Fdir_out[3], Fdir_out[4], Fdir_out[5] };
         }
@@ -2264,11 +2322,11 @@ namespace Pachyderm_Acoustic
         {
             if (dim < 1)
             {
-                return Audio.Pach_SP.ETCToFilter(H, SWL, 44100, SampleFrequency);
+                return ApplySourceDelay(Audio.Pach_SP.ETCToFilter(H, SWL, 44100, SampleFrequency), SampleFrequency, Threadid);
             }
             else
             {
-                return Audio.Pach_SP.ETCToFilter(Hdir[dim-1], SWL, 44100, SampleFrequency);
+                return ApplySourceDelay(Audio.Pach_SP.ETCToFilter(Hdir[dim-1], SWL, 44100, SampleFrequency), SampleFrequency, Threadid);
             }
         }
 
@@ -2276,10 +2334,10 @@ namespace Pachyderm_Acoustic
         {
             Fdir = new double[6][];
 
-            F = Audio.Pach_SP.ETCToFilter(H, Enumerable.Repeat(120.0, BandCount).ToArray());
+            F = ApplySourceDelay(Audio.Pach_SP.ETCToFilter(H, Enumerable.Repeat(120.0, BandCount).ToArray()), 44100, threadid);
             for (int i = 0; i < 6; i++)
             {
-                Fdir[i] = Audio.Pach_SP.ETCToFilter(Hdir[i], Enumerable.Repeat(120.0, BandCount).ToArray());
+                Fdir[i] = ApplySourceDelay(Audio.Pach_SP.ETCToFilter(Hdir[i], Enumerable.Repeat(120.0, BandCount).ToArray()), 44100, threadid);
             }
         }
 

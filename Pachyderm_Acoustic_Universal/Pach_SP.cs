@@ -113,6 +113,41 @@ namespace Pachyderm_Acoustic
                 public abstract Complex[] Spectrum(double[] Octave_Pessure, int SampleFrequency, int LengthStartToFinish, int Threadid);
             }
 
+            /// <summary>Apply source steering and a fractional placement delay to an existing response.
+            /// Delays are in seconds and must be nonnegative after removing the common source latency.</summary>
+            public static double[] Fractional_Delay(double[] response, double[] delays, double fractionSeconds, int sampleFrequency, int threadid)
+            {
+                if (response == null || response.Length == 0) return response;
+                if (sampleFrequency <= 0 || double.IsNaN(fractionSeconds) || double.IsInfinity(fractionSeconds) || fractionSeconds < 0)
+                    throw new ArgumentOutOfRangeException(nameof(fractionSeconds));
+                if (delays == null) delays = new double[] { 0 };
+                if ((delays.Length != 1 && delays.Length != 8 && delays.Length != 24) ||
+                    delays.Any(value => double.IsNaN(value) || double.IsInfinity(value) || value < 0))
+                    throw new ArgumentException("Expected one, eight, or twenty-four finite nonnegative delays.", nameof(delays));
+                double maximum = delays.Max() + fractionSeconds;
+                if (maximum == 0) return response;
+                int samples = checked(response.Length + (int)Math.Ceiling(maximum * sampleFrequency) + 1);
+                int length = 1;
+                while (length < samples) length = checked(length * 2);
+                double[] padded = new double[length];
+                Array.Copy(response, padded, response.Length);
+                Complex[] spectrum = FFT_General(padded, threadid);
+                double[] centers = delays.Length == 24 ? Utilities.AcousticalMath.ThirdOctaveCenters() : Utilities.AcousticalMath.OctaveCenters();
+                int band = 0;
+                for (int bin = 0; bin <= length / 2; bin++)
+                {
+                    double frequency = bin * (double)sampleFrequency / length;
+                    while (delays.Length > 1 && band + 1 < delays.Length && frequency > Math.Sqrt(centers[band] * centers[band + 1])) band++;
+                    double delay = fractionSeconds + delays[delays.Length == 1 ? 0 : band];
+                    spectrum[bin] *= Complex.FromPolarCoordinates(1, -2 * Math.PI * frequency * delay);
+                    if (bin == 0 || bin == length / 2) spectrum[bin] = new Complex(spectrum[bin].Real, 0);
+                    else spectrum[length - bin] = Complex.Conjugate(spectrum[bin]);
+                }
+                double[] output = IFFT_Real_General(spectrum, threadid);
+                Scale(ref output);
+                return output;
+            }
+
             public class Minimum_Phase_System : DSP_System
             {
                 public override double[] Signal(double[] OctavePressure, int SampleFrequency, int LengthStartToFinish, int Threadid)

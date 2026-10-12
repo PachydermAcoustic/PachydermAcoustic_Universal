@@ -1,4 +1,4 @@
-﻿//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL)   
+//'Pachyderm-Acoustic: Geometrical Acoustics for Rhinoceros (GPL)   
 //' 
 //'This file is part of Pachyderm-Acoustic. 
 //' 
@@ -201,6 +201,13 @@ namespace Pachyderm_Acoustic
             public static double Sound_Pressure_Level_A(double[] unweighted_SPL)
             {
                 double[] AFactors = new double[8] { Math.Pow(10, (-26.2 / 10)), Math.Pow(10, (-16.1 / 10)), Math.Pow(10, (-8.6 / 10)), Math.Pow(10, (-3.2 / 10)), 1, Math.Pow(10, (1.2 / 10)), Math.Pow(10, (1 / 10)), Math.Pow(10, (-1.1 / 10)) };
+                if (unweighted_SPL.Length == 24)
+                    AFactors = ThirdOctaveCenters().Select(frequency =>
+                    {
+                        double f2 = frequency * frequency;
+                        double response = 12194 * 12194 * f2 * f2 / ((f2 + 20.6 * 20.6) * Math.Sqrt((f2 + 107.7 * 107.7) * (f2 + 737.9 * 737.9)) * (f2 + 12194 * 12194));
+                        return response * response * Math.Pow(10, .2);
+                    }).ToArray();
                 double SW = 0;
                 for (int f = 0; f < unweighted_SPL.Length; f++)
                 {
@@ -2132,6 +2139,44 @@ namespace Pachyderm_Acoustic
 
                 if (Direct[Src_ID] != null && Direct[Src_ID].IsOccluded(Rec_ID))
                 {
+                    if (Direct[Src_ID].CoherentSpeakers)
+                    {
+                        const int pressureRate = 44100;
+                        Direct_Sound direct = Direct[Src_ID];
+                        int origin = Start_at_Zero ? (int)Math.Floor(direct.Time(Rec_ID) * pressureRate) : 0;
+                        int[] bands = Octave >= direct.BandCount ? Enumerable.Range(0, direct.BandCount).ToArray() : new int[] { Octave };
+                        foreach (int band in bands)
+                        {
+                            double[] pressure = new double[(int)Math.Ceiling(Histogram.Length * (double)pressureRate / Sampling_Frequency)];
+                            double[] response = direct.Coherent_Filter(Rec_ID, pressureRate, band);
+                            int start = (int)Math.Floor(direct.Time(Rec_ID) * pressureRate) - origin;
+                            for (int sample = Math.Max(0, -start); sample < response.Length && start + sample < pressure.Length; sample++) pressure[start + sample] += response[sample];
+                            if (ISData[Src_ID] != null)
+                                foreach (Deterministic_Reflection path in ISData[Src_ID].Paths[Rec_ID].Where(path => path.CoherentSpeaker))
+                                {
+                                    response = path.CoherentBandPressure(band, pressureRate, direct.Rho_C[Rec_ID]);
+                                    start = path.FilterSample(pressureRate) - origin;
+                                    for (int sample = Math.Max(0, -start); sample < response.Length && start + sample < pressure.Length; sample++) pressure[start + sample] += response[sample];
+                                }
+                            for (int sample = 0; sample < pressure.Length; sample++)
+                            {
+                                int index = (int)(sample * (double)Sampling_Frequency / pressureRate);
+                                if (index < Histogram.Length) Histogram[index] += pressure[sample] * pressure[sample] / direct.Rho_C[Rec_ID];
+                            }
+                            double[] independent = direct.IncoherentIo[Rec_ID][band];
+                            int directStart = Start_at_Zero ? 0 : (int)Math.Floor(direct.Time(Rec_ID) * Sampling_Frequency);
+                            for (int sample = 0; sample < independent.Length; sample++)
+                                if (directStart + sample >= 0 && directStart + sample < Histogram.Length) Histogram[directStart + sample] += independent[sample];
+                        }
+                        if (ISData[Src_ID] != null)
+                            foreach (Deterministic_Reflection path in ISData[Src_ID].Paths[Rec_ID].Where(path => !path.CoherentSpeaker))
+                            {
+                                int start = path.FilterSample(Sampling_Frequency) - (int)(origin * (double)Sampling_Frequency / pressureRate);
+                                double[] energy = path.Energy(Octave, Sampling_Frequency);
+                                for (int sample = Math.Max(0, -start); sample < energy.Length && start + sample < Histogram.Length; sample++) Histogram[start + sample] += energy[sample];
+                            }
+                        return Histogram;
+                    }
                     int D_Start = 0;
                     if (!Start_at_Zero) D_Start = (int)Math.Ceiling(((double)delay * 0.001 + Direct[Src_ID].Time(Rec_ID)) * Sampling_Frequency);
                     for (int i = 0; i < Direct[Src_ID].Io[Rec_ID][0].Length; i++)
@@ -2673,7 +2718,7 @@ namespace Pachyderm_Acoustic
                 if (Direct[Src_ID] != null && Direct[Src_ID].IsOccluded(Rec_ID))
                 {
                     int D_Start = 0;
-                    if (!Start_at_Zero) D_Start = (int)Math.Ceiling(Direct[Src_ID].Time(Rec_ID) * Sampling_Frequency);
+                    if (!Start_at_Zero) D_Start = (Direct[Src_ID].CoherentSpeakers ? (int)Math.Floor(Direct[Src_ID].Time(Rec_ID) * Sampling_Frequency) : (int)Math.Ceiling(Direct[Src_ID].Time(Rec_ID) * Sampling_Frequency));
 
                     double[] Filter = flat ? Direct[Src_ID].Get_Filter(Rec_ID, Sampling_Frequency)[0] : Direct[Src_ID].Create_Filter(Direct[Src_ID].SWL, Rec_ID, 0, Sampling_Frequency);
 
@@ -2692,7 +2737,7 @@ namespace Pachyderm_Acoustic
                         {
                             if (value.Filter == null) value.Create_Filter(16384, 0);
                             double[] f_value = (flat && Sampling_Frequency == 44100) ? value.Filter : value.Create_Filter(SWL, Sampling_Frequency, 16384, 0, 0);
-                            int R_start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                            int R_start = value.FilterSample(Sampling_Frequency);
                             int end = Math.Min(f_value.Length, F.Length - R_start);
                             for (int t = 0; t < end; t++)
                             {
@@ -2751,7 +2796,7 @@ namespace Pachyderm_Acoustic
                     {
                         if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram.Length - 1)
                         {
-                            int R_Start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                            int R_Start = value.FilterSample(Sampling_Frequency);
 
                             double[] V = value.Dir_Filter(Direct.SWL, alt, azi, degrees, false, Sampling_Frequency, flat);
                             for (int i = 0; i < value.Filter.Length; i++)
@@ -2809,7 +2854,7 @@ namespace Pachyderm_Acoustic
                     {
                         if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
                         {
-                            int R_Start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                            int R_Start = value.FilterSample(Sampling_Frequency);
                             double[][] V = value.Dir_Filter(Direct.SWL, xpos_alt, xpos_azi, degrees, Sampling_Frequency, flat);
 
                             for (int i = 0; i < V.Length; i++)
@@ -2916,7 +2961,7 @@ namespace Pachyderm_Acoustic
                     {
                         if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
                         {
-                            int R_Start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                            int R_Start = value.FilterSample(Sampling_Frequency);
 
                             double[][] V = value.Dir_Filter(Direct.SWL, xpos_alt, xpos_azi, degrees, Sampling_Frequency, flat);
 
@@ -3038,7 +3083,7 @@ namespace Pachyderm_Acoustic
                     {
                         if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
                         {
-                            int R_Start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                            int R_Start = value.FilterSample(Sampling_Frequency);
 
                             double[][] V = value.Dir_Filter(Direct.SWL, xpos_alt, xpos_azi, degrees, Sampling_Frequency, flat);
 
@@ -3203,7 +3248,7 @@ namespace Pachyderm_Acoustic
                     {
                         if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
                         {
-                            int R_Start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                            int R_Start = value.FilterSample(Sampling_Frequency);
                             double[][] V = value.Dir_Filter(Direct.SWL, xpos_alt, xpos_azi, degrees, Sampling_Frequency, flat);
 
                             for (int i = 0; i < V.Length; i++)
@@ -3409,7 +3454,7 @@ namespace Pachyderm_Acoustic
                     {
                         if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
                         {
-                            int R_Start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                            int R_Start = value.FilterSample(Sampling_Frequency);
                             double[][] V = value.Dir_Filter(Direct.SWL, xpos_alt, xpos_azi, degrees, Sampling_Frequency, flat);
 
                             for (int i = 0; i < V.Length; i++)
@@ -3654,7 +3699,7 @@ namespace Pachyderm_Acoustic
                     {
                         if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
                         {
-                            int R_Start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                            int R_Start = value.FilterSample(Sampling_Frequency);
                             double[][] V = value.Dir_Filter(Direct.SWL, xpos_alt, xpos_azi, degrees, Sampling_Frequency, flat);
 
                             for (int i = 0; i < V.Length; i++)
@@ -3931,7 +3976,7 @@ namespace Pachyderm_Acoustic
                     {
                         if (Math.Ceiling(Sampling_Frequency * value.TravelTime) < Histogram[0].Length - 1)
                         {
-                            int R_Start = (int)Math.Ceiling(Sampling_Frequency * value.TravelTime);
+                            int R_Start = value.FilterSample(Sampling_Frequency);
                             double[][] V = value.Dir_Filter(Direct.SWL, xpos_alt, xpos_azi, degrees, Sampling_Frequency, flat);
 
                             for (int i = 0; i < V.Length; i++)

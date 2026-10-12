@@ -230,8 +230,9 @@ namespace Pachyderm_Acoustic
                         {
                             case "Direct_Sound":
                             case "Direct_Sound w sourcedata":
+                            case "Direct_Sound coherent sourcedata":
                                 //9. Read Direct Sound Data
-                                Direct_Data[DDCT] = Direct_Sound.Read_Data(ref sr, Recs, SrcPt[DDCT], Rho_C, Third_Octave, Pach_version, (int)SampleRate);
+                                Direct_Data[DDCT] = Direct_Sound.Read_Data(ref sr, Recs, SrcPt[DDCT], Rho_C, Third_Octave, Pach_version, (int)SampleRate, readin == "Direct_Sound coherent sourcedata");
                                 Direct_Data[DDCT].CO_Time = CO_TIME;
                                 Direct_Data[DDCT].SampleFreq = (int)SampleRate;
                                 DDCT++;
@@ -239,8 +240,9 @@ namespace Pachyderm_Acoustic
                                 //float s2 = sr.ReadSingle();
                                 break;
                             case "Image-Source_Data":
+                            case "Image-Source_Data coherent":
                                 //10. Read Image Source Sound Data
-                                IS_Data[ISCT] = ImageSourceData.Read_Data(ref sr, Recs.Length, Direct_Data[DDCT - 1], false, Rho_C, ISCT, Pach_version, VB);
+                                IS_Data[ISCT] = ImageSourceData.Read_Data(ref sr, Recs.Length, Direct_Data[DDCT - 1], false, Rho_C, ISCT, Pach_version, VB, readin == "Image-Source_Data coherent");
                                 ISCT++;
                                 break;
                             case "Ray-Traced_Data":
@@ -682,20 +684,20 @@ namespace Pachyderm_Acoustic
             {
                 // Vertices need to be in a dictionary because they're referenced by ID
                 Dictionary<int, Point> vertices = new Dictionary<int, Point>();
-                
+
                 // Simple lists for materials and their properties
                 List<string> materialNames = new List<string>();
                 List<double[]> absorptionCoeffs = new List<double[]>();
                 List<double[]> scatteringCoeffs = new List<double[]>();
                 List<double[]> transmissionCoeffs = new List<double[]>();
-                
+
                 // Lists to store object and polygon data
                 List<int> objectMaterialIds = new List<int>();
                 List<List<List<int>>> objectPolygonVertices = new List<List<List<int>>>();
                 List<List<bool>> objectPolygonCurved = new List<List<bool>>();
                 List<List<double[]>> objectPolygonKurvature = new List<List<double[]>>();
                 List<List<Vector[]>> objectPolygonFrameAxes = new List<List<Vector[]>>();
-                
+
                 using (StreamReader reader = new StreamReader(filePath))
                 {
                     string line;
@@ -759,12 +761,12 @@ namespace Pachyderm_Acoustic
                             {
                                 int id = int.Parse(parts[0]);
                                 string name = parts[1];
-                                
+
                                 // Create arrays for coefficients
                                 double[] abs = new double[8];
                                 double[] scat = new double[8];
                                 double[] trans = new double[8];
-                                
+
                                 // Read material properties until [END]
                                 string propLine;
                                 while ((propLine = reader.ReadLine()) != null)
@@ -797,7 +799,7 @@ namespace Pachyderm_Acoustic
                                         }
                                     }
                                 }
-                                
+
                                 // Ensure arrays are the right size
                                 if (abs.Length != 8)
                                     Array.Resize(ref abs, 8);
@@ -805,7 +807,7 @@ namespace Pachyderm_Acoustic
                                     Array.Resize(ref scat, 8);
                                 if (trans.Length != 8)
                                     Array.Resize(ref trans, 8);
-                                
+
                                 // Make sure id-1 is a valid index (materials are 1-based in the file)
                                 while (materialNames.Count <= id - 1)
                                 {
@@ -814,7 +816,7 @@ namespace Pachyderm_Acoustic
                                     scatteringCoeffs.Add(new double[8]);
                                     transmissionCoeffs.Add(new double[8]);
                                 }
-                                
+
                                 // Store the material data
                                 materialNames[id - 1] = name;
                                 absorptionCoeffs[id - 1] = abs;
@@ -836,7 +838,7 @@ namespace Pachyderm_Acoustic
                                     bool isCurved = false;
                                     double[] kurvature = new double[2];
                                     Vector[] frameAxes = new Vector[2] { new Vector(), new Vector() };
-                                    
+
                                     // Parse optional properties
                                     for (int i = 1; i < parts.Length; i++)
                                     {
@@ -872,20 +874,20 @@ namespace Pachyderm_Acoustic
                                             }
                                         }
                                     }
-                                    
+
                                     // Validate curvature and frame axes consistency
-                                    if ((kurvature[0] != 0 || kurvature[1] != 0) && 
+                                    if ((kurvature[0] != 0 || kurvature[1] != 0) &&
                                         (frameAxes[0].IsZeroVector() || frameAxes[1].IsZeroVector()))
                                     {
                                         throw new FormatException("Polygon has curvature but missing frame axes");
                                     }
 
-                                    if ((!frameAxes[0].IsZeroVector() || !frameAxes[1].IsZeroVector()) && 
+                                    if ((!frameAxes[0].IsZeroVector() || !frameAxes[1].IsZeroVector()) &&
                                         (kurvature[0] == 0 && kurvature[1] == 0))
                                     {
                                         throw new FormatException("Polygon has frame axes but missing curvature");
                                     }
-                                    
+
                                     // Store the polygon data
                                     objectPolygonVertices[currentObjectIndex].Add(vertexIds);
                                     objectPolygonCurved[currentObjectIndex].Add(isCurved);
@@ -896,10 +898,10 @@ namespace Pachyderm_Acoustic
                         }
                     }
                 }
-                
+
                 // Create the output structures for Construct()
                 int objectCount = objectMaterialIds.Count;
-                
+
                 Point[][][] model = new Point[objectCount][][];
                 List<Environment.Material> materials = new List<Environment.Material>();
                 List<Scattering> scatterings = new List<Scattering>();
@@ -907,17 +909,17 @@ namespace Pachyderm_Acoustic
                 bool[] isCurved_List = new bool[objectCount];
                 double[][][] kurvatures = new double[objectCount][][];
                 Vector[][][] frameAxes_List = new Vector[objectCount][][];
-                
+
                 // Build the model
                 for (int objIndex = 0; objIndex < objectCount; objIndex++)
                 {
                     int materialId = objectMaterialIds[objIndex];
-                    
+
                     // Add material properties
                     materials.Add(new Environment.Basic_Material(absorptionCoeffs[materialId]));
                     scatterings.Add(new Lambert_Scattering(scatteringCoeffs[materialId]));
                     transmissions.Add(transmissionCoeffs[materialId]);
-                    
+
                     // Check if any polygon in this object is curved
                     isCurved_List[objIndex] = objectPolygonCurved[objIndex].Any(c => c);
 
@@ -926,14 +928,14 @@ namespace Pachyderm_Acoustic
                     model[objIndex] = new Point[polyCount][];
                     kurvatures[objIndex] = new double[polyCount][];
                     frameAxes_List[objIndex] = new Vector[polyCount][];
-                    
+
                     for (int polyIndex = 0; polyIndex < polyCount; polyIndex++)
                     {
                         // Convert vertex IDs to Points
                         model[objIndex][polyIndex] = objectPolygonVertices[objIndex][polyIndex]
                             .Select(id => vertices[id])
                             .ToArray();
-                        
+
                         // Set curvature and frame axes
                         kurvatures[objIndex][polyIndex] = objectPolygonKurvature[objIndex][polyIndex];
                         frameAxes_List[objIndex][polyIndex] = objectPolygonFrameAxes[objIndex][polyIndex];

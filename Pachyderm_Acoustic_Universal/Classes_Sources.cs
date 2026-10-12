@@ -39,6 +39,8 @@ namespace Pachyderm_Acoustic
             protected string type = "";
             protected int S_ID = 0;
             public double Rho_C = 411.6;
+            public bool IsSpeaker = false;
+            public double[] SpeakerDelaySeconds = null;
             /// <summary>
             /// Most explicit constructor.
             /// </summary>
@@ -657,6 +659,18 @@ namespace Pachyderm_Acoustic
         public class SourceCluster: Source
         {
             public List<Source> Sources = new List<Source>();
+            private Source speakerRaySource = null;
+            private Source[] rayEmitters = null;
+            public Source SpeakerRaySource
+            {
+                get { return speakerRaySource; }
+                set
+                {
+                    speakerRaySource = value;
+                    rayEmitters = value == null ? null : new[] { value }.Concat(Sources.Where(source => !source.IsSpeaker)).ToArray();
+                }
+            }
+            public bool CoherentSpeakers { get { return Sources.Any(source => source.IsSpeaker); } }
             
             public bool Third_Octave = false;
             int revolution;
@@ -676,6 +690,14 @@ namespace Pachyderm_Acoustic
                     revolution += Sources[i].Revolution_Period();
                 }
                 Center /= Sources.Count;
+                if (CoherentSpeakers)
+                {
+                    for (int band = 0; band < BandCount; band++)
+                    {
+                        SourcePower[band] = Sources.Sum(source => source.SoundPower[band]);
+                        SPL[band] = 10 * Math.Log10(SourcePower[band] / 1E-12);
+                    }
+                }
                 this.type = "Cluster";
                 if (third_octave) SetBandResolution(true);
             }
@@ -684,8 +706,61 @@ namespace Pachyderm_Acoustic
             {
                 SourceCluster copy = (SourceCluster)MemberwiseClone();
                 copy.Sources = Sources.Select(source => source.ForBandResolution(thirdOctave)).ToList();
+                copy.SpeakerRaySource = SpeakerRaySource?.ForBandResolution(thirdOctave);
                 copy.SetBandResolution(thirdOctave);
                 return copy;
+            }
+
+            /// <summary>Set total A-weighted speaker radiation, retaining spectral shape and element shading.
+            /// Integrates the coherent ray balloon; independent members retain their original power.</summary>
+            public double NormalizeSpeakerPower(double level_dBA)
+            {
+                if (double.IsNaN(level_dBA) || double.IsInfinity(level_dBA)) throw new ArgumentOutOfRangeException(nameof(level_dBA));
+                return NormalizeSpeakerPower(null, level_dBA)[0];
+            }
+
+            /// <summary>Set radiated speaker power in each simulation band after gain shading.</summary>
+            public double[] NormalizeSpeakerPower(double[] bandLevels, double? weightedLevel = null)
+            {
+                if (!weightedLevel.HasValue && (bandLevels == null || bandLevels.Length != BandCount || bandLevels.Any(value => double.IsNaN(value) || double.IsInfinity(value))))
+                    throw new ArgumentException("Specify one finite sound power level per simulation band.", nameof(bandLevels));
+                if (!CoherentSpeakers || SpeakerRaySource == null) throw new InvalidOperationException("Speaker normalization requires the coherent array balloon.");
+                Source radiation = SpeakerRaySource.ForBandResolution(true);
+                Topology sphere = Utilities.Geometry.GeoSphere(3).Model[0];
+                double[] power = new double[24];
+                double totalAngle = 0;
+                for (int face = 0; face < sphere.Polygon_Count; face++)
+                {
+                    Point[] vertices = sphere.Polygon_Vertices(face);
+                    Vector a = vertices[0] - new Point(0, 0, 0), b = vertices[1] - new Point(0, 0, 0), c = vertices[2] - new Point(0, 0, 0);
+                    a.Normalize(); b.Normalize(); c.Normalize();
+                    double determinant = a.dx * (b.dy * c.dz - b.dz * c.dy) + a.dy * (b.dz * c.dx - b.dx * c.dz) + a.dz * (b.dx * c.dy - b.dy * c.dx);
+                    double denominator = 1 + a.dx * b.dx + a.dy * b.dy + a.dz * b.dz + b.dx * c.dx + b.dy * c.dy + b.dz * c.dz + c.dx * a.dx + c.dy * a.dy + c.dz * a.dz;
+                    double angle = 2 * Math.Atan2(Math.Abs(determinant), denominator);
+                    Vector direction = a + b + c;
+                    direction.Normalize();
+                    double[] directional = radiation.DirPower(0, face, direction);
+                    for (int band = 0; band < power.Length; band++) power[band] += directional[band] * angle;
+                    totalAngle += angle;
+                }
+                for (int band = 0; band < power.Length; band++) power[band] /= totalAngle;
+                double[] simulationPower = AcousticalMath.ConvertBandEnergy(power, ThirdOctave);
+                double maximum = simulationPower.Max();
+                if (!(maximum > 0) || power.Any(value => double.IsNaN(value) || double.IsInfinity(value) || value < 0)) throw new InvalidOperationException("The array has no finite radiated power to normalize.");
+                double currentLevel = weightedLevel.HasValue ? AcousticalMath.Sound_Pressure_Level_A(simulationPower.Select(value => 120 + 10 * Math.Log10(value / maximum)).ToArray()) - 120 + 10 * Math.Log10(maximum / 1E-12) : 0;
+                double[] gain = weightedLevel.HasValue
+                    ? Enumerable.Repeat(Math.Pow(10, (weightedLevel.Value - currentLevel) / 10), BandCount).ToArray()
+                    : bandLevels.Select((value, band) => 1E-12 * Math.Pow(10, value / 10) / simulationPower[band]).ToArray();
+                if (gain.Any(value => !(value > 0) || double.IsNaN(value) || double.IsInfinity(value))) throw new ArgumentOutOfRangeException(nameof(bandLevels), "A requested band has no radiated power or cannot be normalized.");
+                foreach (Source source in Sources.Where(source => source.IsSpeaker).Concat(new[] { SpeakerRaySource }))
+                {
+                    source.SoundPower = source.SoundPower.Select((value, band) => value * gain[band]).ToArray();
+                    source.SetBandResolution(source.ThirdOctave);
+                }
+                SourcePower = simulationPower.Select((value, band) => value * gain[band]).ToArray();
+                for (int band = 0; band < BandCount; band++) SourcePower[band] += Sources.Where(source => !source.IsSpeaker).Sum(source => source.SoundPower[band]);
+                SPL = SourcePower.Select(value => 10 * Math.Log10(value / 1E-12)).ToArray();
+                return gain;
             }
 
             public override void SetBandResolution(bool thirdOctave)
@@ -693,6 +768,7 @@ namespace Pachyderm_Acoustic
                 base.SetBandResolution(thirdOctave);
                 Third_Octave = thirdOctave;
                 foreach (Source source in Sources) source.SetBandResolution(thirdOctave);
+                SpeakerRaySource?.SetBandResolution(thirdOctave);
             }
 
             public override double[] DirPower(int threadid, int random, Vector Direction)
@@ -715,12 +791,20 @@ namespace Pachyderm_Acoustic
 
             public override BroadRay Directions(int thread, ref Random random)
             {
+                if (SpeakerRaySource != null)
+                {
+                    return rayEmitters[(System.Threading.Interlocked.Increment(ref rayct) & int.MaxValue) % rayEmitters.Length].Directions(thread, ref random);
+                }
                 rayct++;
                 return Sources[rayct % Sources.Count].Directions(thread, ref random);
             }
 
             public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
             {
+                if (SpeakerRaySource != null)
+                {
+                    return rayEmitters[(System.Threading.Interlocked.Increment(ref rayct) & int.MaxValue) % rayEmitters.Length].Directions(thread, ref random, Octaves);
+                }
                 rayct++;
                 return Sources[rayct % Sources.Count].Directions(thread, ref random, Octaves);
             }
@@ -735,6 +819,7 @@ namespace Pachyderm_Acoustic
 
             public override int Revolution_Period()
             {
+                if (rayEmitters != null) return rayEmitters.Sum(source => source.Revolution_Period());
                 return revolution;
             }
 
