@@ -217,6 +217,31 @@ namespace Pachyderm_Acoustic
                 return Pachyderm_Acoustic.Utilities.AcousticalMath.SPL_Intensity(SW);
             }
 
+            // Octave corrections formerly held by Pachyderm_Noise_Control.Conversions.
+            public static double[] C_Weights = new double[8] { -0.8, -0.2, 0, 0, 0, -0.2, -0.8, -3.0 };
+
+            /// <summary>Calculate C-weighted SPL from octave or third-octave band levels.</summary>
+            public static double Sound_Pressure_Level_C(double[] unweighted_SPL)
+            {
+                double[] factors = C_Weighting_Factors(unweighted_SPL.Length == 24);
+                double sum = 0;
+                for (int band = 0; band < unweighted_SPL.Length; band++)
+                    sum += Math.Pow(10, unweighted_SPL[band] / 10) * factors[band];
+                return 10 * Math.Log10(sum);
+            }
+
+            internal static double[] C_Weighting_Factors(bool ThirdOctave)
+            {
+                if (!ThirdOctave) return C_Weights.Select(weight => Math.Pow(10, weight / 10)).ToArray();
+                // IEC 61672 frequency responses, evaluated at the existing third-octave centers.
+                return ThirdOctaveCenters().Select(frequency =>
+                {
+                    double f2 = frequency * frequency;
+                    double response = 12194 * 12194 * f2 / ((f2 + 20.6 * 20.6) * (f2 + 12194 * 12194));
+                    return response * response * Math.Pow(10, .006);
+                }).ToArray();
+            }
+
             ///<summary>
             /// Sabine Reverberation Time : T60 = 0.161V/A
             ///</summary>

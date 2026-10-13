@@ -64,8 +64,10 @@ namespace Pachyderm_Acoustic
         private int filter_Receiver;
         private bool creatingFilters;
         private bool mappingReceiver;
+        public Coherent_Source_Waveforms SourceWaveforms { get; set; }
         private sealed class SpeakerArrival
         {
+            public int SourceIndex = -1;
             public double Time;
             public double[] Pressure, Delays;
             public Vector Direction;
@@ -91,7 +93,8 @@ namespace Pachyderm_Acoustic
         {
             //1. Write an indicator to signify that there is direct sound data
             if (CoherentSpeakers && IndependentIo == null) Create_Filter();
-            BW.Write(CoherentSpeakers ? "Direct_Sound coherent sourcedata" : "Direct_Sound w sourcedata");
+            BW.Write(CoherentSpeakers ? SourceWaveforms == null ? "Direct_Sound coherent sourcedata" : "Direct_Sound coherent sourcephase" : "Direct_Sound w sourcedata");
+            if (CoherentSpeakers && SourceWaveforms != null) SourceWaveforms.Write_Data(BW);
 
             //2. Write strength reference data
             //Deprecated at V 2.0.
@@ -144,6 +147,7 @@ namespace Pachyderm_Acoustic
                     BW.Write(SpeakerArrivals[receiver].Count);
                     foreach (SpeakerArrival arrival in SpeakerArrivals[receiver])
                     {
+                        if (SourceWaveforms != null) BW.Write(arrival.SourceIndex);
                         BW.Write(arrival.Time);
                         foreach (double pressure in arrival.Pressure) BW.Write(pressure);
                         BW.Write(arrival.Delays.Length);
@@ -171,7 +175,13 @@ namespace Pachyderm_Acoustic
 
         public static Direct_Sound Read_Data(ref System.IO.BinaryReader BR, IEnumerable<Hare.Geometry.Point> RecPts, Hare.Geometry.Point SrcPt, double[] Rho_C, bool Third_Oct, string Version, int sampleFrequency, bool coherentSpeakers)
         {
+            return Read_Data(ref BR, RecPts, SrcPt, Rho_C, Third_Oct, Version, sampleFrequency, coherentSpeakers, false);
+        }
+
+        internal static Direct_Sound Read_Data(ref System.IO.BinaryReader BR, IEnumerable<Hare.Geometry.Point> RecPts, Hare.Geometry.Point SrcPt, double[] Rho_C, bool Third_Oct, string Version, int sampleFrequency, bool coherentSpeakers, bool sourcePhase)
+        {
             Direct_Sound D = new Direct_Sound();
+            if (sourcePhase) D.SourceWaveforms = Coherent_Source_Waveforms.Read_Data(BR);
             D.SampleFreq = sampleFrequency;
             int no_of_bands = Third_Oct ? 24 : 8;
             D.Receiver = RecPts.ToList<Hare.Geometry.Point>(); //new Receiver_Bank(RecPts, SrcPt, 343, new double[] { 0, 0, 0, 0, 0, 0, 0, 0 }, 0, 1000, 0, Receiver_Bank.Type.Stationary);
@@ -297,7 +307,7 @@ namespace Pachyderm_Acoustic
                     int count = BR.ReadInt32();
                     for (int index = 0; index < count; index++)
                     {
-                        SpeakerArrival arrival = new SpeakerArrival { Time = BR.ReadDouble(), Pressure = new double[no_of_bands] };
+                        SpeakerArrival arrival = new SpeakerArrival { SourceIndex = sourcePhase ? BR.ReadInt32() : -1, Time = BR.ReadDouble(), Pressure = new double[no_of_bands] };
                         for (int band = 0; band < no_of_bands; band++) arrival.Pressure[band] = BR.ReadDouble();
                         int delays = BR.ReadInt32();
                         if (delays != 1 && delays != 8 && delays != 24) throw new System.IO.InvalidDataException("Invalid speaker-delay band count.");
@@ -864,8 +874,9 @@ namespace Pachyderm_Acoustic
                     }
 
                     // 2. Iterate Sources and Compute Energy
-                    foreach (var s in srcs)
+                    for (int sourceIndex = 0; sourceIndex < srcs.Count; sourceIndex++)
                     {
+                        var s = srcs[sourceIndex];
                         if (s is LineSource ls)
                         {
                             Line_Calculation(ls, i, i_rnd);
@@ -948,6 +959,7 @@ namespace Pachyderm_Acoustic
                                 double minimum = s.SpeakerDelaySeconds == null ? 0 : s.SpeakerDelaySeconds.Min();
                                 SpeakerArrivals[i].Add(new SpeakerArrival
                                 {
+                                    SourceIndex = sourceIndex,
                                     Time = arrivalTime + minimum,
                                     Pressure = arrivalEnergy.Select((energy, band) => Oct_choice.Contains(band) ? Math.Sqrt(Math.Max(0, energy) * Rho_C[i]) : 0).ToArray(),
                                     Delays = s.SpeakerDelaySeconds == null ? new double[] { 0 } : s.SpeakerDelaySeconds.Select(delay => delay - minimum).ToArray(),
@@ -1495,11 +1507,13 @@ namespace Pachyderm_Acoustic
             filter_Receiver = 0;
             if (CoherentSpeakers && IndependentIo == null)
             {
-                IndependentIo = Io.Select(receiver => receiver.Take(BandCount).Select(band => (double[])band.Clone()).ToArray()).ToArray();
-                IndependentDirPositive = Dir_Rec_Pos.Select(values => (float[,,])values.Clone()).ToArray();
-                IndependentDirNegative = Dir_Rec_Neg.Select(values => (float[,,])values.Clone()).ToArray();
+                // The coherent results replace these buffers; retain the original samples without copying them.
+                IndependentIo = Io.Select(receiver => receiver.Take(BandCount).ToArray()).ToArray();
+                IndependentDirPositive = (float[][,,])Dir_Rec_Pos.Clone();
+                IndependentDirNegative = (float[][,,])Dir_Rec_Neg.Clone();
             }
-            if (CoherentSpeakers) SpeakerBandPressure = new double[Receiver.Count][][];
+            // Mapping stores energy. Pressure can be reconstructed from arrivals for image-source summation.
+            if (CoherentSpeakers) SpeakerBandPressure = mappingReceiver || SourceWaveforms != null ? null : new double[Receiver.Count][][];
             F = pressureFilters ? new double[Receiver.Count][] : null;
             Fdir = pressureFilters ? new double[Receiver.Count][][] : null;
 
@@ -1513,6 +1527,27 @@ namespace Pachyderm_Acoustic
             try
             {
                 int workers = Math.Min(Receiver.Count, System.Environment.ProcessorCount);
+                if (CoherentSpeakers)
+                {
+                    long bytesPerWorker = 1;
+                    foreach (List<SpeakerArrival> arrivals in SpeakerArrivals)
+                    {
+                        long responseLength = 16384;
+                        foreach (SpeakerArrival arrival in arrivals)
+                        {
+                            double delay = arrival.Delays == null ? 0 : arrival.Delays.Max();
+                            long samples = 16384 + (long)Math.Ceiling(delay * outputFS) + 2;
+                            long length = 1;
+                            while (length < samples) length *= 2;
+                            responseLength = Math.Max(responseLength, length);
+                        }
+                        // Per-element cached responses plus FFT, bandpass and directional working buffers.
+                        long cachedSamples = SourceWaveforms == null ? 16384 + 2 * responseLength : responseLength;
+                        bytesPerWorker = Math.Max(bytesPerWorker, cachedSamples * sizeof(double) * arrivals.Count + responseLength * 128);
+                    }
+                    const long workingBudget = 256L * 1024 * 1024;
+                    workers = Math.Min(workers, (int)Math.Max(1, workingBudget / bytesPerWorker));
+                }
                 Parallel.For(0, workers, worker =>
                 {
                     for (int i = worker; i < Receiver.Count; i += workers)
@@ -1579,12 +1614,27 @@ namespace Pachyderm_Acoustic
                                         for (int sample = 0; sample < response.Length; sample++) Fdir[i][direction][sample] += response[sample];
                                     }
                                 }
-                                SpeakerBandPressure[i] = new double[BandCount][];
+                                if (SpeakerBandPressure != null) SpeakerBandPressure[i] = new double[BandCount][];
+                                int sourceSamples = 0;
+                                if (SourceWaveforms != null && !SPL_Only)
+                                {
+                                    double origin = Math.Floor(Time_Pt[i] * outputFS) / outputFS;
+                                    foreach (SpeakerArrival arrival in SpeakerArrivals[i])
+                                    {
+                                        double relativeTime = Math.Max(0, arrival.Time - origin);
+                                        int start = (int)Math.Floor(relativeTime * outputFS);
+                                        double delay = (arrival.Delays == null ? 0 : arrival.Delays.Max()) + Math.Max(0, relativeTime - start / (double)outputFS);
+                                        int length = 16384;
+                                        if (delay > 0)
+                                            while (length < 16384 + (int)Math.Ceiling(delay * outputFS) + 1) length = checked(length * 2);
+                                        sourceSamples = Math.Max(sourceSamples, (int)Math.Ceiling((start + length) * (double)inputFS / outputFS));
+                                    }
+                                }
                                 for (int band = 0; band < BandCount; band++)
                                 {
                                     double[] pressure = Coherent_Filter(i, outputFS, band, null, 0, worker);
-                                    SpeakerBandPressure[i][band] = pressure;
-                                    int samples = SPL_Only ? 1 : Math.Max(IndependentIo[i][band].Length, (int)Math.Ceiling(pressure.Length * (double)inputFS / outputFS));
+                                    if (SpeakerBandPressure != null) SpeakerBandPressure[i][band] = pressure;
+                                    int samples = SPL_Only ? 1 : Math.Max(sourceSamples, Math.Max(IndependentIo[i][band].Length, (int)Math.Ceiling(pressure.Length * (double)inputFS / outputFS)));
                                     Io[i][band] = new double[samples];
                                     Array.Copy(IndependentIo[i][band], Io[i][band], Math.Min(samples, IndependentIo[i][band].Length));
                                     for (int sample = 0; sample < pressure.Length; sample++)
@@ -1662,6 +1712,25 @@ namespace Pachyderm_Acoustic
                 double fraction = relativeTime - start / (double)sampleFrequency;
                 bool reuse = arrival.ReuseResponse && arrival.Response != null && arrival.ResponseRate == sampleFrequency &&
                     (referenceSWL == null ? arrival.ResponseSWL == null : arrival.ResponseSWL != null && referenceSWL.SequenceEqual(arrival.ResponseSWL));
+                if (SourceWaveforms != null)
+                {
+                    double[] sourceResponse;
+                    if (reuse && arrival.ResponseBand == band) sourceResponse = arrival.Response;
+                    else
+                    {
+                        sourceResponse = SourceWaveforms.Response(arrival.SourceIndex, amplitudes, band, arrival.Delays, Math.Max(0, fraction), sampleFrequency, threadid);
+                        if (arrival.ReuseResponse)
+                        {
+                            arrival.Response = sourceResponse;
+                            arrival.ResponseRate = sampleFrequency;
+                            arrival.ResponseBand = band;
+                            arrival.ResponseSWL = referenceSWL == null ? null : (double[])referenceSWL.Clone();
+                        }
+                    }
+                    if (result.Length < start + sourceResponse.Length) Array.Resize(ref result, start + sourceResponse.Length);
+                    for (int sample = 0; sample < sourceResponse.Length; sample++) result[start + sample] += weight * sourceResponse[sample];
+                    continue;
+                }
                 double[] response = reuse ? arrival.Response : Audio.Pach_SP.Filter.Transfer_Function(amplitudes.Select(value => value / maximumAmplitude).ToArray(), sampleFrequency, 16384, threadid);
                 if (!reuse)
                     for (int sample = 0; sample < response.Length; sample++) response[sample] *= maximumAmplitude;

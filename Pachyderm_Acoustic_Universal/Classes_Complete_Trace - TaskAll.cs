@@ -812,12 +812,22 @@ namespace Pachyderm_Acoustic
             public SpecMin_Convergence_Check(Source S, Scene Sc, Receiver_Bank R, int id, int _oct, int check_id, I_Conv_Progress Vis_Feedback)
                 : base(R, id, _oct, check_id, Vis_Feedback)
             {
-                step = (R.SampleRate / 20);
+                step = Math.Max(1, Math.Min(R.SampleRate / 20, RunningSim.Length));
                 binct = RunningSim.Length / step;
                 Snapshot = new double[binct];
                 double[] X = new double[binct];
                 double[] Y = new double[binct];
                 RAD_sim = R.Rec_List[id].Reflection_Analysis_Data;
+                if (RAD_sim == null)
+                {
+                    RAD_sim = new double[3][][];
+                    for (int kind = 0; kind < 3; kind++)
+                    {
+                        RAD_sim[kind] = new double[R.Rec_List[id].Recs.Energy.Length][];
+                        for (int band = 0; band < RAD_sim[kind].Length; band++) RAD_sim[kind][band] = new double[RunningSim.Length];
+                    }
+                    R.Rec_List[id].Reflection_Analysis_Data = RAD_sim;
+                }
 
                 double T = RunningSim.Length / Samplefrequency;
 
@@ -827,8 +837,11 @@ namespace Pachyderm_Acoustic
                     Y[i] = (double)(i + 1) / 200.0;
                 }
 
-                Vis_Feedback.Set_Targets(X, Y);
-                Vis_Feedback.Update_Targets();
+                if (Vis_Feedback != null)
+                {
+                    Vis_Feedback.Set_Targets(X, Y);
+                    Vis_Feedback.Update_Targets();
+                }
             }
 
             public override bool Check()
@@ -882,7 +895,7 @@ namespace Pachyderm_Acoustic
                 double inf60diff = sn_diff[0] * 1E-6;
 
                 int stop = sn_spec.Length - 1;
-                while (sn_spec[stop] < inf60diff && stop != 1) stop--;
+                while (stop > 1 && sn_spec[stop] < inf60diff) stop--;
 
                 double conv = 0;
                 double[] diff = new double[sn.Length];
@@ -894,7 +907,7 @@ namespace Pachyderm_Acoustic
                     double d = Math.Abs(sn[i] - Snapshot[i]) / Snapshot[i];
                     diff[i] = d;
 
-                    if (i < stop) conv = Math.Max(conv, d);
+                    if (i < Math.Max(1, stop)) conv = Math.Max(conv, d);
                 }
 
                 int spec_cross = 0;
@@ -920,7 +933,7 @@ namespace Pachyderm_Acoustic
                 if (count > 10 && RayCT > Nmin) return true;
 
                 //Report schroeder ints for various parts, and new minimum number of rays.
-                _Vis_Feedback.Fill("Impulse response Status", diff, base.check_no, IR, Nmin, new List<double[]> { SI_spec, SI_rogue, SI_diff});
+                if (_Vis_Feedback != null) _Vis_Feedback.Fill("Impulse response Status", diff, base.check_no, IR, Nmin, new List<double[]> { SI_spec, SI_rogue, SI_diff});
                 return false;
             }
 

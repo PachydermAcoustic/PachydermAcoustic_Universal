@@ -431,6 +431,7 @@ namespace FFTWSharp
         { get { return handle; } }
 
         private int length;
+        private double[] transferBuffer;
         public int Length
         { get { return length; } }
 
@@ -484,13 +485,17 @@ namespace FFTWSharp
             }
             else if (data.Length == this.length)
             {
-                double[] data_in = new double[data.Length * 2];
-                for (int i = 0; i < data.Length; i++)
+                if (transferBuffer == null) transferBuffer = new double[Math.Min(length * 2, 8192)];
+                for (int offset = 0; offset < length; offset += transferBuffer.Length / 2)
                 {
-                    data_in[2 * i] = data[i];
-                    data_in[2 * i + 1] = 0;
+                    int count = Math.Min(length - offset, transferBuffer.Length / 2);
+                    for (int i = 0; i < count; i++)
+                    {
+                        transferBuffer[2 * i] = data[offset + i];
+                        transferBuffer[2 * i + 1] = 0;
+                    }
+                    Marshal.Copy(transferBuffer, 0, IntPtr.Add(handle, offset * 16), count * 2);
                 }
-                Marshal.Copy(data_in, 0, handle, this.length * 2);
                 //GC.AddMemoryPressure(this.length * 16);
             }
             else throw new ArgumentException("Array length mismatch!");
@@ -504,14 +509,17 @@ namespace FFTWSharp
             if (data.Length != this.length)
                 throw new ArgumentException("Array length mismatch!");
 
-            double[] data_in = new double[data.Length * 2];
-            for (int i = 0; i < data.Length; i++)
+            if (transferBuffer == null) transferBuffer = new double[Math.Min(length * 2, 8192)];
+            for (int offset = 0; offset < length; offset += transferBuffer.Length / 2)
             {
-                data_in[2 * i] = data[i].Real;
-                data_in[2 * i + 1] = data[i].Imaginary;
+                int count = Math.Min(length - offset, transferBuffer.Length / 2);
+                for (int i = 0; i < count; i++)
+                {
+                    transferBuffer[2 * i] = data[offset + i].Real;
+                    transferBuffer[2 * i + 1] = data[offset + i].Imaginary;
+                }
+                Marshal.Copy(transferBuffer, 0, IntPtr.Add(handle, offset * 16), count * 2);
             }
-
-            Marshal.Copy(data_in, 0, handle, this.length * 2);
             //GC.AddMemoryPressure(this.length * 16);
         }
 
@@ -520,9 +528,10 @@ namespace FFTWSharp
         /// </summary>
         public void SetZeroData()
         {
-            double[] data_in = new double[this.Length * 2];
-            // C# arrays always initialized to 0
-            Marshal.Copy(data_in, 0, handle, this.length * 2);
+            if (transferBuffer == null) transferBuffer = new double[Math.Min(length * 2, 8192)];
+            Array.Clear(transferBuffer, 0, transferBuffer.Length);
+            for (int offset = 0; offset < length * 2; offset += transferBuffer.Length)
+                Marshal.Copy(transferBuffer, 0, IntPtr.Add(handle, offset * sizeof(double)), Math.Min(length * 2 - offset, transferBuffer.Length));
             //GC.AddMemoryPressure(this.length * 16);
         }
 
@@ -532,13 +541,14 @@ namespace FFTWSharp
         /// <returns></returns>
         public Complex[] GetData_Complex()
         {
-            double[] datad = new double[length * 2];
-            Marshal.Copy(handle, datad, 0, length * 2);
+            if (transferBuffer == null) transferBuffer = new double[Math.Min(length * 2, 8192)];
             Complex[] data = new Complex[length];
-
-            for (int i = 0; i < length; i++)
+            for (int offset = 0; offset < length; offset += transferBuffer.Length / 2)
             {
-                data[i] = new Complex(datad[2 * i], datad[2 * i + 1]);
+                int count = Math.Min(length - offset, transferBuffer.Length / 2);
+                Marshal.Copy(IntPtr.Add(handle, offset * 16), transferBuffer, 0, count * 2);
+                for (int i = 0; i < count; i++)
+                    data[offset + i] = new Complex(transferBuffer[2 * i], transferBuffer[2 * i + 1]);
             }
 
             return data;
@@ -546,13 +556,13 @@ namespace FFTWSharp
 
         public double[] GetData_Real()
         {
-            double[] datad = new double[length * 2];
-            Marshal.Copy(handle, datad, 0, length * 2);
+            if (transferBuffer == null) transferBuffer = new double[Math.Min(length * 2, 8192)];
             double[] data = new double[length];
-
-            for (int i = 0; i < length; i++)
+            for (int offset = 0; offset < length; offset += transferBuffer.Length / 2)
             {
-                data[i] = datad[2 * i];
+                int count = Math.Min(length - offset, transferBuffer.Length / 2);
+                Marshal.Copy(IntPtr.Add(handle, offset * 16), transferBuffer, 0, count * 2);
+                for (int i = 0; i < count; i++) data[offset + i] = transferBuffer[2 * i];
             }
 
             return data;
@@ -590,6 +600,7 @@ namespace FFTWSharp
                     GC.RemoveMemoryPressure((long)length * 16);
                 }
 
+                transferBuffer = null;
                 disposed = true;
             }
         }

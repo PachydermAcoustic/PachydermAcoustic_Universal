@@ -231,8 +231,9 @@ namespace Pachyderm_Acoustic
                             case "Direct_Sound":
                             case "Direct_Sound w sourcedata":
                             case "Direct_Sound coherent sourcedata":
+                            case "Direct_Sound coherent sourcephase":
                                 //9. Read Direct Sound Data
-                                Direct_Data[DDCT] = Direct_Sound.Read_Data(ref sr, Recs, SrcPt[DDCT], Rho_C, Third_Octave, Pach_version, (int)SampleRate, readin == "Direct_Sound coherent sourcedata");
+                                Direct_Data[DDCT] = Direct_Sound.Read_Data(ref sr, Recs, SrcPt[DDCT], Rho_C, Third_Octave, Pach_version, (int)SampleRate, readin == "Direct_Sound coherent sourcedata" || readin == "Direct_Sound coherent sourcephase", readin == "Direct_Sound coherent sourcephase");
                                 Direct_Data[DDCT].CO_Time = CO_TIME;
                                 Direct_Data[DDCT].SampleFreq = (int)SampleRate;
                                 DDCT++;
@@ -241,8 +242,9 @@ namespace Pachyderm_Acoustic
                                 break;
                             case "Image-Source_Data":
                             case "Image-Source_Data coherent":
+                            case "Image-Source_Data sourcephase":
                                 //10. Read Image Source Sound Data
-                                IS_Data[ISCT] = ImageSourceData.Read_Data(ref sr, Recs.Length, Direct_Data[DDCT - 1], false, Rho_C, ISCT, Pach_version, VB, readin == "Image-Source_Data coherent");
+                                IS_Data[ISCT] = ImageSourceData.Read_Data(ref sr, Recs.Length, Direct_Data[DDCT - 1], false, Rho_C, ISCT, Pach_version, VB, readin == "Image-Source_Data coherent" || readin == "Image-Source_Data sourcephase", readin == "Image-Source_Data sourcephase");
                                 ISCT++;
                                 break;
                             case "Ray-Traced_Data":
@@ -263,6 +265,10 @@ namespace Pachyderm_Acoustic
                     if (Eto.Forms.Application.Instance == null) throw;
                     Eto.Forms.MessageBox.Show("File Read Failed...", String.Format("Results file was corrupt or incomplete. We apologize for this inconvenience. Please report this to the software author. It will be much appreciated. \r\n Exception Message: {0}. \r\n Method: {1}", X.Message, X.TargetSite));
                     return false;
+                }
+                finally
+                {
+                    if (Direct_Data != null) foreach (Direct_Sound direct in Direct_Data) direct?.SourceWaveforms?.Dispose();
                 }
             }
 

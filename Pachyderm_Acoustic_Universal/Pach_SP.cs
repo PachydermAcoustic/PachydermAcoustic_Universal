@@ -1740,6 +1740,11 @@ namespace Pachyderm_Acoustic
             /// <param name="reuseEdgeForOutside">If true, below 63 Hz and above 8 kHz energy just follows band 0 / 7 carriers</param>
             public static double[] ETCToFilter(double[][] Octave_PRMS, double[] SWL, int sample_frequency = 44100, int sample_frequency_out = 44100, bool reuseEdgeForOutside = true)
             {
+                return ETCToFilter(Octave_PRMS, SWL, sample_frequency, sample_frequency_out, reuseEdgeForOutside, null, -1);
+            }
+
+            internal static double[] ETCToFilter(double[][] Octave_PRMS, double[] SWL, int sample_frequency, int sample_frequency_out, bool reuseEdgeForOutside, Coherent_Source_Waveforms sourceWaveforms, int sourceIndex, int selectedBand = -1, double[] steeringDelays = null, double filterTime = 0)
+            {
                 if (sample_frequency <= 0 || sample_frequency_out <= 0) throw new ArgumentOutOfRangeException("Sample frequencies must be positive.");
                 if (Octave_PRMS == null || (Octave_PRMS.Length != 8 && Octave_PRMS.Length != 24))
                     throw new ArgumentException("Pressure histograms must contain 8 or 24 bands.");
@@ -1761,7 +1766,7 @@ namespace Pachyderm_Acoustic
                         for (int time = 0; time < T; time++)
                             resampled[band][Math.Min(outputSamples - 1, (int)Math.Round(time * ratio))] += Octave_PRMS[band][time];
                     }
-                    return ETCToFilter(resampled, SWL, sample_frequency_out, sample_frequency_out, reuseEdgeForOutside);
+                    return ETCToFilter(resampled, SWL, sample_frequency_out, sample_frequency_out, reuseEdgeForOutside, sourceWaveforms, sourceIndex, selectedBand, steeringDelays, filterTime);
                 }
                 int carrierLength = 16384;
 
@@ -1772,6 +1777,17 @@ namespace Pachyderm_Acoustic
                 double[][] carriers = new double[bands][];
                 for (int b = 0; b < bands; b++)
                 {
+                    if (sourceWaveforms != null)
+                    {
+                        if (selectedBand >= 0 && selectedBand != b) continue;
+                        double[] pressure = new double[bands]; pressure[b] = 1;
+                        double minimum = steeringDelays == null ? 0 : steeringDelays.Min();
+                        double[] delays = steeringDelays == null ? new double[] { 0 } : steeringDelays.Select(delay => delay - minimum).ToArray();
+                        double fraction = Math.Max(0, filterTime - Math.Floor(filterTime * sample_frequency) / sample_frequency);
+                        carriers[b] = sourceWaveforms.Response(sourceIndex, pressure, b, delays, fraction, sample_frequency, 0);
+                        carrierLength = Math.Max(carrierLength, carriers[b].Length);
+                        continue;
+                    }
                     double fc = bands == 24 ? Utilities.AcousticalMath.ThirdOctaveCenters()[b] : 62.5 * Math.Pow(2, b);
                     double edge = bands == 24 ? Math.Pow(2, 1.0 / 6) : Utilities.Numerics.rt2;
                     double fl = fc / edge;
@@ -1789,6 +1805,7 @@ namespace Pachyderm_Acoustic
                 // Convolve each band envelope with its carrier (FFT convolution)
                 for (int b = 0; b < bands; b++)
                 {
+                    if (carriers[b] == null) continue;
                     double[] env = new double[T];
                     double scale = p_mod[b];
                     var src = Octave_PRMS[b];
@@ -1802,7 +1819,7 @@ namespace Pachyderm_Acoustic
                 }
 
                 // Preserve legacy octave-only extension; third-octave output uses its measured spectrum.
-                if (bands == 8)
+                if (bands == 8 && sourceWaveforms == null)
                 {
                     // Calculate air attenuation coefficients for 8 kHz and 16 kHz using ISO 9613-1
                     double tempK = 20 + 273.15; // Convert to Kelvin

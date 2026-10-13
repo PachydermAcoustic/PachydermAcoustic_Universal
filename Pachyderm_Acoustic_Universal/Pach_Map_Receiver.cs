@@ -742,6 +742,16 @@ namespace Pachyderm_Acoustic
         /// <returns>On Mesh with color assignments matching the input parameters and output variables.</returns>
         public static double[] Get_SPLA_Map(PachMapReceiver[] Rec_List, double[] T_Bounds, List<int> SrcID, bool Coherent_Superposition, double[] mod = null)
         {
+            return Get_Weighted_SPL_Map(Rec_List, T_Bounds, SrcID, Coherent_Superposition, false, mod);
+        }
+
+        public static double[] Get_SPLC_Map(PachMapReceiver[] Rec_List, double[] T_Bounds, List<int> SrcID, bool Coherent_Superposition, double[] mod = null)
+        {
+            return Get_Weighted_SPL_Map(Rec_List, T_Bounds, SrcID, Coherent_Superposition, true, mod);
+        }
+
+        private static double[] Get_Weighted_SPL_Map(PachMapReceiver[] Rec_List, double[] T_Bounds, List<int> SrcID, bool Coherent_Superposition, bool C_Weighted, double[] mod)
+        {
             mod = mod == null ? new double[SrcID.Max() + 1] : (double[])mod.Clone();
 
             for (int i = 0; i < mod.Length; i++)
@@ -756,8 +766,8 @@ namespace Pachyderm_Acoustic
             int T_Min = Math.Max(0, (int)Math.Floor(T_Bounds.Min() * sampleRate / 1000.0));
             double[] SPL_Values = new double[Rec_List[0].Rec_List.Length];
 
-            double[] AFactors = new double[8] { Math.Pow(10, (-26.2 / 10)), Math.Pow(10, (-16.1 / 10)), Math.Pow(10, (-8.6 / 10)), Math.Pow(10, (-3.2 / 10)), 1, Math.Pow(10, (1.2 / 10)), Math.Pow(10, (1.0 / 10)), Math.Pow(10, (-1.1 / 10)) };
-            if (Rec_List[0].Third_Oct)
+            double[] AFactors = C_Weighted ? AcousticalMath.C_Weighting_Factors(Rec_List[0].Third_Oct) : new double[8] { Math.Pow(10, (-26.2 / 10)), Math.Pow(10, (-16.1 / 10)), Math.Pow(10, (-8.6 / 10)), Math.Pow(10, (-3.2 / 10)), 1, Math.Pow(10, (1.2 / 10)), Math.Pow(10, (1.0 / 10)), Math.Pow(10, (-1.1 / 10)) };
+            if (!C_Weighted && Rec_List[0].Third_Oct)
             {
                 double[] centers = AcousticalMath.ThirdOctaveCenters();
                 AFactors = centers.Select(frequency =>
@@ -1840,7 +1850,7 @@ namespace Pachyderm_Acoustic
                             double attenuationDistance = raytime * C_Sound;
                             double energy = r.Energy[band] * Math.Pow(10, -.1 * Atten[band] * attenuationDistance) * SizeMod;
                             Recs.Add(Time1PtHistogram ? 0 : raytime, energy, -r.dx, -r.dy, -r.dz, Rho_C, band);
-                            if (r.ThirdOctave)
+                            if (Reflection_Analysis_Data != null)
                             {
                                 int sample = Time1PtHistogram ? 0 : (int)(raytime * Recs.SampleRate);
                                 if (sample >= 0 && sample < Reflection_Analysis_Data[0][band].Length)
@@ -1878,12 +1888,17 @@ namespace Pachyderm_Acoustic
                             Recs.Add(Time1PtHistogram ? 0 : raytime, energy, -R.dx, -R.dy, -R.dz, Rho_C, band);
                             int kind = R.IsSpecular ? (R.WasScattered ? 2 : 0) : 1;
                             int sample = Time1PtHistogram ? 0 : (int)(raytime * Recs.SampleRate);
-                            if (sample >= 0 && sample < Reflection_Analysis_Data[kind][band].Length)
+                            if (Reflection_Analysis_Data != null && sample >= 0 && sample < Reflection_Analysis_Data[kind][band].Length)
                                 lock (Reflection_Analysis_Data[kind][band]) Reflection_Analysis_Data[kind][band][sample] += energy;
                         }
                         return;
                     }
-                    Recs.Add(raytime, R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * raytime * C_Sound) * SizeMod, -R.dx, -R.dy, -R.dz, Rho_C, R.Octave);// / (1.33333333333333 * Math.PI * Min_Radius2 * Min_Radius), EndPt - R.Origin, R.Octave);//R.Scat_Mod * // - Direct_Time
+                    double energyOctave = R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * raytime * C_Sound) * SizeMod;
+                    Recs.Add(Time1PtHistogram ? 0 : raytime, energyOctave, -R.dx, -R.dy, -R.dz, Rho_C, R.Octave);// / (1.33333333333333 * Math.PI * Min_Radius2 * Min_Radius), EndPt - R.Origin, R.Octave);//R.Scat_Mod * // - Direct_Time
+                    int kindOctave = R.IsSpecular ? (R.WasScattered ? 2 : 0) : 1;
+                    int sampleOctave = Time1PtHistogram ? 0 : (int)(raytime * Recs.SampleRate);
+                    if (Reflection_Analysis_Data != null && sampleOctave >= 0 && sampleOctave < Reflection_Analysis_Data[kindOctave][R.Octave].Length)
+                        lock (Reflection_Analysis_Data[kindOctave][R.Octave]) Reflection_Analysis_Data[kindOctave][R.Octave][sampleOctave] += energyOctave;
                 }
             }
         }

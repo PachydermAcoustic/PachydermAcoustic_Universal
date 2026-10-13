@@ -38,6 +38,7 @@ namespace Pachyderm_Acoustic
         private Source Src;
         private Source[] Sources;
         private Source[] ThreadSources;
+        private Exception calculationError;
         private Hare.Geometry.Point[] Rec;
         private Polygon_Scene Room;
         private int[] CurrentSrf;
@@ -56,6 +57,7 @@ namespace Pachyderm_Acoustic
         public bool Diffraction = false;
         public bool Screencalc = false;
         public bool IncludeEdges = false;
+        public Coherent_Source_Waveforms SourceWaveforms { get; set; }
 
         private ImageSourceData()
         { }
@@ -118,6 +120,12 @@ namespace Pachyderm_Acoustic
             {
                 if (T != null && T.IsAlive) return System.Threading.ThreadState.Running;
             }
+            Exception error = System.Threading.Volatile.Read(ref calculationError);
+            if (error != null)
+            {
+                ThreadPaths = null;
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
+            }
             return System.Threading.ThreadState.Stopped;
         }
 
@@ -126,6 +134,7 @@ namespace Pachyderm_Acoustic
         /// </summary>
         public override void Begin()
         {
+            calculationError = null;
             processorCT = System.Environment.ProcessorCount;
             ThreadPaths = new List<Deterministic_Reflection>[Rec.Length, processorCT];
             ThreadSources = new Source[processorCT];
@@ -140,12 +149,13 @@ namespace Pachyderm_Acoustic
             elementCt = Room.ObjectCount + ((this.Diffraction) ? Room.EdgeCount : 0);
             SrfCT *= Sources.Length;
 
+            for (int i = 0; i < Rec.Length; i++) ValidPaths[i] = new List<Deterministic_Reflection>();
+
             for (int P_I = 0; P_I < processorCT; P_I++)
             {
                 for (int i = 0; i < Rec.Length; i++)
                 {
                     ThreadPaths[i, P_I] = new List<Deterministic_Reflection>();
-                    ValidPaths[i] = new List<Deterministic_Reflection>();
                 }
                 int start = (int)Math.Floor((double)P_I * SrfCT / processorCT);
                 int end;
@@ -153,7 +163,11 @@ namespace Pachyderm_Acoustic
                 else end = (P_I + 1) * SrfCT / processorCT;
 
                 Calc_Params T = new Calc_Params(start, end, P_I, Room.R_Seed.Next());
-                System.Threading.ParameterizedThreadStart TS = new System.Threading.ParameterizedThreadStart(delegate { Calculate(T); });
+                System.Threading.ParameterizedThreadStart TS = new System.Threading.ParameterizedThreadStart(delegate
+                {
+                    try { Calculate(T); }
+                    catch (Exception error) { System.Threading.Interlocked.CompareExchange(ref calculationError, error, null); }
+                });
                 T_List[P_I] = new System.Threading.Thread(TS);
                 T_List[P_I].Start();
             }
@@ -171,6 +185,7 @@ namespace Pachyderm_Acoustic
             int[] Sequence = new int[1];
             for (CurrentSrf[Params.ThreadID] = 0; CurrentSrf[Params.ThreadID] < Params.EndIndex - Params.StartIndex; CurrentSrf[Params.ThreadID]++)
             {
+                if (System.Threading.Volatile.Read(ref calculationError) != null) return;
                 List<Hare.Geometry.Point[]> Images = new List<Hare.Geometry.Point[]>();
                 List<int[]> sub = new List<int[]>();
                 int element = CurrentSrf[Params.ThreadID] + Params.StartIndex;
@@ -186,6 +201,7 @@ namespace Pachyderm_Acoustic
         /// <param name="Sequences">List of surface index sequences to try.</param>
         public void Lookup_Sequences(List<int[]>[] Sequences)
         {
+            calculationError = null;
             for (int rec = 0; rec < Rec.Length; rec++) if (ValidPaths[rec] == null) ValidPaths[rec] = new List<Deterministic_Reflection>();
             processorCT = System.Environment.ProcessorCount;
             ThreadPaths = new List<Deterministic_Reflection>[Rec.Length, processorCT];
@@ -204,12 +220,19 @@ namespace Pachyderm_Acoustic
                     Calc_Params T = new Calc_Params(P_I * Sequences[p].Count / processorCT, (P_I + 1) * Sequences[p].Count / processorCT, P_I, R.Next());
                     System.Threading.ParameterizedThreadStart TS = new System.Threading.ParameterizedThreadStart(delegate
                     {
-                        foreach (Source source in Sources)
+                        try
                         {
-                            ThreadSources[T.ThreadID] = source;
-                            for (int i = T.StartIndex; i < T.EndIndex; i++)
-                                ProcessPath(Sequences[p][i], T.ThreadID, p);
+                            foreach (Source source in Sources)
+                            {
+                                ThreadSources[T.ThreadID] = source;
+                                for (int i = T.StartIndex; i < T.EndIndex; i++)
+                                {
+                                    if (System.Threading.Volatile.Read(ref calculationError) != null) return;
+                                    ProcessPath(Sequences[p][i], T.ThreadID, p);
+                                }
+                            }
                         }
+                        catch (Exception error) { System.Threading.Interlocked.CompareExchange(ref calculationError, error, null); }
                     });
                     T_List[P_I] = new System.Threading.Thread(TS);
                     T_List[P_I].Start();
@@ -223,8 +246,10 @@ namespace Pachyderm_Acoustic
                 for (int t = 0; t < processorCT; t++)
                 {
                     ValidPaths[p].AddRange(ThreadPaths[p, t]);
+                    ThreadPaths[p, t] = null;
                 }
             }
+            ThreadPaths = null;
         }
 
         /// <summary>
@@ -269,13 +294,17 @@ namespace Pachyderm_Acoustic
         /// </summary>
         public override void Combine_ThreadLocal_Results()
         {
+            ThreadState();
+            if (ThreadPaths == null) return;
             for (int i = 0; i < Rec.Length; i++)
             {
                 for (int p = 0; p < processorCT; p++)
                 {
                     ValidPaths[i].AddRange(ThreadPaths[i, p]);
+                    ThreadPaths[i, p] = null;
                 }
             }
+            ThreadPaths = null;
         }
 
         /// <summary>
@@ -287,6 +316,7 @@ namespace Pachyderm_Acoustic
         /// <param name="Images">the list of source images, to which the next image will be appended.</param>
         private void TraverseOrders(int Order, int[] Sequence, int ThreadId, List<Hare.Geometry.Point[]> Images0, List<int[]> sub0)
         {
+            if (System.Threading.Volatile.Read(ref calculationError) != null) return;
             Array.Resize(ref Sequence, Order + 1);
             int ct = Order == 0 ? 1 : elementCt;
             for (int q = 0; q < ct; q++)
@@ -376,6 +406,7 @@ namespace Pachyderm_Acoustic
 
             for (int rec_id = one_rec_id < 0 ? 0 : one_rec_id; rec_id < rec_end; rec_id++)
             {
+                if (System.Threading.Volatile.Read(ref calculationError) != null) return;
                 double c_sound = Room.Sound_speed(Rec[rec_id]);
 
                 double[][] Trans_Mod = new double[Images.Length][];
@@ -484,14 +515,14 @@ namespace Pachyderm_Acoustic
                     for (int q = 0; q < Sequence.Length; q++)
                         Absorption[q] = Sequence[q] >= Room.ObjectCount ? new double[BandCount] : Room.AbsorptionValue[Room.ObjectMembers[Sequence[q]][0]].Coefficient_A_Broad(ThirdOctave);
                     ThreadPaths[rec_id, Threadid].Add(new Compound_Path(PathVertices.ToArray(), source.Source_ID(), Sequence, H, mintime, Room.Rho_C(0), ref Direct_Time[rec_id], Threadid, Absorption)
-                    { CoherentSpeaker = Src is SourceCluster cluster && cluster.CoherentSpeakers && source.IsSpeaker, SteeringDelaySeconds = source.SpeakerDelaySeconds });
+                    { CoherentSpeaker = Src is SourceCluster cluster && cluster.CoherentSpeakers && source.IsSpeaker, SteeringDelaySeconds = source.SpeakerDelaySeconds, SourceWaveforms = this.SourceWaveforms, SourceWaveformIndex = Array.IndexOf(Sources, source) });
                 }
                 else
                 {
                     //Assumed either a convex, or planar reflection
                     double[] H_in = new double[BandCount]; for (int oct = 0; oct < BandCount; oct++) H_in[oct] = H[0][oct][0];
                     ThreadPaths[rec_id, Threadid].Add(new Specular_Path(PathVertices[0], Sequence, Seq_Polys, Room, source, c_sound, H_in, Trans_Mod[0], ref Direct_Time[rec_id], Threadid, Rnd[Threadid].Next(), Oct_choice)
-                    { CoherentSpeaker = Src is SourceCluster cluster && cluster.CoherentSpeakers && source.IsSpeaker, SteeringDelaySeconds = source.SpeakerDelaySeconds });
+                    { CoherentSpeaker = Src is SourceCluster cluster && cluster.CoherentSpeakers && source.IsSpeaker, SteeringDelaySeconds = source.SpeakerDelaySeconds, SourceWaveforms = this.SourceWaveforms, SourceWaveformIndex = Array.IndexOf(Sources, source) });
                 }
             }
         }
@@ -1378,7 +1409,7 @@ namespace Pachyderm_Acoustic
         {
             //1. Write an indicator to signify that there is image source data
             bool coherent = ValidPaths.Any(paths => paths.Any(path => path.CoherentSpeaker));
-            BW.Write(coherent ? "Image-Source_Data coherent" : "Image-Source_Data");
+            BW.Write(coherent ? SourceWaveforms == null ? "Image-Source_Data coherent" : "Image-Source_Data sourcephase" : "Image-Source_Data");
 
             for (int q = 0; q < ValidPaths.Length; q++)
             {
@@ -1393,6 +1424,7 @@ namespace Pachyderm_Acoustic
 
                     if (coherent)
                     {
+                        if (SourceWaveforms != null) BW.Write(ValidPaths[q][i].SourceWaveformIndex);
                         BW.Write(ValidPaths[q][i].CoherentSpeaker);
                         double[] delays = ValidPaths[q][i].SteeringDelaySeconds ?? new double[] { 0 };
                         BW.Write(delays.Length);
@@ -1529,7 +1561,13 @@ namespace Pachyderm_Acoustic
 
         public static ImageSourceData Read_Data(ref System.IO.BinaryReader BR, int Rec_CT, Direct_Sound Direct, bool Edges, double[] RhoC, int Src_ID, string version, IProgressFeedback VB, bool coherentSpeakers)
         {
+            return Read_Data(ref BR, Rec_CT, Direct, Edges, RhoC, Src_ID, version, VB, coherentSpeakers, false);
+        }
+
+        internal static ImageSourceData Read_Data(ref System.IO.BinaryReader BR, int Rec_CT, Direct_Sound Direct, bool Edges, double[] RhoC, int Src_ID, string version, IProgressFeedback VB, bool coherentSpeakers, bool sourcePhase)
+        {
             ImageSourceData IS = new ImageSourceData();
+            if (sourcePhase) IS.SourceWaveforms = Direct.SourceWaveforms;
             int BandCount = Direct.SWL.Length;
             IS.BandCount = BandCount;
             IS.ValidPaths = new List<Deterministic_Reflection>[Rec_CT];
@@ -1545,6 +1583,7 @@ namespace Pachyderm_Acoustic
                 int PathCt = BR.ReadInt32();
                 for (int i = 0; i < PathCt; i++)
                 {
+                    int sourceIndex = sourcePhase ? BR.ReadInt32() : -1;
                     bool coherent = coherentSpeakers && BR.ReadBoolean();
                     double[] delays = null;
                     if (coherentSpeakers)
@@ -1603,7 +1642,7 @@ namespace Pachyderm_Acoustic
                         }
 
                         IS.ValidPaths[q].Add(new Specular_Path(PTS, Energy, prms, Filter, Time, Sequence, Direct.Min_Time(q), Src_ID)
-                        { CoherentSpeaker = coherent, SteeringDelaySeconds = delays });
+                        { CoherentSpeaker = coherent, SteeringDelaySeconds = delays, SourceWaveforms = sourcePhase ? Direct.SourceWaveforms : null, SourceWaveformIndex = sourceIndex });
                     }
                     else if (ReflectionType == 1)
                     {
@@ -1725,7 +1764,7 @@ namespace Pachyderm_Acoustic
                         }
 
                         IS.ValidPaths[q].Add(new Compound_Path(PTS, Src_ID, sequence, H, T, RhoC[q], ref Direct.Time_Pt[q], 0)
-                        { CoherentSpeaker = coherent, SteeringDelaySeconds = delays });
+                        { CoherentSpeaker = coherent, SteeringDelaySeconds = delays, SourceWaveforms = sourcePhase ? Direct.SourceWaveforms : null, SourceWaveformIndex = sourceIndex });
                     }
                 }
             }
@@ -1814,6 +1853,8 @@ namespace Pachyderm_Acoustic
     {
         protected string Identifier;
         public bool CoherentSpeaker = false;
+        public Coherent_Source_Waveforms SourceWaveforms { get; set; }
+        public int SourceWaveformIndex = -1;
         public double[] SteeringDelaySeconds = null;
         public double FilterTime { get { return TravelTime + (CoherentSpeaker && SteeringDelaySeconds != null ? SteeringDelaySeconds.Min() : 0); } }
 
@@ -1840,6 +1881,30 @@ namespace Pachyderm_Acoustic
         internal double[] CoherentBandPressure(int band, int sampleFrequency, double rhoC, int dimension)
         {
             if (!CoherentSpeaker) throw new InvalidOperationException("The path is not part of a coherent speaker group.");
+            if (SourceWaveforms != null)
+            {
+                if (this is Specular_Path sourcePath)
+                {
+                    double[] response = sourcePath.Create_Filter(Enumerable.Repeat(120.0, SourceWaveforms.BandCount).ToArray(), sampleFrequency, 16384, 0, 0, band);
+                    double pressureScale = sourcePath.prms[band] > 0 ? Math.Sqrt(Math.Max(0, Energy(band, sampleFrequency).Sum() * rhoC)) / sourcePath.prms[band] : 0;
+                    for (int sample = 0; sample < response.Length; sample++) response[sample] *= pressureScale;
+                    if (dimension > 0)
+                    {
+                        Point[] vertices = Path[0];
+                        Hare.Geometry.Vector arrival = vertices[vertices.Length - 2] - vertices[vertices.Length - 1];
+                        arrival.Normalize();
+                        double component = arrival.byint((dimension - 1) / 2);
+                        double weight = Math.Sqrt(Math.Max(0, dimension % 2 == 1 ? component : -component));
+                        for (int sample = 0; sample < response.Length; sample++) response[sample] *= weight;
+                    }
+                    return response;
+                }
+                Compound_Path sourceCompound = (Compound_Path)this;
+                double[] compoundResponse = Audio.Pach_SP.ETCToFilter(dimension == 0 ? sourceCompound.H : sourceCompound.Hdir[dimension - 1], Enumerable.Repeat(120.0, SourceWaveforms.BandCount).ToArray(), 44100, sampleFrequency, false, SourceWaveforms, SourceWaveformIndex, band, SteeringDelaySeconds, FilterTime);
+                double impedanceScale = Math.Sqrt(rhoC / sourceCompound.RhoC);
+                for (int sample = 0; sample < compoundResponse.Length; sample++) compoundResponse[sample] *= impedanceScale;
+                return compoundResponse;
+            }
             bool third = this is Specular_Path specular ? specular.prms.Length == 24 : (this as Compound_Path).H.Length == 24;
             double[] spectrum = Enumerable.Repeat(120.0, third ? 24 : 8).ToArray();
             Compound_Path compound = this as Compound_Path;
@@ -1931,7 +1996,7 @@ namespace Pachyderm_Acoustic
             ValidPath = Path;
             PathEnergy = Energy;
             prms = p;
-            Special_Filter = Filter;
+            Special_Filter = Filter != null && Filter.All(value => value == System.Numerics.Complex.One) ? null : Filter;
             Time = T;
             Sequence = Seq;
             Identify(SrcID, Direct_Time);
@@ -1994,18 +2059,21 @@ namespace Pachyderm_Acoustic
 
             for (int i = 0; i < BandCount; i++) prms[i] = AcousticalMath.Pressure_Intensity(PathEnergy[i], Room.Rho_C(Path[0]));
 
-            Special_Filter = new System.Numerics.Complex[16384];
-            for (int i = 0; i < Special_Filter.Length; i++) Special_Filter[i] = 1;
-
             for (int i = 0; i < Seq_Polys.Length; i++)
             {
                 if (Room.AbsorptionValue[Seq_Polys[i]] is Basic_Material) continue;
+                if (Special_Filter == null)
+                {
+                    Special_Filter = new System.Numerics.Complex[16384];
+                    for (int j = 0; j < Special_Filter.Length; j++) Special_Filter[j] = 1;
+                }
                 Hare.Geometry.Vector d = Path[i + 1] - Path[i + 2];
                 d.Normalize();
                 System.Numerics.Complex[] Ref = Room.AbsorptionValue[Seq_Polys[i]].Reflection_Spectrum(44100, 16384, Room.Normal(Seq_Polys[i]), d, thread);
                 int count = Math.Min(Special_Filter.Length, Ref.Length);
                 for (int j = 0; j < count; j++) Special_Filter[j] *= Ref[j];
             }
+            if (Special_Filter != null && Special_Filter.All(value => value == System.Numerics.Complex.One)) Special_Filter = null;
         }
 
         public override void Set_Power(double[] factor)
@@ -2017,21 +2085,39 @@ namespace Pachyderm_Acoustic
 
         public override void Create_Filter(int length, int threadid)
         {
+            if (CoherentSpeaker && SourceWaveforms != null)
+            {
+                F = Create_Filter(Enumerable.Repeat(120.0, BandCount).ToArray(), 44100, length, 0, threadid);
+                return;
+            }
             double[] baseFilter = Audio.Pach_SP.Filter.Transfer_Function(prms, 44100, length, threadid);
             F = ApplySourceDelay(Apply_Special_Filter(baseFilter, 44100, threadid), 44100, threadid);
         }
 
         public override double[] Create_Filter(double[] SWL, int SampleFrequency, int length, int dim, int threadid)
         {
+            return Create_Filter(SWL, SampleFrequency, length, dim, threadid, BandCount);
+        }
+
+        internal double[] Create_Filter(double[] SWL, int SampleFrequency, int length, int dim, int threadid, int band)
+        {
             double[] tf_spec = new double[BandCount];
             for (int i = 0; i < BandCount; i++) tf_spec[i] = prms[i] * Math.Pow(10, (120 - SWL[i]) / 20);
 
+            if (CoherentSpeaker && SourceWaveforms != null)
+            {
+                double minimum = SteeringDelaySeconds == null ? 0 : SteeringDelaySeconds.Min();
+                double[] delays = SteeringDelaySeconds == null ? new double[] { 0 } : SteeringDelaySeconds.Select(delay => delay - minimum).ToArray();
+                double fraction = FilterTime - Math.Floor(FilterTime * SampleFrequency) / SampleFrequency;
+                return Apply_Special_Filter(SourceWaveforms.Response(SourceWaveformIndex, tf_spec, band, delays, Math.Max(0, fraction), SampleFrequency, threadid), SampleFrequency, threadid);
+            }
             double[] baseFilter = Audio.Pach_SP.Filter.Transfer_Function(tf_spec, SampleFrequency, length, threadid);
             return ApplySourceDelay(Apply_Special_Filter(baseFilter, SampleFrequency, threadid), SampleFrequency, threadid);
         }
 
         public override double[][] Create_Filter(double[] SWL, int SampleFrequency, int length, int threadid)
         {
+            if (CoherentSpeaker && SourceWaveforms != null) return new[] { Create_Filter(SWL, SampleFrequency, length, 0, threadid) };
             double[] tf_spec = new double[BandCount];
             for (int i = 0; i < BandCount; i++) tf_spec[i] = prms[i] * Math.Pow(10, (120 - SWL[i]) / 20);
 
@@ -2271,7 +2357,7 @@ namespace Pachyderm_Acoustic
         public double[][] PathEnergy;
         private double Time; //Earliest time of the reflection.
         private int[] Sequence; //Unique identifying indices for each reflecting element.
-        private double RhoC;
+        internal double RhoC;
         //public double[][] Octave_Power; //Contains power modifying information for each sample in H (such as absorption or transmission coefficients, air attenuation, etc.)
         private int BandCount { get { return H.Length; } }
         public double[][] H; //Initial H-function of the reflection (contains info about diffraction, compression, etc. that is a consequence of the resulting wave-form.) [oct][t]
@@ -2323,6 +2409,8 @@ namespace Pachyderm_Acoustic
 
         public override double[][] Create_Filter(double[] SWL, int SampleFrequency, int LengthofPulse, int Threadid)
         {
+            if (CoherentSpeaker && SourceWaveforms != null)
+                return Enumerable.Range(0, 7).Select(dimension => Create_Filter(SWL, SampleFrequency, LengthofPulse, dimension, Threadid)).ToArray();
             double[][] Fdir_out = new double[6][];
             double[] F_out = ApplySourceDelay(Audio.Pach_SP.ETCToFilter(H, SWL, 44100, SampleFrequency), SampleFrequency, Threadid);
             for (int i = 0; i < 6; i++)
@@ -2334,6 +2422,8 @@ namespace Pachyderm_Acoustic
 
         public override double[] Create_Filter(double[] SWL, int SampleFrequency, int LengthofPulse, int dim, int Threadid)
         {
+            if (CoherentSpeaker && SourceWaveforms != null)
+                return Audio.Pach_SP.ETCToFilter(dim < 1 ? H : Hdir[dim - 1], SWL, 44100, SampleFrequency, false, SourceWaveforms, SourceWaveformIndex, -1, SteeringDelaySeconds, FilterTime);
             if (dim < 1)
             {
                 return ApplySourceDelay(Audio.Pach_SP.ETCToFilter(H, SWL, 44100, SampleFrequency), SampleFrequency, Threadid);
@@ -2347,6 +2437,14 @@ namespace Pachyderm_Acoustic
         public override void Create_Filter(int length, int threadid)
         {
             Fdir = new double[6][];
+
+            if (CoherentSpeaker && SourceWaveforms != null)
+            {
+                double[] levels = Enumerable.Repeat(120.0, BandCount).ToArray();
+                F = Create_Filter(levels, 44100, length, 0, threadid);
+                for (int i = 0; i < 6; i++) Fdir[i] = Create_Filter(levels, 44100, length, i + 1, threadid);
+                return;
+            }
 
             F = ApplySourceDelay(Audio.Pach_SP.ETCToFilter(H, Enumerable.Repeat(120.0, BandCount).ToArray()), 44100, threadid);
             for (int i = 0; i < 6; i++)
