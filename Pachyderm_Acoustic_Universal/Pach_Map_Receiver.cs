@@ -288,8 +288,6 @@ namespace Pachyderm_Acoustic
             for (int i = 0; i < Rec_List.Length; i++)
             {
                 int tsample = 0;// (int)Math.Floor(D.Time(i) / SampleRate);
-                Vector dir = S.Origin - Rec_List[i].Origin;
-                dir.Normalize();
                 for (int oct = 0; oct < D.BandCount; oct++)
                 {
                     int length = D.Io[i][oct].Length;
@@ -298,7 +296,66 @@ namespace Pachyderm_Acoustic
                         if (s < Rec_List[i].Recs.SampleCT && (D.Validity[i] || D.Screen_atten))
                         {
                             double directEnergy = D.EnergyValue(oct, s, i);
-                            Rec_List[i].Combine_Sample(s - tsample, directEnergy, Math.Sqrt(Math.Max(0, directEnergy) * D.Rho_C[i]), dir, dir, oct);
+                            Vector positive = new Vector(D.Dir_Rec_Pos[i][oct, s, 0], D.Dir_Rec_Pos[i][oct, s, 1], D.Dir_Rec_Pos[i][oct, s, 2]);
+                            Vector negative = new Vector(D.Dir_Rec_Neg[i][oct, s, 0], D.Dir_Rec_Neg[i][oct, s, 1], D.Dir_Rec_Neg[i][oct, s, 2]);
+                            Rec_List[i].Combine_Sample(s - tsample, directEnergy, Math.Sqrt(Math.Max(0, directEnergy) * D.Rho_C[i]), positive, negative, oct);
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Adds direct sound and specular image paths on the map's direct-relative time axis.
+        /// Speaker paths interfere before energy is recorded; other paths add independently.
+        /// </summary>
+        public void AddDirect(Direct_Sound D, Source S, ImageSourceData images)
+        {
+            if (images == null)
+            {
+                AddDirect(D, S);
+                return;
+            }
+            if (!D.CoherentSpeakers) AddDirect(D, S);
+            Direct_Sound[] direct = { D };
+            ImageSourceData[] reflections = { images };
+            Receiver_Bank[] rays = { null };
+            for (int receiver = 0; receiver < Rec_List.Length; receiver++)
+            {
+                for (int band = 0; band < D.BandCount; band++)
+                {
+                    if (D.CoherentSpeakers)
+                    {
+                        int count = (int)(CutOffTime * 0.001 * SampleRate);
+                        Vector[] positive = Directional ? new Vector[count] : null;
+                        Vector[] negative = Directional ? new Vector[count] : null;
+                        if (Directional) for (int sample = 0; sample < count; sample++) { positive[sample] = new Vector(); negative[sample] = new Vector(); }
+                        double[] energy = Utilities.IR_Construction.ETCurve(direct, reflections, rays, CutOffTime, SampleRate, band, receiver, 0, true, positive, negative);
+                        for (int sample = 0; sample < Math.Min(count, energy.Length); sample++)
+                        {
+                            int index = Time1Pt ? 0 : sample;
+                            if (index >= Rec_List[receiver].Recs.SampleCT) break;
+                            Rec_List[receiver].Combine_Sample(index, energy[sample], Math.Sqrt(Math.Max(0, energy[sample]) * D.Rho_C[receiver]), Directional ? positive[sample] : new Vector(), Directional ? negative[sample] : new Vector(), band);
+                        }
+                    }
+                    else
+                    {
+                        int origin = (int)Math.Floor(D.Time(receiver) * SampleRate);
+                        foreach (Deterministic_Reflection path in images.Paths[receiver])
+                        {
+                            int start = path.FilterSample(SampleRate) - origin;
+                            double[] energy = path.Energy(band, SampleRate);
+                            double[][] channels = Directional && path is Compound_Path compound ? Enumerable.Range(1, 6).Select(dimension => compound.Energy(band, SampleRate, dimension)).ToArray() : null;
+                            Vector[] directions = Directional && channels == null ? path.Dir_Energy(band) : null;
+                            for (int sample = Math.Max(0, -start); sample < energy.Length && start + sample < CutOffTime * 0.001 * SampleRate; sample++)
+                            {
+                                int index = Time1Pt ? 0 : start + sample;
+                                if (index >= Rec_List[receiver].Recs.SampleCT) break;
+                                Vector arrival = directions == null ? new Vector() : directions[sample] * -1;
+                                Vector positive = channels == null ? new Vector(Math.Max(0, arrival.dx), Math.Max(0, arrival.dy), Math.Max(0, arrival.dz)) : new Vector(channels[0][sample], channels[2][sample], channels[4][sample]);
+                                Vector negative = channels == null ? new Vector(Math.Min(0, arrival.dx), Math.Min(0, arrival.dy), Math.Min(0, arrival.dz)) : new Vector(-channels[1][sample], -channels[3][sample], -channels[5][sample]);
+                                Rec_List[receiver].Combine_Sample(index, energy[sample], Math.Sqrt(Math.Max(0, energy[sample]) * D.Rho_C[receiver]), positive, negative, band);
+                            }
                         }
                     }
                 }

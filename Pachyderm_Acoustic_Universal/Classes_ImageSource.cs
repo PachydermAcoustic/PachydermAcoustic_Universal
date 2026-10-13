@@ -463,15 +463,6 @@ namespace Pachyderm_Acoustic
                 ///Process all paths for pulse entry...
                 if (PathVertices.Count == 0) continue;
 
-                for (int i = 0; i < PathVertices.Count; i++)
-                {
-                    if (PathVertices[i] == null) continue;
-                    Hare.Geometry.Vector d = PathVertices[i][1] - PathVertices[i][0];
-                    d.Normalize();
-                    double[] En = source.DirPower(Threadid, Rnd[Threadid].Next(), d);
-                    for (int oct = 0; oct < BandCount; oct++) Trans_Mod[i][oct] *= En[oct];
-                }
-
                 //////////////////////////////
                 //Process Compound Path before storing it.
                 double[][] times;
@@ -660,6 +651,8 @@ namespace Pachyderm_Acoustic
 
                 Hare.Geometry.Vector dir1 = (PathVertices[pathid][order + 1] - PathVertices[pathid][order + 2]);
                 l += dir1.Length();
+                t_limits[0] += l / c_sound;
+                t_limits[1] += l / c_sound;
                 W_Kurvature = project_wavefront(l, W_Kurvature);
 
                 Hare.Geometry.Vector dir2 = (PathVertices[pathid][order + 1] - PathVertices[pathid][order]);
@@ -905,7 +898,7 @@ namespace Pachyderm_Acoustic
                 double[] B_oct = new double[BandCount];
                 for (int oct = 0; oct < BandCount; oct++)
                 {
-                    double mod = Math.Sqrt(intensity_mod[i][oct] * Math.Pow(10, -.05 * Room.Attenuation(0, ThirdOctave)[oct] * Room.Sound_speed(0) * 0.5 * (t_limits[0] + t_limits[1])));
+                    double mod = Math.Sqrt(intensity_mod[i][oct] * Math.Pow(10, -.1 * Room.Attenuation(0, ThirdOctave)[oct] * Room.Sound_speed(0) * 0.5 * (t_limits[0] + t_limits[1])));
                     B_oct[oct] = p * mod;
                 }
 
@@ -939,9 +932,11 @@ namespace Pachyderm_Acoustic
 
                 for (int i = 0; i < Times[0].Length; i++)
                 {
-                    Hare.Geometry.Vector DIR = PathVertices[i][Sequence.Length - 1] - PathVertices[i][Sequence.Length];
+                    Hare.Geometry.Vector DIR = PathVertices[i][Sequence.Length] - PathVertices[i][Sequence.Length + 1];
                     DIR.Normalize();
-                    double[] dmod = (ThreadSources == null ? Src : ThreadSources[threadid]).DirPressure(threadid, Rnd[threadid].Next(), DIR);
+                    Hare.Geometry.Vector emission = PathVertices[i][1] - PathVertices[i][0];
+                    emission.Normalize();
+                    double[] dmod = (ThreadSources == null ? Src : ThreadSources[threadid]).DirPower(threadid, Rnd[threadid].Next(), emission).Select(power => AcousticalMath.Pressure_Intensity(power, Room.Rho_C(0))).ToArray();
 
                     double delta = Times[1][i] - Times[0][i]; //duration of the power receipt.
                     double t0 = Times[0][i] - mintime; //start time of the power receipt.
@@ -954,8 +949,7 @@ namespace Pachyderm_Acoustic
 
                     for (int oct = 0; oct < BandCount; oct++)
                     {
-                        double mod = AcousticalMath.Pressure_Intensity(dmod[oct], Room.Rho_C(0));
-                        double p1 = frac1 * Bs[i][oct] * mod, p0 = frac0 * Bs[i][oct] * mod;
+                        double p1 = frac1 * Bs[i][oct] * dmod[oct], p0 = frac0 * Bs[i][oct] * dmod[oct];
                         if (p1 > 0)
                         {
                             H_directional[0][oct][s1] += p1;
@@ -987,9 +981,11 @@ namespace Pachyderm_Acoustic
                 {
                     if (PathVertices[i] == null) continue;
                     bool k1, k2;
-                    Hare.Geometry.Vector DIR = PathVertices[i][Sequence.Length - 1] - PathVertices[i][Sequence.Length];
+                    Hare.Geometry.Vector DIR = PathVertices[i][Sequence.Length] - PathVertices[i][Sequence.Length + 1];
                     DIR.Normalize();
-                    double[] dmod = (ThreadSources == null ? Src : ThreadSources[threadid]).DirPressure(threadid, Rnd[threadid].Next(), DIR);
+                    Hare.Geometry.Vector emission = PathVertices[i][1] - PathVertices[i][0];
+                    emission.Normalize();
+                    double[] dmod = (ThreadSources == null ? Src : ThreadSources[threadid]).DirPower(threadid, Rnd[threadid].Next(), emission).Select(power => AcousticalMath.Pressure_Intensity(power, Room.Rho_C(0))).ToArray();
 
                     ////
                     if (Room.Edge_Normals[Sequence[PathVertices[i].Length - 3]].Length > 0)
@@ -1837,15 +1833,33 @@ namespace Pachyderm_Acoustic
 
         public double[] CoherentBandPressure(int band, int sampleFrequency, double rhoC)
         {
+            return CoherentBandPressure(band, sampleFrequency, rhoC, 0);
+        }
+
+        // Directional filters use the compound path convention: +X, -X, +Y, -Y, +Z, -Z.
+        internal double[] CoherentBandPressure(int band, int sampleFrequency, double rhoC, int dimension)
+        {
             if (!CoherentSpeaker) throw new InvalidOperationException("The path is not part of a coherent speaker group.");
             bool third = this is Specular_Path specular ? specular.prms.Length == 24 : (this as Compound_Path).H.Length == 24;
-            double[] filter = Create_Filter(Enumerable.Repeat(120.0, third ? 24 : 8).ToArray(), sampleFrequency, 16384, 0, 0);
-            double[] reference = this is Specular_Path spec ? Audio.Pach_SP.Filter.Transfer_Function(spec.prms, sampleFrequency, 16384, 0) : filter;
+            double[] spectrum = Enumerable.Repeat(120.0, third ? 24 : 8).ToArray();
+            Compound_Path compound = this as Compound_Path;
+            bool cached = compound != null && sampleFrequency == 44100;
+            if (cached && (compound.F == null || (dimension > 0 && compound.Fdir == null))) compound.Create_Filter(16384, 0);
+            double[] filter = cached ? dimension == 0 ? compound.F : compound.Fdir[dimension - 1] : Create_Filter(spectrum, sampleFrequency, 16384, dimension, 0);
+            double[] reference = this is Specular_Path spec ? Audio.Pach_SP.Filter.Transfer_Function(spec.prms, sampleFrequency, 16384, 0) : cached ? compound.F : dimension == 0 ? filter : Create_Filter(spectrum, sampleFrequency, 16384, 0, 0);
             reference = third ? Audio.Pach_SP.FIR_Third_Bandpass(reference, band, sampleFrequency, 0) : Audio.Pach_SP.FIR_Bandpass(reference, band, sampleFrequency, 0);
             double[] pressure = third ? Audio.Pach_SP.FIR_Third_Bandpass(filter, band, sampleFrequency, 0) : Audio.Pach_SP.FIR_Bandpass(filter, band, sampleFrequency, 0);
             double sum = reference.Sum(value => value * value);
             double target = Energy(band, sampleFrequency).Sum() * rhoC;
             double scale = sum > 0 ? Math.Sqrt(Math.Max(0, target) / sum) : 0;
+            if (dimension > 0 && this is Specular_Path)
+            {
+                Point[] vertices = Path[0];
+                Hare.Geometry.Vector arrival = vertices[vertices.Length - 2] - vertices[vertices.Length - 1];
+                arrival.Normalize();
+                double component = arrival.byint((dimension - 1) / 2);
+                scale *= Math.Sqrt(Math.Max(0, dimension % 2 == 1 ? component : -component));
+            }
             for (int sample = 0; sample < pressure.Length; sample++) pressure[sample] *= scale;
             return pressure;
         }
@@ -1954,8 +1968,8 @@ namespace Pachyderm_Acoustic
             for (int oct = 0; oct < BandCount; oct++)
             {
                 double H_rc = AcousticalMath.Intensity_Pressure(H[oct], Room.Rho_C(0));
-                PathEnergy[oct] = Math.Pow(10, -.1 * Room.Attenuation(0, Src.ThirdOctave)[oct] * Length) * H_rc;
-                PathEnergy[oct] *= Trans_Mod[oct];
+                // H already includes source power, transmission and atmospheric attenuation.
+                PathEnergy[oct] = H_rc;
             }
 
             foreach (int q in Seq_Polys)
@@ -2379,24 +2393,32 @@ namespace Pachyderm_Acoustic
 
         public override double[] Energy(int Octave, int Sample_Frequency)
         {
-            if (F == null) Create_Filter(16384, 0);
+            return Energy(Octave, Sample_Frequency, 0);
+        }
 
-            double[] H_FS;
-            double[] I = new double[F.Length];
-            if (Octave < BandCount)
+        internal double[] Energy(int Octave, int Sample_Frequency, int dimension)
+        {
+            if (Octave >= BandCount)
             {
-                H_FS = BandCount == 24 ? Audio.Pach_SP.FIR_Third_Bandpass(F, Octave, 44100, 0) : Audio.Pach_SP.FIR_Bandpass(F, Octave, 44100, 0);
+                double[] total = null;
+                for (int band = 0; band < BandCount; band++)
+                {
+                    double[] component = Energy(band, Sample_Frequency, dimension);
+                    if (total == null) total = new double[component.Length];
+                    for (int sample = 0; sample < component.Length; sample++) total[sample] += component[sample];
+                }
+                return total;
             }
-            else
-            {
-                H_FS = H[4];// F;
-            }
+            if (F == null || (dimension > 0 && Fdir == null)) Create_Filter(16384, 0);
+            double[] filter = dimension == 0 ? F : Fdir[dimension - 1];
+            double[] H_FS = BandCount == 24 ? Audio.Pach_SP.FIR_Third_Bandpass(filter, Octave, 44100, 0) : Audio.Pach_SP.FIR_Bandpass(filter, Octave, 44100, 0);
 
-            double[] energy = new double[H_FS.Length];
+            double[] energy = new double[(int)Math.Ceiling(H_FS.Length * (double)Sample_Frequency / 44100)];
 
             for (int i = 0; i < H_FS.Length; i++)
             {
-                energy[i] = AcousticalMath.Intensity_Pressure(H_FS[i], RhoC);
+                int sample = (int)(i * (double)Sample_Frequency / 44100);
+                energy[sample] += AcousticalMath.Intensity_Pressure(H_FS[i], RhoC);
             }
             return energy;
         }

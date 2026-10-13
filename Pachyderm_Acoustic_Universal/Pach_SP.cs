@@ -56,6 +56,9 @@ namespace Pachyderm_Acoustic
             static fftw_complexarray[] IFFT_ArrayOut;
             static fftw_plan[] IFFT_Plan;
             static object[] ifftlock;
+            // FFTW plan creation/destruction is serialized; execution uses the existing slot locks.
+            static readonly object planlock = new object();
+            static readonly System.Collections.Concurrent.ConcurrentDictionary<(int Band, int Fs, int Length, bool Third), Lazy<Complex[]>> bandpassFilters = new System.Collections.Concurrent.ConcurrentDictionary<(int, int, int, bool), Lazy<Complex[]>>();
 
             //Persistent Filter settings
             public static DSP_System Filter;
@@ -378,18 +381,18 @@ namespace Pachyderm_Acoustic
 
                 //(double[] A, double[] B) = MathNet.Filtering.Butterworth.IirCoefficients.BandPass(freq_l * .8/22050d, freq_l/22050d, freq_u/22050d, freq_u / 0.8/22050d, .1, 100);
                 //Complex[] Ac = new Complex[A.Length], Bc = new Complex[B.Length];
-                double[] freq = new double[h.Length / 2];
                 //for (int i = 0; i < A.Length; i++) Ac[i] = new Complex(A[i],0);
                 //for (int i = 0; i < B.Length; i++) Bc[i] = new Complex(B[i], 0);
-                for (int i = 0; i < h.Length / 2; i++) freq[i] = i * (double)Sample_Freq / h.Length;
                 //Complex[] magspec = Pach_SP.IIR_Design.AB_FreqResponse(Bc.ToList(), Ac.ToList(), freq);
                 //Complex[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(freq, 10, freq_l, freq_u);
                 //double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq,h.Length);
-                double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq, h.Length);
+                int fftLength = h.Length;
 
                 /////////////Use Zero Phase Bandpass//////////////////////
                 //Array.Resize(ref magspec, h.Length / 2);
-                System.Numerics.Complex[] filter = Mirror_Spectrum(magspec);
+                Func<Complex[]> coefficients = () => Mirror_Spectrum(Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq, fftLength));
+                // Retain the small direct-sound kernels, not spectra for long auralization signals.
+                Complex[] filter = fftLength <= 65536 ? bandpassFilters.GetOrAdd((octave_index, Sample_Freq, fftLength, true), key => new Lazy<Complex[]>(coefficients)).Value : coefficients();
 
                 //double[] f_r = new double[filter.Length];
                 //double[] f_i = new double[filter.Length];
@@ -434,17 +437,16 @@ namespace Pachyderm_Acoustic
 
                 //(double[] A, double[] B) = MathNet.Filtering.Butterworth.IirCoefficients.BandPass(freq_l * .8/22050d, freq_l/22050d, freq_u/22050d, freq_u / 0.8/22050d, .1, 100);
                 //Complex[] Ac = new Complex[A.Length], Bc = new Complex[B.Length];
-                double[] freq = new double[h.Length / 2];
                 //for (int i = 0; i < A.Length; i++) Ac[i] = new Complex(A[i],0);
                 //for (int i = 0; i < B.Length; i++) Bc[i] = new Complex(B[i], 0);
-                for (int i = 0; i < h.Length / 2; i++) freq[i] = i * (double)Sample_Freq / h.Length;
                 //Complex[] magspec = Pach_SP.IIR_Design.AB_FreqResponse(Bc.ToList(), Ac.ToList(), freq);
                 //Complex[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(freq, 10, freq_l, freq_u);
                 //double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(105, freq_l, freq_u, Sample_Freq,h.Length);
-                double[] magspec = Pach_SP.IIR_Design.Butter_FreqResponse(180, freq_l, freq_u, Sample_Freq, h.Length);
+                int fftLength = h.Length;
 
                 /////////////Use Zero Phase FIR Bandpass//////////////////////
-                System.Numerics.Complex[] filter = Mirror_Spectrum(magspec);
+                Func<Complex[]> coefficients = () => Mirror_Spectrum(Pach_SP.IIR_Design.Butter_FreqResponse(180, freq_l, freq_u, Sample_Freq, fftLength));
+                Complex[] filter = fftLength <= 65536 ? bandpassFilters.GetOrAdd((octave_index, Sample_Freq, fftLength, false), key => new Lazy<Complex[]>(coefficients)).Value : coefficients();
 
                 //Convolve signal with Bandpass Filter.
                 Complex[] freq_h = FFT_General(h, thread);
@@ -772,13 +774,16 @@ namespace Pachyderm_Acoustic
                 {
                     if (FFT_Plan[threadid] == null || FFT_ArrayIn[threadid] == null || FFT_ArrayOut[threadid] == null || FFT_ArrayIn[threadid].Length != Signal.Length)
                     {
-                        FFT_Plan[threadid]?.Dispose();
-                        FFT_ArrayIn[threadid]?.Dispose();
-                        FFT_ArrayOut[threadid]?.Dispose();
+                        lock (planlock)
+                        {
+                            FFT_Plan[threadid]?.Dispose();
+                            FFT_ArrayIn[threadid]?.Dispose();
+                            FFT_ArrayOut[threadid]?.Dispose();
 
-                        FFT_ArrayIn[threadid] = new fftw_complexarray(Signal.Length);
-                        FFT_ArrayOut[threadid] = new fftw_complexarray(Signal.Length);
-                        FFT_Plan[threadid] = fftw_plan.dft_1d(Signal.Length, FFT_ArrayIn[threadid], FFT_ArrayOut[threadid], fftw_direction.Forward, fftw_flags.Estimate);
+                            FFT_ArrayIn[threadid] = new fftw_complexarray(Signal.Length);
+                            FFT_ArrayOut[threadid] = new fftw_complexarray(Signal.Length);
+                            FFT_Plan[threadid] = fftw_plan.dft_1d(Signal.Length, FFT_ArrayIn[threadid], FFT_ArrayOut[threadid], fftw_direction.Forward, fftw_flags.Estimate);
+                        }
                     }
 
                     FFT_ArrayIn[threadid].SetData(Signal);
@@ -792,17 +797,21 @@ namespace Pachyderm_Acoustic
             {
                 Validate_FFT_Thread(threadid, fftlock);
                 if (Signal == null || Signal.Length == 0) throw new ArgumentException("FFT input must not be null or empty.", nameof(Signal));
+                if (Signal.Length == 16384) return FFT16384(Signal, threadid);
                 lock (fftlock[threadid])
                 {
                     if (FFT_Plan[threadid] == null || FFT_ArrayIn[threadid] == null || FFT_ArrayOut[threadid] == null || FFT_ArrayIn[threadid].Length != Signal.Length)
                     {
-                        FFT_Plan[threadid]?.Dispose();
-                        FFT_ArrayIn[threadid]?.Dispose();
-                        FFT_ArrayOut[threadid]?.Dispose();
+                        lock (planlock)
+                        {
+                            FFT_Plan[threadid]?.Dispose();
+                            FFT_ArrayIn[threadid]?.Dispose();
+                            FFT_ArrayOut[threadid]?.Dispose();
 
-                        FFT_ArrayIn[threadid] = new fftw_complexarray(Signal.Length);
-                        FFT_ArrayOut[threadid] = new fftw_complexarray(Signal.Length);
-                        FFT_Plan[threadid] = fftw_plan.dft_1d(Signal.Length, FFT_ArrayIn[threadid], FFT_ArrayOut[threadid], fftw_direction.Forward, fftw_flags.Estimate);
+                            FFT_ArrayIn[threadid] = new fftw_complexarray(Signal.Length);
+                            FFT_ArrayOut[threadid] = new fftw_complexarray(Signal.Length);
+                            FFT_Plan[threadid] = fftw_plan.dft_1d(Signal.Length, FFT_ArrayIn[threadid], FFT_ArrayOut[threadid], fftw_direction.Forward, fftw_flags.Estimate);
+                        }
                     }
 
                     FFT_ArrayIn[threadid].SetData(Signal);
@@ -833,20 +842,24 @@ namespace Pachyderm_Acoustic
             {
                 Validate_FFT_Thread(threadid, ifftlock);
                 if (spectrum == null || spectrum.Length == 0) throw new ArgumentException("FFT input must not be null or empty.", nameof(spectrum));
+                if (spectrum.Length == 16384) return IFFT_Real16384(spectrum, threadid);
                 lock (ifftlock[threadid])
                 {
                     if (IFFT_Plan[threadid] == null || IFFT_ArrayIn[threadid] == null || IFFT_ArrayOut[threadid] == null || IFFT_ArrayIn[threadid].Length != spectrum.Length)
                     {
-                        IFFT_Plan[threadid]?.Dispose();
-                        IFFT_ArrayIn[threadid]?.Dispose();
-                        IFFT_ArrayOut[threadid]?.Dispose();
-                        IFFT_Plan[threadid] = null;
-                        IFFT_ArrayIn[threadid] = null;
-                        IFFT_ArrayOut[threadid] = null;
+                        lock (planlock)
+                        {
+                            IFFT_Plan[threadid]?.Dispose();
+                            IFFT_ArrayIn[threadid]?.Dispose();
+                            IFFT_ArrayOut[threadid]?.Dispose();
+                            IFFT_Plan[threadid] = null;
+                            IFFT_ArrayIn[threadid] = null;
+                            IFFT_ArrayOut[threadid] = null;
 
-                        IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum.Length);
-                        IFFT_ArrayOut[threadid] = new fftw_complexarray(spectrum.Length);
-                        IFFT_Plan[threadid] = fftw_plan.dft_1d(spectrum.Length, IFFT_ArrayIn[threadid], IFFT_ArrayOut[threadid], fftw_direction.Backward, fftw_flags.Estimate);
+                            IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum.Length);
+                            IFFT_ArrayOut[threadid] = new fftw_complexarray(spectrum.Length);
+                            IFFT_Plan[threadid] = fftw_plan.dft_1d(spectrum.Length, IFFT_ArrayIn[threadid], IFFT_ArrayOut[threadid], fftw_direction.Backward, fftw_flags.Estimate);
+                        }
                     }
 
                     IFFT_ArrayIn[threadid].SetData(spectrum);
@@ -867,16 +880,19 @@ namespace Pachyderm_Acoustic
                 {
                     if (IFFT_Plan[threadid] == null || IFFT_ArrayIn[threadid] == null || IFFT_ArrayOut[threadid] == null || IFFT_ArrayIn[threadid].Length != spectrum.Length)
                     {
-                        IFFT_Plan[threadid]?.Dispose();
-                        IFFT_ArrayIn[threadid]?.Dispose();
-                        IFFT_ArrayOut[threadid]?.Dispose();
-                        IFFT_Plan[threadid] = null;
-                        IFFT_ArrayIn[threadid] = null;
-                        IFFT_ArrayOut[threadid] = null;
+                        lock (planlock)
+                        {
+                            IFFT_Plan[threadid]?.Dispose();
+                            IFFT_ArrayIn[threadid]?.Dispose();
+                            IFFT_ArrayOut[threadid]?.Dispose();
+                            IFFT_Plan[threadid] = null;
+                            IFFT_ArrayIn[threadid] = null;
+                            IFFT_ArrayOut[threadid] = null;
 
-                        IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum.Length);
-                        IFFT_ArrayOut[threadid] = new fftw_complexarray(spectrum.Length);
-                        IFFT_Plan[threadid] = fftw_plan.dft_1d(spectrum.Length, IFFT_ArrayIn[threadid], IFFT_ArrayOut[threadid], fftw_direction.Backward, fftw_flags.Estimate);
+                            IFFT_ArrayIn[threadid] = new fftw_complexarray(spectrum.Length);
+                            IFFT_ArrayOut[threadid] = new fftw_complexarray(spectrum.Length);
+                            IFFT_Plan[threadid] = fftw_plan.dft_1d(spectrum.Length, IFFT_ArrayIn[threadid], IFFT_ArrayOut[threadid], fftw_direction.Backward, fftw_flags.Estimate);
+                        }
                     }
 
                     IFFT_ArrayIn[threadid].SetData(spectrum);

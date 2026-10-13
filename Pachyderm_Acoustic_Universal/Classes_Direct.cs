@@ -63,6 +63,7 @@ namespace Pachyderm_Acoustic
         private int current_Receiver;
         private int filter_Receiver;
         private bool creatingFilters;
+        private bool mappingReceiver;
         private sealed class SpeakerArrival
         {
             public double Time;
@@ -79,6 +80,8 @@ namespace Pachyderm_Acoustic
         private double[][][] SpeakerBandPressure;
         public bool CoherentSpeakers { get { return SpeakerArrivals != null; } }
         internal double[][][] IncoherentIo { get { return IndependentIo; } }
+        internal float[][,,] IncoherentDirPositive { get { return IndependentDirPositive; } }
+        internal float[][,,] IncoherentDirNegative { get { return IndependentDirNegative; } }
 
         /// <summary>
         /// This method copies the direct sound information to an open, writeable binary stream.
@@ -324,6 +327,7 @@ namespace Pachyderm_Acoustic
         public Direct_Sound(Source Src_in, Receiver_Bank Rec_in, Scene Room_in, int[] Octaves, bool ScreenCalc = false, bool SPL_Only = false)
         {
             this.SPL_Only = SPL_Only;
+            mappingReceiver = Rec_in is PachMapReceiver;
             Screen_atten = ScreenCalc;
             type = Src_in.Type();
             Validity = new bool[Rec_in.Count];//[Rec_in.Count];
@@ -804,7 +808,6 @@ namespace Pachyderm_Acoustic
                 Dir_Rec_Pos = new float[Receiver.Count][,,];
                 Dir_Rec_Neg = new float[Receiver.Count][,,];
 
-                //for(int i = 0; i < Receiver.Count; i++)
                 System.Threading.Tasks.Parallel.For(0, Receiver.Count, (i) =>
                 {
                     Random i_rnd = new Random(i * 1000 + 1);
@@ -982,11 +985,12 @@ namespace Pachyderm_Acoustic
                     }
             // Coherent speaker energy is obtained from the summed pressure response.
             // Populate it before callers consume Io (mapping does not create filters).
-            if (CoherentSpeakers) Create_Filter();
+            if (CoherentSpeakers) Create_Filter(!mappingReceiver);
         }
 
         public double[] Dir_Filter(int Rec_ID, double alt, double azi, bool degrees, int Sampling_Frequency, bool flat)
         {
+            if (Sampling_Frequency == 44100 && flat && Fdir == null) Create_Filter();
             double[][] F_dir_temp = (Sampling_Frequency == 44100 && flat) ? Fdir[Rec_ID] : Create_Filter(SWL, Rec_ID, Sampling_Frequency);
             bool cachedDirectional = Sampling_Frequency == 44100 && flat;
             int dir0 = cachedDirectional ? 0 : 1;
@@ -1020,6 +1024,7 @@ namespace Pachyderm_Acoustic
 
         public double[][] Dir_Filter(int Rec_ID, double alt, double azi, bool degrees, int Sampling_Frequency, bool Figure8, bool flat)
         {
+            if (Sampling_Frequency == 44100 && flat && Fdir == null) Create_Filter();
             double[][] F_dir_temp = (Sampling_Frequency == 44100 && flat) ? Fdir[Rec_ID] : Create_Filter(SWL, Rec_ID, Sampling_Frequency);
             bool cachedDirectional = Sampling_Frequency == 44100 && flat;
             int dir0 = cachedDirectional ? 0 : 1;
@@ -1466,6 +1471,7 @@ namespace Pachyderm_Acoustic
         
         public double[][] Get_Filter(int Rec_ID, int Sampling_Frequency)
         {
+            if (F == null && Sampling_Frequency == 44100 && CoherentSpeakers) Create_Filter();
             if (F == null || Sampling_Frequency != 44100)
             {
                 return Create_Filter(SWL, Rec_ID, Sampling_Frequency);
@@ -1481,8 +1487,12 @@ namespace Pachyderm_Acoustic
         /// </summary>
         public void Create_Filter()
         {
+            Create_Filter(true);
+        }
+
+        private void Create_Filter(bool pressureFilters)
+        {
             filter_Receiver = 0;
-            creatingFilters = true;
             if (CoherentSpeakers && IndependentIo == null)
             {
                 IndependentIo = Io.Select(receiver => receiver.Take(BandCount).Select(band => (double[])band.Clone()).ToArray()).ToArray();
@@ -1490,8 +1500,8 @@ namespace Pachyderm_Acoustic
                 IndependentDirNegative = Dir_Rec_Neg.Select(values => (float[,,])values.Clone()).ToArray();
             }
             if (CoherentSpeakers) SpeakerBandPressure = new double[Receiver.Count][][];
-            F = new double[Receiver.Count][];
-            Fdir = new double[Receiver.Count][][];
+            F = pressureFilters ? new double[Receiver.Count][] : null;
+            Fdir = pressureFilters ? new double[Receiver.Count][][] : null;
 
             double[] p_mod = new double[BandCount];
             for (int i = 0; i < BandCount; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
@@ -1499,112 +1509,133 @@ namespace Pachyderm_Acoustic
             int inputFS = SampleFreq > 0 ? SampleFreq : 44100;
             const int outputFS = 44100;
 
-            Parallel.For(0, Receiver.Count, i =>
-            //for (int i = 0; i < Receiver.Count; i++)
+            creatingFilters = true;
+            try
             {
-                double[][] ETC = new double[BandCount][];
-                int outputSamples = Math.Max(1, (int)Math.Ceiling(Io[i][0].Length * (double)outputFS / inputFS));
-                F[i] = new double[outputSamples + 16384];
-                Fdir[i] = new double[6][];
-                for (int j = 0; j < 6; j++) Fdir[i][j] = new double[outputSamples + 16384];
-
-                for (int t = 0; t < (IndependentIo ?? Io)[i][0].Length; t++)
+                int workers = Math.Min(Receiver.Count, System.Environment.ProcessorCount);
+                Parallel.For(0, workers, worker =>
                 {
-                    double[] pr = new double[BandCount];
-                    bool hasEnergy = false;
-                    for (int oct = 0; oct < BandCount; oct++)
+                    for (int i = worker; i < Receiver.Count; i += workers)
                     {
-                        double intensity = (IndependentIo ?? Io)[i][oct][t];
-                        if (intensity > 0) hasEnergy = true;
-                        pr[oct] = Math.Sqrt(Math.Max(0, intensity) * Rho_C[i]) * p_mod[oct];
-                    }
-                    if (!hasEnergy) continue;
-
-                    int t_out = (int)Math.Round(t * (double)outputFS / inputFS);
-                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, outputFS, 16384, 0);
-                    for (int u = 0; u < Pmin.Length && t_out + u < F[i].Length; u++)
-                    {
-                        F[i][t_out + u] += Pmin[u];
-                    }
-
-                    double[][] dir_E = new double[6][];
-                    for (int d = 0; d < 6; d++) dir_E[d] = new double[BandCount];
-                    Vector vpos = new Vector(), vneg = new Vector();
-                    for (int oct = 0; oct < BandCount; oct++)
-                    {
-                        vpos += new Vector(Math.Abs((IndependentDirPositive ?? Dir_Rec_Pos)[i][oct, t, 0]), Math.Abs((IndependentDirPositive ?? Dir_Rec_Pos)[i][oct, t, 1]), Math.Abs((IndependentDirPositive ?? Dir_Rec_Pos)[i][oct, t, 2]));
-                        vneg += new Vector(Math.Abs((IndependentDirNegative ?? Dir_Rec_Neg)[i][oct, t, 0]), Math.Abs((IndependentDirNegative ?? Dir_Rec_Neg)[i][oct, t, 1]), Math.Abs((IndependentDirNegative ?? Dir_Rec_Neg)[i][oct, t, 2]));
-                    }
-
-                    for (int j = 0; j < 3; j++)
-                    {
-                        for (int k = 0; k < Pmin.Length && t_out + k < Fdir[i][0].Length; k++)
+                        try
                         {
-                            int j2 = 2 * j;
-                            Fdir[i][j2][t_out + k] += Pmin[k] * Math.Sqrt(vpos.byint(j));
-                            Fdir[i][j2 + 1][t_out + k] += Pmin[k] * Math.Sqrt(vneg.byint(j));
-                        }
-                    }
-                }
-                if (CoherentSpeakers)
-                {
-                    foreach (SpeakerArrival arrival in SpeakerArrivals[i]) arrival.ReuseResponse = true;
-                    double[] coherentFilter = Coherent_Filter(i, outputFS, BandCount, SWL);
-                    if (F[i].Length < coherentFilter.Length) Array.Resize(ref F[i], coherentFilter.Length);
-                    for (int sample = 0; sample < coherentFilter.Length; sample++) F[i][sample] += coherentFilter[sample];
-                    int[] dimensions = { 1, 4, 2, 5, 3, 6 };
-                    for (int direction = 0; direction < 6; direction++)
-                    {
-                        double[] response = Coherent_Filter(i, outputFS, BandCount, SWL, dimensions[direction]);
-                        if (Fdir[i][direction].Length < response.Length) Array.Resize(ref Fdir[i][direction], response.Length);
-                        for (int sample = 0; sample < response.Length; sample++) Fdir[i][direction][sample] += response[sample];
-                    }
-                    SpeakerBandPressure[i] = new double[BandCount][];
-                    for (int band = 0; band < BandCount; band++)
-                    {
-                        double[] pressure = Coherent_Filter(i, outputFS, band);
-                        SpeakerBandPressure[i][band] = pressure;
-                        int samples = SPL_Only ? 1 : Math.Max(IndependentIo[i][band].Length, (int)Math.Ceiling(pressure.Length * (double)inputFS / outputFS));
-                        Io[i][band] = new double[samples];
-                        Array.Copy(IndependentIo[i][band], Io[i][band], Math.Min(samples, IndependentIo[i][band].Length));
-                        for (int sample = 0; sample < pressure.Length; sample++)
-                            Io[i][band][SPL_Only ? 0 : Math.Min(samples - 1, (int)(sample * (double)inputFS / outputFS))] += pressure[sample] * pressure[sample] / Rho_C[i];
-                    }
-                    Dir_Rec_Pos[i] = new float[BandCount, Io[i][0].Length, 3];
-                    Dir_Rec_Neg[i] = new float[BandCount, Io[i][0].Length, 3];
-                    for (int band = 0; band < BandCount; band++)
-                    {
-                        for (int sample = 0; sample < IndependentIo[i][band].Length; sample++)
-                            for (int axis = 0; axis < 3; axis++)
+                            if (pressureFilters)
                             {
-                                Dir_Rec_Pos[i][band, sample, axis] = IndependentDirPositive[i][band, sample, axis];
-                                Dir_Rec_Neg[i][band, sample, axis] = IndependentDirNegative[i][band, sample, axis];
+                                int outputSamples = Math.Max(1, (int)Math.Ceiling((IndependentIo ?? Io)[i][0].Length * (double)outputFS / inputFS));
+                                F[i] = new double[outputSamples + 16384];
+                                Fdir[i] = new double[6][];
+                                for (int j = 0; j < 6; j++) Fdir[i][j] = new double[outputSamples + 16384];
+
+                                for (int t = 0; t < (IndependentIo ?? Io)[i][0].Length; t++)
+                                {
+                                    double[] pr = new double[BandCount];
+                                    bool hasEnergy = false;
+                                    for (int oct = 0; oct < BandCount; oct++)
+                                    {
+                                        double intensity = (IndependentIo ?? Io)[i][oct][t];
+                                        if (intensity > 0) hasEnergy = true;
+                                        pr[oct] = Math.Sqrt(Math.Max(0, intensity) * Rho_C[i]) * p_mod[oct];
+                                    }
+                                    if (!hasEnergy) continue;
+
+                                    int t_out = (int)Math.Round(t * (double)outputFS / inputFS);
+                                    double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, outputFS, 16384, worker);
+                                    for (int u = 0; u < Pmin.Length && t_out + u < F[i].Length; u++)
+                                    {
+                                        F[i][t_out + u] += Pmin[u];
+                                    }
+
+                                    Vector vpos = new Vector(), vneg = new Vector();
+                                    for (int oct = 0; oct < BandCount; oct++)
+                                    {
+                                        vpos += new Vector(Math.Abs((IndependentDirPositive ?? Dir_Rec_Pos)[i][oct, t, 0]), Math.Abs((IndependentDirPositive ?? Dir_Rec_Pos)[i][oct, t, 1]), Math.Abs((IndependentDirPositive ?? Dir_Rec_Pos)[i][oct, t, 2]));
+                                        vneg += new Vector(Math.Abs((IndependentDirNegative ?? Dir_Rec_Neg)[i][oct, t, 0]), Math.Abs((IndependentDirNegative ?? Dir_Rec_Neg)[i][oct, t, 1]), Math.Abs((IndependentDirNegative ?? Dir_Rec_Neg)[i][oct, t, 2]));
+                                    }
+
+                                    for (int j = 0; j < 3; j++)
+                                    {
+                                        for (int k = 0; k < Pmin.Length && t_out + k < Fdir[i][0].Length; k++)
+                                        {
+                                            int j2 = 2 * j;
+                                            Fdir[i][j2][t_out + k] += Pmin[k] * Math.Sqrt(vpos.byint(j));
+                                            Fdir[i][j2 + 1][t_out + k] += Pmin[k] * Math.Sqrt(vneg.byint(j));
+                                        }
+                                    }
+                                }
                             }
-                        for (int direction = 0; direction < 6; direction++)
+                            if (CoherentSpeakers)
+                            {
+                                foreach (SpeakerArrival arrival in SpeakerArrivals[i]) arrival.ReuseResponse = true;
+                                int[] dimensions = { 1, 4, 2, 5, 3, 6 };
+                                if (pressureFilters)
+                                {
+                                    double[] coherentFilter = Coherent_Filter(i, outputFS, BandCount, SWL, 0, worker);
+                                    if (F[i].Length < coherentFilter.Length) Array.Resize(ref F[i], coherentFilter.Length);
+                                    for (int sample = 0; sample < coherentFilter.Length; sample++) F[i][sample] += coherentFilter[sample];
+                                    for (int direction = 0; direction < 6; direction++)
+                                    {
+                                        double[] response = Coherent_Filter(i, outputFS, BandCount, SWL, dimensions[direction], worker);
+                                        if (Fdir[i][direction].Length < response.Length) Array.Resize(ref Fdir[i][direction], response.Length);
+                                        for (int sample = 0; sample < response.Length; sample++) Fdir[i][direction][sample] += response[sample];
+                                    }
+                                }
+                                SpeakerBandPressure[i] = new double[BandCount][];
+                                for (int band = 0; band < BandCount; band++)
+                                {
+                                    double[] pressure = Coherent_Filter(i, outputFS, band, null, 0, worker);
+                                    SpeakerBandPressure[i][band] = pressure;
+                                    int samples = SPL_Only ? 1 : Math.Max(IndependentIo[i][band].Length, (int)Math.Ceiling(pressure.Length * (double)inputFS / outputFS));
+                                    Io[i][band] = new double[samples];
+                                    Array.Copy(IndependentIo[i][band], Io[i][band], Math.Min(samples, IndependentIo[i][band].Length));
+                                    for (int sample = 0; sample < pressure.Length; sample++)
+                                        Io[i][band][SPL_Only ? 0 : Math.Min(samples - 1, (int)(sample * (double)inputFS / outputFS))] += pressure[sample] * pressure[sample] / Rho_C[i];
+                                    if (band == 0)
+                                    {
+                                        Dir_Rec_Pos[i] = new float[BandCount, Io[i][0].Length, 3];
+                                        Dir_Rec_Neg[i] = new float[BandCount, Io[i][0].Length, 3];
+                                    }
+                                    for (int sample = 0; sample < IndependentIo[i][band].Length; sample++)
+                                        for (int axis = 0; axis < 3; axis++)
+                                        {
+                                            Dir_Rec_Pos[i][band, sample, axis] = IndependentDirPositive[i][band, sample, axis];
+                                            Dir_Rec_Neg[i][band, sample, axis] = IndependentDirNegative[i][band, sample, axis];
+                                        }
+                                    for (int direction = 0; direction < 6; direction++)
+                                    {
+                                        double[] directional = Coherent_Filter(i, outputFS, band, null, dimensions[direction], worker);
+                                        for (int sample = 0; sample < directional.Length; sample++)
+                                        {
+                                            int index = SPL_Only ? 0 : Math.Min(Io[i][band].Length - 1, (int)(sample * (double)inputFS / outputFS));
+                                            float energy = (float)(directional[sample] * directional[sample] / Rho_C[i]);
+                                            if (direction % 2 == 0) Dir_Rec_Pos[i][band, index, direction / 2] += energy;
+                                            else Dir_Rec_Neg[i][band, index, direction / 2] += energy;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        finally
                         {
-                            double[] pressure = Coherent_Filter(i, outputFS, band, null, dimensions[direction]);
-                            for (int sample = 0; sample < pressure.Length; sample++)
+                            if (CoherentSpeakers) foreach (SpeakerArrival arrival in SpeakerArrivals[i])
                             {
-                                int index = SPL_Only ? 0 : Math.Min(Io[i][band].Length - 1, (int)(sample * (double)inputFS / outputFS));
-                                float energy = (float)(pressure[sample] * pressure[sample] / Rho_C[i]);
-                                if (direction % 2 == 0) Dir_Rec_Pos[i][band, index, direction / 2] += energy;
-                                else Dir_Rec_Neg[i][band, index, direction / 2] += energy;
+                                arrival.ReuseResponse = false;
+                                arrival.Response = arrival.DelayedResponse = arrival.BandResponse = arrival.ResponseSWL = null;
                             }
                         }
+                        System.Threading.Interlocked.Increment(ref filter_Receiver);
                     }
-                    foreach (SpeakerArrival arrival in SpeakerArrivals[i])
-                    {
-                        arrival.ReuseResponse = false;
-                        arrival.Response = arrival.DelayedResponse = arrival.BandResponse = arrival.ResponseSWL = null;
-                    }
-                }
-                System.Threading.Interlocked.Increment(ref filter_Receiver);
-            });
-            creatingFilters = false;
+                });
+            }
+            finally { creatingFilters = false; }
         }
 
         /// <summary>Pressure sum for speaker members, relative to the floor of the common direct-arrival time.</summary>
         public double[] Coherent_Filter(int receiver, int sampleFrequency, int band, double[] referenceSWL = null, int dimension = 0)
+        {
+            return Coherent_Filter(receiver, sampleFrequency, band, referenceSWL, dimension, 0);
+        }
+
+        private double[] Coherent_Filter(int receiver, int sampleFrequency, int band, double[] referenceSWL, int dimension, int threadid)
         {
             if (!CoherentSpeakers) return new double[0];
             if (referenceSWL == null && dimension == 0 && sampleFrequency == 44100 && band < BandCount &&
@@ -1631,10 +1662,10 @@ namespace Pachyderm_Acoustic
                 double fraction = relativeTime - start / (double)sampleFrequency;
                 bool reuse = arrival.ReuseResponse && arrival.Response != null && arrival.ResponseRate == sampleFrequency &&
                     (referenceSWL == null ? arrival.ResponseSWL == null : arrival.ResponseSWL != null && referenceSWL.SequenceEqual(arrival.ResponseSWL));
-                double[] response = reuse ? arrival.Response : Audio.Pach_SP.Filter.Transfer_Function(amplitudes.Select(value => value / maximumAmplitude).ToArray(), sampleFrequency, 16384, 0);
+                double[] response = reuse ? arrival.Response : Audio.Pach_SP.Filter.Transfer_Function(amplitudes.Select(value => value / maximumAmplitude).ToArray(), sampleFrequency, 16384, threadid);
                 if (!reuse)
                     for (int sample = 0; sample < response.Length; sample++) response[sample] *= maximumAmplitude;
-                double[] delayed = reuse ? arrival.DelayedResponse : Audio.Pach_SP.Fractional_Delay(response, arrival.Delays, Math.Max(0, fraction), sampleFrequency, 0);
+                double[] delayed = reuse ? arrival.DelayedResponse : Audio.Pach_SP.Fractional_Delay(response, arrival.Delays, Math.Max(0, fraction), sampleFrequency, threadid);
                 if (arrival.ReuseResponse && !reuse)
                 {
                     arrival.Response = response;
@@ -1649,8 +1680,8 @@ namespace Pachyderm_Acoustic
                     if (reuse && arrival.ResponseBand == band && arrival.BandResponse != null) delayed = arrival.BandResponse;
                     else
                     {
-                        double[] reference = ThirdOctave ? Audio.Pach_SP.FIR_Third_Bandpass(response, band, sampleFrequency, 0) : Audio.Pach_SP.FIR_Bandpass(response, band, sampleFrequency, 0);
-                        delayed = ThirdOctave ? Audio.Pach_SP.FIR_Third_Bandpass(delayed, band, sampleFrequency, 0) : Audio.Pach_SP.FIR_Bandpass(delayed, band, sampleFrequency, 0);
+                        double[] reference = ThirdOctave ? Audio.Pach_SP.FIR_Third_Bandpass(response, band, sampleFrequency, threadid) : Audio.Pach_SP.FIR_Bandpass(response, band, sampleFrequency, threadid);
+                        delayed = ThirdOctave ? Audio.Pach_SP.FIR_Third_Bandpass(delayed, band, sampleFrequency, threadid) : Audio.Pach_SP.FIR_Bandpass(delayed, band, sampleFrequency, threadid);
                         double sum = reference.Sum(value => value * value);
                         double scale = sum > 0 ? amplitudes[band] / Math.Sqrt(sum) : 0;
                         for (int sample = 0; sample < delayed.Length; sample++) delayed[sample] *= scale;
@@ -1679,8 +1710,6 @@ namespace Pachyderm_Acoustic
 
             double[] p_mod = new double[BandCount];
             for (int i = 0; i < BandCount; i++) p_mod[i] = Math.Pow(10, (120 - SWL[i]) / 20);
-
-            double[][] ETC = new double[BandCount][];
 
             if (dim == 0)
             {
@@ -1720,8 +1749,6 @@ namespace Pachyderm_Acoustic
 
                     double[] Pmin = Audio.Pach_SP.Filter.Transfer_Function(pr, Sampling_Frequency, 16384, 0);
 
-                    double[][] dir_E = new double[6][];
-                    for (int d = 0; d < 6; d++) dir_E[d] = new double[BandCount];
                     Vector vpos = new Vector(), vneg = new Vector();
                     for (int oct = 0; oct < BandCount; oct++)
                     {
@@ -1787,8 +1814,6 @@ namespace Pachyderm_Acoustic
                     F_out[0][t_out + u] += Pmin[u];
                 }
 
-                double[][] dir_E = new double[6][];
-                for (int d = 0; d < 6; d++) dir_E[d] = new double[BandCount];
                 Vector vpos = new Vector(), vneg = new Vector();
                 for (int oct = 0; oct < BandCount; oct++)
                 {

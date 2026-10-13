@@ -2116,6 +2116,12 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public static double[] ETCurve(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, int Src_ID, bool Start_at_Zero)
             {
+                return ETCurve(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Octave, Rec_ID, Src_ID, Start_at_Zero, null, null);
+            }
+
+            // Optional directional energy for coherent specular mapping, in the receiver's incoming-ray convention.
+            internal static double[] ETCurve(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Octave, int Rec_ID, int Src_ID, bool Start_at_Zero, Vector[] positive, Vector[] negative)
+            {
                 double[] Histogram = null;
 
                 double delay = 0;
@@ -2137,7 +2143,7 @@ namespace Pachyderm_Acoustic
                     Histogram = new double[(int)((CO_Time_ms + (int)delay) * 0.001 * Sampling_Frequency)];
                 }
 
-                if (Direct[Src_ID] != null && Direct[Src_ID].IsOccluded(Rec_ID))
+                if (Direct[Src_ID] != null && (Direct[Src_ID].IsOccluded(Rec_ID) || Direct[Src_ID].CoherentSpeakers))
                 {
                     if (Direct[Src_ID].CoherentSpeakers)
                     {
@@ -2148,25 +2154,64 @@ namespace Pachyderm_Acoustic
                         foreach (int band in bands)
                         {
                             double[] pressure = new double[(int)Math.Ceiling(Histogram.Length * (double)pressureRate / Sampling_Frequency)];
+                            double[][] directional = positive == null ? null : new double[6][];
+                            if (directional != null) for (int direction = 0; direction < 6; direction++) directional[direction] = new double[pressure.Length];
                             double[] response = direct.Coherent_Filter(Rec_ID, pressureRate, band);
                             int start = (int)Math.Floor(direct.Time(Rec_ID) * pressureRate) - origin;
                             for (int sample = Math.Max(0, -start); sample < response.Length && start + sample < pressure.Length; sample++) pressure[start + sample] += response[sample];
+                            if (directional != null)
+                                for (int direction = 0; direction < 6; direction++)
+                                {
+                                    response = direct.Coherent_Filter(Rec_ID, pressureRate, band, null, direction + 1);
+                                    for (int sample = Math.Max(0, -start); sample < response.Length && start + sample < pressure.Length; sample++) directional[direction][start + sample] += response[sample];
+                                }
                             if (ISData[Src_ID] != null)
                                 foreach (Deterministic_Reflection path in ISData[Src_ID].Paths[Rec_ID].Where(path => path.CoherentSpeaker))
                                 {
                                     response = path.CoherentBandPressure(band, pressureRate, direct.Rho_C[Rec_ID]);
                                     start = path.FilterSample(pressureRate) - origin;
                                     for (int sample = Math.Max(0, -start); sample < response.Length && start + sample < pressure.Length; sample++) pressure[start + sample] += response[sample];
+                                    if (directional != null)
+                                    {
+                                        Vector arrival = path.Dir_Energy(band)[0] * -1;
+                                        arrival.Normalize();
+                                        for (int direction = 0; direction < 6; direction++)
+                                        {
+                                            double component = arrival.byint(direction % 3);
+                                            double weight = Math.Sqrt(Math.Max(0, direction < 3 ? component : -component));
+                                            double[] channel = path is Compound_Path ? path.CoherentBandPressure(band, pressureRate, direct.Rho_C[Rec_ID], 2 * (direction % 3) + (direction < 3 ? 1 : 2)) : response;
+                                            if (path is Compound_Path) weight = 1;
+                                            for (int sample = Math.Max(0, -start); sample < channel.Length && start + sample < pressure.Length; sample++) directional[direction][start + sample] += channel[sample] * weight;
+                                        }
+                                    }
                                 }
                             for (int sample = 0; sample < pressure.Length; sample++)
                             {
                                 int index = (int)(sample * (double)Sampling_Frequency / pressureRate);
                                 if (index < Histogram.Length) Histogram[index] += pressure[sample] * pressure[sample] / direct.Rho_C[Rec_ID];
+                                if (directional != null && index < positive.Length)
+                                {
+                                    positive[index].dx += directional[0][sample] * directional[0][sample] / direct.Rho_C[Rec_ID];
+                                    positive[index].dy += directional[1][sample] * directional[1][sample] / direct.Rho_C[Rec_ID];
+                                    positive[index].dz += directional[2][sample] * directional[2][sample] / direct.Rho_C[Rec_ID];
+                                    negative[index].dx -= directional[3][sample] * directional[3][sample] / direct.Rho_C[Rec_ID];
+                                    negative[index].dy -= directional[4][sample] * directional[4][sample] / direct.Rho_C[Rec_ID];
+                                    negative[index].dz -= directional[5][sample] * directional[5][sample] / direct.Rho_C[Rec_ID];
+                                }
                             }
                             double[] independent = direct.IncoherentIo[Rec_ID][band];
                             int directStart = Start_at_Zero ? 0 : (int)Math.Floor(direct.Time(Rec_ID) * Sampling_Frequency);
                             for (int sample = 0; sample < independent.Length; sample++)
-                                if (directStart + sample >= 0 && directStart + sample < Histogram.Length) Histogram[directStart + sample] += independent[sample];
+                                if (directStart + sample >= 0 && directStart + sample < Histogram.Length)
+                                {
+                                    int index = directStart + sample;
+                                    Histogram[index] += independent[sample];
+                                    if (positive != null && index < positive.Length)
+                                    {
+                                        positive[index] += new Vector(Math.Abs(direct.IncoherentDirPositive[Rec_ID][band, sample, 0]), Math.Abs(direct.IncoherentDirPositive[Rec_ID][band, sample, 1]), Math.Abs(direct.IncoherentDirPositive[Rec_ID][band, sample, 2]));
+                                        negative[index] -= new Vector(Math.Abs(direct.IncoherentDirNegative[Rec_ID][band, sample, 0]), Math.Abs(direct.IncoherentDirNegative[Rec_ID][band, sample, 1]), Math.Abs(direct.IncoherentDirNegative[Rec_ID][band, sample, 2]));
+                                    }
+                                }
                         }
                         if (ISData[Src_ID] != null)
                             foreach (Deterministic_Reflection path in ISData[Src_ID].Paths[Rec_ID].Where(path => !path.CoherentSpeaker))
@@ -2174,6 +2219,17 @@ namespace Pachyderm_Acoustic
                                 int start = path.FilterSample(Sampling_Frequency) - (int)(origin * (double)Sampling_Frequency / pressureRate);
                                 double[] energy = path.Energy(Octave, Sampling_Frequency);
                                 for (int sample = Math.Max(0, -start); sample < energy.Length && start + sample < Histogram.Length; sample++) Histogram[start + sample] += energy[sample];
+                                if (positive != null)
+                                {
+                                    double[][] channels = path is Compound_Path compound ? Enumerable.Range(1, 6).Select(dimension => compound.Energy(Octave, Sampling_Frequency, dimension)).ToArray() : null;
+                                    Vector[] arrivals = channels == null ? path.Dir_Energy(Octave) : null;
+                                    for (int sample = Math.Max(0, -start); sample < energy.Length && start + sample < positive.Length; sample++)
+                                    {
+                                        Vector arrival = arrivals == null ? new Vector() : arrivals[sample] * -1;
+                                        positive[start + sample] += channels == null ? new Vector(Math.Max(0, arrival.dx), Math.Max(0, arrival.dy), Math.Max(0, arrival.dz)) : new Vector(channels[0][sample], channels[2][sample], channels[4][sample]);
+                                        negative[start + sample] += channels == null ? new Vector(Math.Min(0, arrival.dx), Math.Min(0, arrival.dy), Math.Min(0, arrival.dz)) : new Vector(-channels[1][sample], -channels[3][sample], -channels[5][sample]);
+                                    }
+                                }
                             }
                         return Histogram;
                     }
