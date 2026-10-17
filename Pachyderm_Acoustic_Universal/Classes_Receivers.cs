@@ -388,8 +388,13 @@ namespace Pachyderm_Acoustic
 
             public virtual bool HasFilter()
             {
+                return HasFilter(0);
+            }
+
+            public virtual bool HasFilter(int Rec_Index)
+            {
                 while (CreatingFilter) System.Threading.Thread.Sleep(500);
-                return Rec_List[0].Recs.HasFilter();
+                return Rec_List[Rec_Index].Recs.HasFilter();
             }
 
             public virtual void GetFilter(int Rec_Index, out double[] Filter)

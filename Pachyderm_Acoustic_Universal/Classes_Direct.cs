@@ -65,6 +65,11 @@ namespace Pachyderm_Acoustic
         private bool creatingFilters;
         private bool mappingReceiver;
         public Coherent_Source_Waveforms SourceWaveforms { get; set; }
+        internal int PressureOriginSample(int sampleFrequency)
+        {
+            return SourceWaveforms != null ? (int)Math.Round(SourceWaveforms.TimeOriginSeconds * sampleFrequency) :
+                Audio.Pach_SP.Filter is Audio.Pach_SP.Linear_Phase_System ? 8192 : 0;
+        }
         private sealed class SpeakerArrival
         {
             public int SourceIndex = -1;
@@ -1633,12 +1638,13 @@ namespace Pachyderm_Acoustic
                                 for (int band = 0; band < BandCount; band++)
                                 {
                                     double[] pressure = Coherent_Filter(i, outputFS, band, null, 0, worker);
+                                    int pressureOrigin = PressureOriginSample(outputFS);
                                     if (SpeakerBandPressure != null) SpeakerBandPressure[i][band] = pressure;
                                     int samples = SPL_Only ? 1 : Math.Max(sourceSamples, Math.Max(IndependentIo[i][band].Length, (int)Math.Ceiling(pressure.Length * (double)inputFS / outputFS)));
                                     Io[i][band] = new double[samples];
                                     Array.Copy(IndependentIo[i][band], Io[i][band], Math.Min(samples, IndependentIo[i][band].Length));
                                     for (int sample = 0; sample < pressure.Length; sample++)
-                                        Io[i][band][SPL_Only ? 0 : Math.Min(samples - 1, (int)(sample * (double)inputFS / outputFS))] += pressure[sample] * pressure[sample] / Rho_C[i];
+                                        Io[i][band][SPL_Only ? 0 : Math.Min(samples - 1, Math.Max(0, (int)((sample - pressureOrigin) * (double)inputFS / outputFS)))] += pressure[sample] * pressure[sample] / Rho_C[i];
                                     if (band == 0)
                                     {
                                         Dir_Rec_Pos[i] = new float[BandCount, Io[i][0].Length, 3];
@@ -1655,7 +1661,7 @@ namespace Pachyderm_Acoustic
                                         double[] directional = Coherent_Filter(i, outputFS, band, null, dimensions[direction], worker);
                                         for (int sample = 0; sample < directional.Length; sample++)
                                         {
-                                            int index = SPL_Only ? 0 : Math.Min(Io[i][band].Length - 1, (int)(sample * (double)inputFS / outputFS));
+                                            int index = SPL_Only ? 0 : Math.Min(Io[i][band].Length - 1, Math.Max(0, (int)((sample - pressureOrigin) * (double)inputFS / outputFS)));
                                             float energy = (float)(directional[sample] * directional[sample] / Rho_C[i]);
                                             if (direction % 2 == 0) Dir_Rec_Pos[i][band, index, direction / 2] += energy;
                                             else Dir_Rec_Neg[i][band, index, direction / 2] += energy;

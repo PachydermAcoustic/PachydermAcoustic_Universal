@@ -36,6 +36,7 @@ namespace Pachyderm_Acoustic
         private MemoryMappedFile mapping;
         private MemoryMappedViewAccessor view;
         public int BandCount { get; private set; }
+        internal double TimeOriginSeconds { get { return phaseSystem is Audio.Pach_SP.Linear_Phase_System ? Length * .5 / SampleRate : 0; } }
 
         public Coherent_Source_Waveforms(SourceCluster source, bool thirdOctave)
             : this(source.Sources.Select(s => s.IsSpeaker ? Utilities.AcousticalMath.ConvertBandEnergy(s.SoundPower, thirdOctave).Select(Math.Sqrt).ToArray() : null).ToArray(), Audio.Pach_SP.Filter)

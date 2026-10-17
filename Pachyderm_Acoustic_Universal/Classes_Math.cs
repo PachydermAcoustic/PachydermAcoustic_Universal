@@ -912,26 +912,26 @@ namespace Pachyderm_Acoustic
 
                 double Binwidth = 1 / sample_f;
 
-                int StartIndex = (int)Math.Floor((startTime) * sample_f);
+                int StartIndex = Math.Max(0, (int)Math.Floor((startTime) * sample_f));
                 int EndIndex = (int)Math.Floor((seconds + startTime) * sample_f);
                 double Sum_Early = 0;
                 double Sum_Late = 0;
 
-                for (int q = StartIndex; q < EndIndex; q++)
+                for (int q = StartIndex; q < Math.Min(EndIndex, etc.Length); q++)
                 {
                     Sum_Early += etc[q];
                 }
 
                 double bin_split_pt = (seconds + startTime - (EndIndex * Binwidth)) / Binwidth;
                 //Yields percentage of last bin to give to early energy calculation.
-                Sum_Early += bin_split_pt * etc[EndIndex];
+                if (EndIndex >= StartIndex && EndIndex < etc.Length) Sum_Early += bin_split_pt * etc[EndIndex];
 
-                for (int q = EndIndex + 1; q < etc.Length; q++)
+                for (int q = Math.Max(StartIndex, EndIndex + 1); q < etc.Length; q++)
                 {
                     Sum_Late += etc[q];
                 }
 
-                Sum_Late += (1 - bin_split_pt) * etc[EndIndex];
+                if (EndIndex >= StartIndex && EndIndex < etc.Length) Sum_Late += (1 - bin_split_pt) * etc[EndIndex];
                 return 10 * Math.Log10(Sum_Early / Sum_Late);
             }
 
@@ -1064,7 +1064,7 @@ namespace Pachyderm_Acoustic
                 if (!(sample_f > 0) || double.IsInfinity(sample_f)) throw new ArgumentOutOfRangeException(nameof(sample_f));
                 if (double.IsNaN(startTime) || double.IsInfinity(startTime) || LowerBound_s < 0 || UpperBound_s < LowerBound_s || double.IsNaN(LowerBound_s) || double.IsNaN(UpperBound_s) || double.IsInfinity(UpperBound_s)) throw new ArgumentException("Invalid lateral integration window.");
                 double origin = startTime * sample_f + (pressure ? 8192 : 0);
-                double start = Math.Floor(origin), end = Math.Floor(origin + UpperBound_s * sample_f);
+                double start = Math.Floor(startTime * sample_f), end = Math.Floor(origin + UpperBound_s * sample_f);
                 double lateralStart = Math.Ceiling(origin + LowerBound_s * sample_f);
                 double sum_Lateral = 0, sum_Total = 0;
                 if (start >= Total_ETC.Length || end < 0) return double.NaN;
@@ -1268,27 +1268,27 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public static double Definition(double[] etc, double sample_f, double seconds, double StartTime, bool pressure)
             {
-                if (pressure) StartTime += (double)8192 / sample_f;
+                if (pressure) seconds += (double)8192 / sample_f;
 
                 double Binwidth = 1 / sample_f;
 
                 int StartIndex = 0;
-                StartIndex = (int)Math.Floor(StartTime * sample_f);
+                StartIndex = Math.Max(0, (int)Math.Floor(StartTime * sample_f));
 
-                int EndIndex = (int)Math.Floor(seconds * sample_f) + StartIndex;
+                int EndIndex = (int)Math.Floor((seconds + StartTime) * sample_f);
                 double Sum_Early = 0;
                 double Sum_All = 0;
 
-                for (int q = 0; q < EndIndex; q++)
+                for (int q = StartIndex; q < Math.Min(EndIndex, etc.Length); q++)
                 {
                     Sum_Early += etc[q];
                 }
                 double bin_split_pt = (seconds + StartTime - (EndIndex * Binwidth)) / Binwidth;
 
                 //Yields percentage of last bin to give to early energy calculation.
-                Sum_Early += bin_split_pt * etc[EndIndex];
+                if (EndIndex >= StartIndex && EndIndex < etc.Length) Sum_Early += bin_split_pt * etc[EndIndex];
 
-                for (int q = 0; q < etc.Length; q++)
+                for (int q = StartIndex; q < etc.Length; q++)
                 {
                     Sum_All += etc[q];
                 }
@@ -2174,11 +2174,12 @@ namespace Pachyderm_Acoustic
                     {
                         const int pressureRate = 44100;
                         Direct_Sound direct = Direct[Src_ID];
+                        int pressureOrigin = direct.PressureOriginSample(pressureRate);
                         int origin = Start_at_Zero ? (int)Math.Floor(direct.Time(Rec_ID) * pressureRate) : 0;
                         int[] bands = Octave >= direct.BandCount ? Enumerable.Range(0, direct.BandCount).ToArray() : new int[] { Octave };
                         foreach (int band in bands)
                         {
-                            double[] pressure = new double[(int)Math.Ceiling(Histogram.Length * (double)pressureRate / Sampling_Frequency)];
+                            double[] pressure = new double[(int)Math.Ceiling(Histogram.Length * (double)pressureRate / Sampling_Frequency) + pressureOrigin];
                             double[][] directional = positive == null ? null : new double[6][];
                             if (directional != null) for (int direction = 0; direction < 6; direction++) directional[direction] = new double[pressure.Length];
                             double[] response = direct.Coherent_Filter(Rec_ID, pressureRate, band);
@@ -2212,7 +2213,8 @@ namespace Pachyderm_Acoustic
                                 }
                             for (int sample = 0; sample < pressure.Length; sample++)
                             {
-                                int index = (int)(sample * (double)Sampling_Frequency / pressureRate);
+                                // Keep pre-ringing energy in the first bin while removing the synthesis delay.
+                                int index = Math.Max(0, (int)((sample - pressureOrigin) * (double)Sampling_Frequency / pressureRate));
                                 if (index < Histogram.Length) Histogram[index] += pressure[sample] * pressure[sample] / direct.Rho_C[Rec_ID];
                                 if (directional != null && index < positive.Length)
                                 {
@@ -2349,7 +2351,7 @@ namespace Pachyderm_Acoustic
                     }
                     else if (RTData != null && RTData is PachMapReceiver)
                     {
-                        power = Pachyderm_Acoustic.Utilities.AcousticalMath.Intensity_SPL((RTData as PachMapReceiver).SWL[Octave]);
+                        power = 1; // Mapping histograms already contain source power.
                     }
 
                     Histogram[0] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency)];
@@ -2518,7 +2520,7 @@ namespace Pachyderm_Acoustic
                     }
                     else if (RTData != null && RTData is PachMapReceiver)
                     {
-                        power = Pachyderm_Acoustic.Utilities.AcousticalMath.Intensity_SPL((RTData as PachMapReceiver).SWL[Octave]);
+                        power = 1; // Mapping histograms already contain source power.
                     }
                     Histogram[0] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency)];
                     Histogram[1] = new double[(int)(CO_Time_ms * 0.001 * Sampling_Frequency)];
@@ -2783,13 +2785,13 @@ namespace Pachyderm_Acoustic
             /// <returns></returns>
             public static double[] Auralization_Filter(Direct_Sound[] Direct, ImageSourceData[] ISData, Environment.Receiver_Bank[] RTData, double CO_Time_ms, int Sampling_Frequency, int Rec_ID, int Src_ID, bool Start_at_Zero, bool flat, IProgressFeedback VB = null)
             {
-                double[] SWL = Direct[Src_ID].SWL;
+                double[] SWL = Direct[Src_ID] != null ? Direct[Src_ID].SWL : RTData[Src_ID].SWL;
                 double[] F;
 
                 if (RTData[Src_ID] != null)
                 {
                     if (flat) RTData[Src_ID].GetFilter(Rec_ID, out F);
-                    else F = RTData[Src_ID].Create_Filter(Direct[Src_ID].SWL, Rec_ID, 0, VB);
+                    else F = RTData[Src_ID].Create_Filter(SWL, Rec_ID, 0, VB);
                 }
                 else
                 {
@@ -4220,7 +4222,7 @@ namespace Pachyderm_Acoustic
                 foreach (int s in SrcIDs)
                 {
                     double[] P = Auralization_Filter(Direct, ISData, RTData, CO_Time_ms, Sampling_Frequency, Rec_ID, s, StartAtZero, flat, VB);
-                    P = Audio.Pach_SP.Filter2Signal(P, Direct[s].SWL, Sampling_Frequency, 0);
+                    P = Audio.Pach_SP.Filter2Signal(P, Direct[s] != null ? Direct[s].SWL : RTData[s].SWL, Sampling_Frequency, 0);
                     for (int i = 0; i < P.Length; i++)
                     {
                         Histogram[i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += P[i];
@@ -4779,7 +4781,7 @@ namespace Pachyderm_Acoustic
                     double[][] IR = AurFilter_Fig8_3Axis(Direct.ElementAt<Direct_Sound>(s), ISData.ElementAt<ImageSourceData>(s), RTData.ElementAt<Receiver_Bank>(s), CO_Time_ms, Sampling_Frequency, Rec_ID, StartAtZero, alt, azi, degrees, flat);
                     for (int d = 0; d < 3; d++)
                     {
-                        IR[d] = Audio.Pach_SP.Filter2Signal(IR[d], Direct.ElementAt<Direct_Sound>(s).SWL, Sampling_Frequency, 0);
+                        IR[d] = Audio.Pach_SP.Filter2Signal(IR[d], Direct.ElementAt<Direct_Sound>(s) != null ? Direct.ElementAt<Direct_Sound>(s).SWL : RTData.ElementAt<Receiver_Bank>(s).SWL, Sampling_Frequency, 0);
                         for (int i = 0; i < IR[0].Length; i++)
                         {
                             Histogram[d][i + (int)Math.Ceiling(delays[s] / 1000 * Sampling_Frequency)] += IR[d][i];
