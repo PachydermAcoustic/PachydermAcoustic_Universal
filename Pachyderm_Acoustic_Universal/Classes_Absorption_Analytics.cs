@@ -245,11 +245,11 @@ namespace Pachyderm_Acoustic
                     case LayerType.Slotted_Panel:
                         return string.Format("7:{0}:{1}:{2}:{3}:{4};", depth, width, pitch, Embodied_Carbon, Material_Name);
                     case LayerType.SolidPlate:
-                        return string.Format("8:{0}:{1}:{2}:{3}:{4}:{5}", depth, density, YoungsModulus, PoissonsRatio, Embodied_Carbon, Material_Name);
+                        return string.Format("8:{0}:{1}:{2}:{3}:{4}:{5};", depth, density, YoungsModulus, PoissonsRatio, Embodied_Carbon, Material_Name);
                     case LayerType.BiotPorousAbsorber_Limp:
-                        return string.Format("9:false:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10}", depth, density, YoungsModulus, PoissonsRatio, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, Material_Name);
+                        return string.Format("9:false:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10};", depth, density, YoungsModulus, PoissonsRatio, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, Material_Name);
                     case LayerType.BiotPorousAbsorber_Rigid:
-                        return string.Format("10:true:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10}", depth, density, YoungsModulus, PoissonsRatio, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, Material_Name);
+                        return string.Format("10:true:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10};", depth, density, YoungsModulus, PoissonsRatio, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, Material_Name);
                     default:
                         throw new Exception("Unknown Layer Type");
                 }
@@ -498,25 +498,17 @@ namespace Pachyderm_Acoustic
                 }
 
                 double[] numerator = new double[Za[0].Length];
-                double denominator = 0;
                 for (int a = 0; a < Za.Length; a++)
                 {
-                    double d_mod = Math.Abs(Math.Cos(theta[a]) * Math.Sin(theta[a]) * dt);
-                    denominator += d_mod;
+                    double d_mod = Math.Abs(Math.Sin(theta[a]) * dt);
                     for (int f = 0; f < Za[a].Length; f++)
                     {
+                        if (double.IsNaN(Zan[a][f].Real) || double.IsNaN(Zan[a][f].Imaginary)) continue;
                         double ZanZrn = (Zan[a][f] + Zrn[a][f]).Magnitude;
-                        double costheta = Math.Cos(theta[a]);
-                        double sintheta = Math.Sin(theta[a]);
-                        
-                        if (costheta == 0 || sintheta == 0 ) continue;
-                        numerator[f] += ((4 * Zan[a][f].Real * Zrn[a][f].Real) * sintheta * dt / (ZanZrn * ZanZrn));
+                        // The historical finite average divides unit absorption by
+                        // radiation resistance. Cancel it here to also allow Re(Zr) = 0.
+                        numerator[f] += 4 * Zan[a][f].Real * d_mod / (ZanZrn * ZanZrn);
                     }
-                }
-
-                for (int f = 0; f < Za[0].Length; f++)
-                {
-                    numerator[f] /= (denominator * Math.PI/2);// (Math.PI/2);
                 }
 
                 return numerator;
@@ -1086,6 +1078,99 @@ namespace Pachyderm_Acoustic
                 return Zr;
             }
 
+            // Sven-Ingvar Thomasson, Theory and Experiments on the Sound Absorption as
+            // Function of the Area, KTH, Stockholm, May 1982, TRITA-TAK-8201,
+            // Table I (printed p. 15). Columns: ke, then Re(ZF), -Im(ZF) at
+            // theta = 0, 15, 30, 45, 60, 75, 90 degrees. Values normalized by rho*c.
+            // The printed exp(-i*omega*t) convention is conjugated here to match our
+            // exp(+i*omega*t) radiation methods. e is the FULL side of the square.
+            // Azimuth averaging in the source uses phi = 0, 15, 30, 45 degrees.
+            private static readonly double[,] Thomasson_Radiation_Impedance_Table =
+            {
+                { 0.50, .04,.23, .04,.23, .04,.23, .04,.23, .04,.23, .04,.23, .04,.23 },
+                { 0.71, .08,.32, .08,.32, .08,.32, .08,.32, .08,.31, .07,.31, .07,.31 },
+                { 1.00, .15,.43, .15,.43, .15,.43, .14,.43, .14,.42, .14,.42, .14,.42 },
+                { 1.41, .28,.56, .28,.56, .27,.55, .26,.54, .25,.53, .25,.53, .24,.53 },
+                { 2.00, .51,.66, .50,.66, .48,.65, .44,.64, .41,.63, .39,.62, .38,.62 },
+                { 2.82, .82,.65, .80,.65, .73,.66, .65,.68, .58,.68, .53,.69, .52,.69 },
+                { 4.00, 1.07,.41, 1.04,.46, .96,.57, .84,.67, .74,.75, .66,.78, .64,.79 },
+                { 5.66, 1.02,.14, 1.06,.22, 1.11,.43, 1.06,.66, .94,.82, .84,.90, .80,.92 },
+                { 8.00, .94,.19, 1.01,.16, 1.19,.25, 1.28,.56, 1.18,.87, 1.03,1.03, .97,1.08 },
+                { 11.31, 1.02,.09, 1.03,.14, 1.14,.15, 1.43,.38, 1.46,.86, 1.27,1.18, 1.17,1.26 },
+                { 16.00, 1.01,.09, 1.03,.08, 1.14,.14, 1.43,.20, 1.75,.77, 1.56,1.33, 1.41,1.48 },
+                { 22.63, 1.01,.06, 1.04,.06, 1.15,.08, 1.38,.15, 1.98,.56, 1.92,1.47, 1.69,1.75 },
+                { 32.00, .99,.04, 1.03,.04, 1.16,.06, 1.42,.12, 2.04,.30, 2.36,1.58, 2.02,2.07 },
+                { 45.25, 1.00,.03, 1.04,.03, 1.16,.04, 1.41,.08, 1.96,.19, 2.88,1.58, 2.41,2.46 },
+                { 64.00, 1.00,.02, 1.04,.02, 1.15,.03, 1.41,.05, 2.00,.18, 3.43,1.40, 2.87,2.92 },
+                { 90.51, 1.00,.02, 1.04,.02, 1.15,.02, 1.41,.04, 1.99,.11, 3.84,1.01, 3.42,3.46 },
+                { 128.00, 1.00,.01, 1.04,.01, 1.15,.01, 1.41,.03, 2.00,.07, 3.94,.54, 4.08,4.12 }
+            };
+
+            /// <summary>
+            /// Fast estimate of azimuth-averaged radiation impedance in Pa.s/m,
+            /// returned as [frequency][angle], with signed incidence angles in degrees
+            /// from the normal (-90 to 90). Uses Thomasson's Table I, interpolating
+            /// real and imaginary parts linearly in log(ke) and incidence angle.
+            /// Below ke=0.5 and above ke=128 uses the limiting formulas printed with
+            /// Table I; their joins retain the source's rounding/approximation errors.
+            /// Rectangles use e=2ab/(a+b), eq. (20), printed p. 13, and Table II,
+            /// printed p. 16: an equivalent-square approximation suggested for
+            /// 1/4 &lt; a/b &lt; 4, not an aspect-ratio-resolved rectangle calculation.
+            /// Existing integration methods are retained for that purpose.
+            /// </summary>
+            public static Complex[][] Finite_Radiation_Impedance_Thomasson_Rect(double Xdim, double Ydim, double[] freq, double[] angles, double C_Sound, double Rho0)
+            {
+                if (!(Xdim > 0) || double.IsInfinity(Xdim)) throw new ArgumentOutOfRangeException(nameof(Xdim));
+                if (!(Ydim > 0) || double.IsInfinity(Ydim)) throw new ArgumentOutOfRangeException(nameof(Ydim));
+                if (!(C_Sound > 0) || double.IsInfinity(C_Sound)) throw new ArgumentOutOfRangeException(nameof(C_Sound));
+                if (!(Rho0 > 0) || double.IsInfinity(Rho0)) throw new ArgumentOutOfRangeException(nameof(Rho0));
+                if (freq == null) throw new ArgumentNullException(nameof(freq));
+                if (angles == null) throw new ArgumentNullException(nameof(angles));
+                for (int j = 0; j < angles.Length; j++)
+                    if (!(Math.Abs(angles[j]) <= 90)) throw new ArgumentOutOfRangeException(nameof(angles));
+
+                double e = 2 * (Math.Min(Xdim, Ydim) / (1 + Math.Min(Xdim, Ydim) / Math.Max(Xdim, Ydim)));
+                Complex[][] Zr = new Complex[freq.Length][];
+                for (int i = 0; i < freq.Length; i++)
+                {
+                    if (!(freq[i] >= 0) || double.IsInfinity(freq[i])) throw new ArgumentOutOfRangeException(nameof(freq));
+                    double ke = Utilities.Numerics.PiX2 * (freq[i] / C_Sound) * e;
+                    Zr[i] = new Complex[angles.Length];
+                    int row = 0;
+                    while (row < 15 && ke > Thomasson_Radiation_Impedance_Table[row + 1, 0]) row++;
+                    for (int j = 0; j < angles.Length; j++)
+                    {
+                        Complex Z;
+                        if (ke < 0.5)
+                        {
+                            Z = new Complex(ke * ke / Utilities.Numerics.PiX2, .473 * ke);
+                        }
+                        else if (ke > 128)
+                        {
+                            double theta = Math.Abs(angles[j]) * Math.PI / 180;
+                            double cos = Math.Cos(theta), beta_ke = .956 / ke;
+                            Z = 1 / Complex.Sqrt(new Complex(cos * cos + 4 * beta_ke * beta_ke, -4 * beta_ke * Math.Sin(theta)));
+                        }
+                        else
+                        {
+                            double a = Math.Abs(angles[j]) / 15;
+                            int column = Math.Min(5, (int)a);
+                            a -= column;
+                            double t = Math.Log(ke / Thomasson_Radiation_Impedance_Table[row, 0]) /
+                                Math.Log(Thomasson_Radiation_Impedance_Table[row + 1, 0] / Thomasson_Radiation_Impedance_Table[row, 0]);
+                            int c = 1 + 2 * column;
+                            Complex lo = new Complex((1 - a) * Thomasson_Radiation_Impedance_Table[row, c] + a * Thomasson_Radiation_Impedance_Table[row, c + 2],
+                                (1 - a) * Thomasson_Radiation_Impedance_Table[row, c + 1] + a * Thomasson_Radiation_Impedance_Table[row, c + 3]);
+                            Complex hi = new Complex((1 - a) * Thomasson_Radiation_Impedance_Table[row + 1, c] + a * Thomasson_Radiation_Impedance_Table[row + 1, c + 2],
+                                (1 - a) * Thomasson_Radiation_Impedance_Table[row + 1, c + 1] + a * Thomasson_Radiation_Impedance_Table[row + 1, c + 3]);
+                            Z = (1 - t) * lo + t * hi;
+                        }
+                        Zr[i][j] = Z * (Rho0 * C_Sound);
+                    }
+                }
+                return Zr;
+            }
+
             public static Complex[][] Finite_Radiation_Impedance_Atalla_Rect(double Xdim, double Ydim, double[] freq, double[] angles, double C_Sound, double Rho0, IReporting Graph = null)
             {
                 Complex[][] Zr = new Complex[freq.Length][];
@@ -1527,8 +1612,12 @@ namespace Pachyderm_Acoustic
                 return Kx;
             }
 
+            // Cancellation returns null; callers must discard the incomplete result and output matrices.
             public static Complex[][] Transfer_Matrix_Divisible(bool Transmission, bool freq_log, int sample_Freq, double c_sound, List<ABS_Layer> LayerList, ref double[] frequency, ref Complex[] anglesdeg, out Complex[][] Trans, out Complex[][] R, CancellationToken CTS = default)
             {
+                Trans = null;
+                R = null;
+                if (CTS.IsCancellationRequested) return null;
                 if (freq_log)
                 {
                     //3rd octave band frequencies...
@@ -1564,7 +1653,7 @@ namespace Pachyderm_Acoustic
                 Complex[][] sintheta_inc = new Complex[Angles.Length][];
                 Complex[] K_Air = AbsorptionModels.Operations.Air_Wavenumber(c_sound, frequency);
 
-                CTS.ThrowIfCancellationRequested();
+                if (CTS.IsCancellationRequested) return null;
 
                 if (!custom)
                 {
@@ -1602,7 +1691,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                CTS.ThrowIfCancellationRequested();
+                if (CTS.IsCancellationRequested) return null;
 
                 bool lastwasperf = false;
                 for (int i = 0; i < LayerList.Count; i++)
@@ -1672,7 +1761,7 @@ namespace Pachyderm_Acoustic
                 Complex[][] Z;
                 Complex[][] T;
 
-                CTS.ThrowIfCancellationRequested();
+                if (CTS.IsCancellationRequested) return null;
 
                 if (LayerClusters[0][0].T == ABS_Layer.LayerType.Perforated_Panel ||
                         LayerClusters[0][0].T == ABS_Layer.LayerType.Perforated_Modal ||
@@ -1680,16 +1769,18 @@ namespace Pachyderm_Acoustic
                         LayerClusters[0][0].T == ABS_Layer.LayerType.Slotted_Panel)
                 {
                     Z = Transfer_Matrix_Perf(0, LayerClusters, kxi, sintheta_inc, K_Air, AbsorptionModels.Operations.Air_CharImpedance(1.2, c_sound, frequency), frequency, c_sound, Transmission, out T, CTS);
+                    if (Z == null) return null;
                 }
                 else
                 {
                     Z = Transfer_Matrix_PorousSolid(0, LayerClusters, kxi, sintheta_inc, K_Air, AbsorptionModels.Operations.Air_CharImpedance(1.2, c_sound, frequency), frequency, c_sound, Transmission, out T, CTS);
+                    if (Z == null) return null;
                 }
 
                 Complex[][] Reflection_Coef = new Complex[sintheta_inc.Length][];
                 Complex[] Zc_Air = AbsorptionModels.Operations.Air_CharImpedance(1.2, 343, frequency);
 
-                CTS.ThrowIfCancellationRequested();
+                if (CTS.IsCancellationRequested) return null;
 
                 for (int a = 0; a < sintheta_inc.Length; a++)
                 {   
@@ -1703,12 +1794,14 @@ namespace Pachyderm_Acoustic
 
                 R = Reflection_Coef;
                 Trans = T;
-                return Z;
+                return CTS.IsCancellationRequested ? null : Z;
             }
 
 
             public static Complex[][] Transfer_Matrix_Perf(int clusterid, List<List<ABS_Layer>> LayerList, Complex[][] kxi, Complex[][] sintheta_inc, Complex[] K_Air, Complex[] Zc_Air, double[] frequency, double c_sound, bool Transmission, out Complex[][] T, CancellationToken CTS = default)
             {
+                T = null;
+                if (CTS.IsCancellationRequested) return null;
                 ABS_Layer Layer_i = LayerList[clusterid].Last();
                 double width = Layer_i.width;
                 double pitch = Layer_i.pitch;
@@ -1761,14 +1854,12 @@ namespace Pachyderm_Acoustic
                         }
                         for (int j = 0; j < sintheta_inc.Length; j++) { Z[j] = new Complex[frequency.Length]; Trans[j] = new Complex[frequency.Length]; }
 
-                        ParallelOptions po = new ParallelOptions { CancellationToken = CTS, MaxDegreeOfParallelism = maxParallel };
+                        ParallelOptions po = new ParallelOptions { MaxDegreeOfParallelism = maxParallel };
                         if (clusterid < LayerList.Count - 1)
                         {
-                            try
-                            {
                                 Parallel.For(m_min, m_max + 1, m =>
                                 {
-                                CTS.ThrowIfCancellationRequested();
+                                if (CTS.IsCancellationRequested) return;
 
                                 for (int n = n_min; n <= n_max; n++)
                                 {
@@ -1783,13 +1874,15 @@ namespace Pachyderm_Acoustic
                                         double N_TERM = Utilities.Numerics.PiX2 * n / pitch;
 
                                         System.Numerics.Complex[][] kmn = new System.Numerics.Complex[kxi.Length][];
-                                        Zmn = Transfer_Matrix_PorousSolid_PostPerf(clusterid + 1, LayerList, M_TERM, N_TERM, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Tmn);
+                                        Zmn = Transfer_Matrix_PorousSolid_PostPerf(clusterid + 1, LayerList, M_TERM, N_TERM, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Tmn, CTS);
+                                        if (Zmn == null) return;
                                     }
                                     else if (Layer_i.grid == ABS_Layer.PerfGrid.Hexagonal)
                                     {
                                         double Gx = (2.0 * Math.PI / pitch) * m;
                                         double Gy = (-2.0 * Math.PI / (Math.Sqrt(3.0) * pitch)) * m + (4.0 * Math.PI / (Math.Sqrt(3.0) * pitch)) * n;
-                                        Zmn = Transfer_Matrix_PorousSolid_PostPerf(clusterid + 1, LayerList, Gx, Gy, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Tmn);
+                                        Zmn = Transfer_Matrix_PorousSolid_PostPerf(clusterid + 1, LayerList, Gx, Gy, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Tmn, CTS);
+                                        if (Zmn == null) return;
                                     }
                                     else
                                     {
@@ -1856,12 +1949,11 @@ namespace Pachyderm_Acoustic
                                     }
                                 }//);
                             });
-                            }
-                            catch (OperationCanceledException) { T = Trans; return Z; }
+                            if (CTS.IsCancellationRequested) return null;
                         }
                         else
                         {
-                            CTS.ThrowIfCancellationRequested();
+                            if (CTS.IsCancellationRequested) return null;
 
                             if (Transmission)
                             {
@@ -1946,18 +2038,17 @@ namespace Pachyderm_Acoustic
 
                         if (clusterid < LayerList.Count - 1)
                         {
-                            ParallelOptions po_ = new ParallelOptions { CancellationToken = CTS, MaxDegreeOfParallelism = maxParallel };
-                            try
-                            {
+                            ParallelOptions po_ = new ParallelOptions { MaxDegreeOfParallelism = maxParallel };
                                 Parallel.For(n_min, n_max + 1, n =>
                                 {
-                                CTS.ThrowIfCancellationRequested();
+                                if (CTS.IsCancellationRequested) return;
 
                                 Complex[][] Zmn;
                                 Complex[][] Tmn;
                                 //if (n == 0) vpm = .5; else vpm = 1;
                                 double N_TERM = Utilities.Numerics.PiX2 * n / pitch;
-                                Zmn = Transfer_Matrix_PorousSolid_PostPerf(clusterid + 1, LayerList, 0, N_TERM, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Tmn);
+                                Zmn = Transfer_Matrix_PorousSolid_PostPerf(clusterid + 1, LayerList, 0, N_TERM, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Tmn, CTS);
+                                if (Zmn == null) return;
 
                                 for (int j = 0; j < Zmn.Length; j++)
                                 {
@@ -1986,8 +2077,7 @@ namespace Pachyderm_Acoustic
                                     }
                                 }
                             });
-                            }
-                            catch (OperationCanceledException) { T = Trans; return Z; }
+                            if (CTS.IsCancellationRequested) return null;
                         }
                         else
                         {
@@ -2019,7 +2109,7 @@ namespace Pachyderm_Acoustic
 
                         for (int j = 0; j < Z.Length; j++)
                         {
-                            CTS.ThrowIfCancellationRequested();
+                            if (CTS.IsCancellationRequested) return null;
 
                             for (int i = 0; i < frequency.Length; i++)
                             {
@@ -2066,11 +2156,12 @@ namespace Pachyderm_Acoustic
 
                         Complex[] Zpanel = Perforated_Membranes.Perforated_Panel_Impedance(1.2, s, width, pitch, depth, frequency, Layer_i);
 
-                        CTS.ThrowIfCancellationRequested();
+                        if (CTS.IsCancellationRequested) return null;
 
                         if (clusterid < LayerList.Count - 1)
                         {
-                            Z = Transfer_Matrix_PorousSolid(clusterid + 1, LayerList, kxi, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Trans);
+                            Z = Transfer_Matrix_PorousSolid(clusterid + 1, LayerList, kxi, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Trans, CTS);
+                            if (Z == null) return null;
                         }
                         else
                         {
@@ -2095,7 +2186,7 @@ namespace Pachyderm_Acoustic
                             }
                         }
 
-                        CTS.ThrowIfCancellationRequested();
+                        if (CTS.IsCancellationRequested) return null;
 
                         for (int j = 0; j < sintheta_inc.Length; j++)
                         {
@@ -2116,11 +2207,13 @@ namespace Pachyderm_Acoustic
                 }
 
                 T = Trans;
-                return Z;
+                return CTS.IsCancellationRequested ? null : Z;
             }
 
             public static Complex[][] Transfer_Matrix_PorousSolid_PostPerf(int clusterid, List<List<ABS_Layer>> LayerList, double M_TERM, double N_TERM, Complex[][] sintheta_inc, Complex[] K_Air, Complex[] Zc_Air, double[] frequency, double c_sound, bool Transmission, out Complex[][] Trans, CancellationToken CTS = default)
             {
+                Trans = null;
+                if (CTS.IsCancellationRequested) return null;
                 int N = 1;
 
                 int tc = 0;
@@ -2143,7 +2236,7 @@ namespace Pachyderm_Acoustic
                         kzi[a] = new Complex[frequency.Length];
                         tn[a] = new SparseMatrix[frequency.Length];
 
-                        CTS.ThrowIfCancellationRequested();
+                        if (CTS.IsCancellationRequested) return null;
 
                         switch (Layer_i.T)
                         {
@@ -2259,7 +2352,7 @@ namespace Pachyderm_Acoustic
                             throw new Exception("Unknown Layer Type");
                     }
 
-                    CTS.ThrowIfCancellationRequested();
+                    if (CTS.IsCancellationRequested) return null;
 
                     //////////////////////////////////
                     //for (int j = 0; j < Kmn_last.Length; j++)
@@ -2420,7 +2513,7 @@ namespace Pachyderm_Acoustic
                     Parallel.For(0, sintheta_inc.Length, a =>
                     //for (int a = 0; a < sintheta_inc.Length; a++)
                     {
-                        CTS.ThrowIfCancellationRequested();
+                        if (CTS.IsCancellationRequested) return;
 
                         Z[a] = new Complex[sintheta_inc[a].Length];
 
@@ -2445,6 +2538,7 @@ namespace Pachyderm_Acoustic
                             Z[a][f] = -D1 / D2;
                         }
                     });
+                    if (CTS.IsCancellationRequested) return null;
                 }
                 else
                 {
@@ -2461,7 +2555,8 @@ namespace Pachyderm_Acoustic
                             }
                         }
                     }
-                    else if (asTransmission) Z = Transfer_Matrix_Perf(clusterid + 1, LayerList, Kmn_last, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Trans_Loss);
+                    else if (asTransmission) Z = Transfer_Matrix_Perf(clusterid + 1, LayerList, Kmn_last, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Trans_Loss, CTS);
+                    if (CTS.IsCancellationRequested || Z == null) return null;
 
                     SparseMatrix ILast, JLast;
 
@@ -2486,7 +2581,7 @@ namespace Pachyderm_Acoustic
                     Parallel.For(0, sintheta_inc.Length, a =>
                     //for (int a = 0; a < sintheta_inc.Length; a++)
                     {
-                        CTS.ThrowIfCancellationRequested();
+                        if (CTS.IsCancellationRequested) return;
 
                         //Z[a] = new Complex[sintheta_inc[a].Length];
                         Reflection_Coef[a] = new Complex[sintheta_inc[a].Length];
@@ -2538,15 +2633,18 @@ namespace Pachyderm_Acoustic
                             Trans_Loss[a][f] *= ((1 + Reflection_Coef[a][f]) * Dnt1 / D1);// * Zc_Air[f];
                         }
                     });
+                    if (CTS.IsCancellationRequested) return null;
                 }
 
                 //R = Reflection_Coef;
                 Trans = Trans_Loss;
-                return Z;
+                return CTS.IsCancellationRequested ? null : Z;
             }
 
             public static Complex[][] Transfer_Matrix_PorousSolid(int clusterid, List<List<ABS_Layer>> LayerList, Complex[][] kxi, Complex[][] sintheta_inc, Complex[] K_Air, Complex[] Zc_Air, double[] frequency, double c_sound, bool Transmission, out Complex[][] Trans, CancellationToken CTS = default)
             {
+                Trans = null;
+                if (CTS.IsCancellationRequested) return null;
                 int N = 1;
                 int maxParallel = System.Environment.ProcessorCount;
 
@@ -2562,13 +2660,11 @@ namespace Pachyderm_Acoustic
                     SparseMatrix[][] tn = new SparseMatrix[sintheta_inc.Length][];
                     double[] fr = frequency.Clone() as double[];
 
-                    ParallelOptions po = new ParallelOptions { CancellationToken = CTS, MaxDegreeOfParallelism = maxParallel };
-                    try
-                    {
+                    ParallelOptions po = new ParallelOptions { MaxDegreeOfParallelism = maxParallel };
                         Parallel.For(0, sintheta_inc.Length, po, a =>
                         {
 
-                            CTS.ThrowIfCancellationRequested();
+                            if (CTS.IsCancellationRequested) return;
 
                             kzi[a] = new Complex[4096];
                             tn[a] = new SparseMatrix[4096];
@@ -2650,8 +2746,7 @@ namespace Pachyderm_Acoustic
                                     throw new Exception("Unknown Layer Type");
                             }
                         });
-                    }
-                    catch (OperationCanceledException) { Trans = null; return new Complex[sintheta_inc.Length][]; }
+                        if (CTS.IsCancellationRequested) return null;
 
                     if (T.Count == 0)
                     {
@@ -2679,7 +2774,7 @@ namespace Pachyderm_Acoustic
                     }
                 }
 
-                CTS.ThrowIfCancellationRequested();
+                if (CTS.IsCancellationRequested) return null;
 
                 SparseMatrix[] I = new SparseMatrix[LayerList[clusterid].Count];
                 SparseMatrix[] J = new SparseMatrix[LayerList[clusterid].Count];
@@ -2804,12 +2899,10 @@ namespace Pachyderm_Acoustic
                             throw new Exception("How can you have a matrix that is not 2, 4, or 6 rows?");
                     }
 
-                    ParallelOptions po = new ParallelOptions { CancellationToken = CTS, MaxDegreeOfParallelism = maxParallel };
-                    try
-                    {
+                    ParallelOptions po = new ParallelOptions { MaxDegreeOfParallelism = maxParallel };
                         Parallel.For(0, sintheta_inc.Length, po, a =>
                         {
-                            CTS.ThrowIfCancellationRequested();
+                            if (CTS.IsCancellationRequested) return;
 
                             Z[a] = new Complex[sintheta_inc[a].Length];
 
@@ -2847,8 +2940,7 @@ namespace Pachyderm_Acoustic
                                 //////////////////////////
                             }
                         });
-                    }
-                    catch (OperationCanceledException) { Trans = null; return Z; } 
+                        if (CTS.IsCancellationRequested) return null;
                     }
                 else
                     {
@@ -2865,7 +2957,8 @@ namespace Pachyderm_Acoustic
                                 }
                             }
                         }
-                        else if (asTransmission) Z = Transfer_Matrix_Perf(clusterid + 1, LayerList, kxi, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Trans_Loss);
+                        else if (asTransmission) Z = Transfer_Matrix_Perf(clusterid + 1, LayerList, kxi, sintheta_inc, K_Air, Zc_Air, frequency, c_sound, Transmission, out Trans_Loss, CTS);
+                    if (CTS.IsCancellationRequested || Z == null) return null;
 
                         SparseMatrix ILast, JLast;
 
@@ -2887,12 +2980,10 @@ namespace Pachyderm_Acoustic
 
                         if (ILast != null) N += JLast.RowCount;
 
-                    ParallelOptions po = new ParallelOptions { CancellationToken = CTS, MaxDegreeOfParallelism = maxParallel };
-                    try
-                    {
+                    ParallelOptions po = new ParallelOptions { MaxDegreeOfParallelism = maxParallel };
                             Parallel.For(0, sintheta_inc.Length, po, a =>
                             {
-                                CTS.ThrowIfCancellationRequested();
+                                if (CTS.IsCancellationRequested) return;
 
                                 //Z[a] = new Complex[sintheta_inc[a].Length];
                                 Reflection_Coef[a] = new Complex[sintheta_inc[a].Length];
@@ -2944,8 +3035,7 @@ namespace Pachyderm_Acoustic
                                     Trans_Loss[a][f] *= (-(1 + Reflection_Coef[a][f]) * Dnt1 / D1);// * Zc_Air[f];
                                 }
                             });
-                        }
-                        catch (OperationCanceledException) { Trans = Trans_Loss; return Z; }
+                            if (CTS.IsCancellationRequested) return null;
                     }
                 //if (!Transmission)
                 //{
@@ -3088,7 +3178,7 @@ namespace Pachyderm_Acoustic
                 //}
 
                 Trans = Trans_Loss;
-                return Z;
+                return CTS.IsCancellationRequested ? null : Z;
             }
         }
 

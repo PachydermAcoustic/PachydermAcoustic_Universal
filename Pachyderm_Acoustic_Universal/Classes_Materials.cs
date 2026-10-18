@@ -1073,6 +1073,10 @@ namespace Pachyderm_Acoustic
             public double[][] Ang_tau_Oct;//[oct][angle]
             public double[] RI_Coef = new double[8];
             public double[] TI_Coef = new double[8];
+            public double[] RI_Coef_3rd = new double[24];
+            public double[] TI_Coef_3rd = new double[24];
+            public double[][] Ang_Coef_3rd = new double[24][];
+            public double[][] Ang_tau_3rd = new double[24][];
             public double[] RI_Averages;
             private double angle_incr;
 
@@ -1098,6 +1102,7 @@ namespace Pachyderm_Acoustic
                 {
                     //Z = AbsorptionModels.Operations.Transfer_Matrix_Explicit_Tau(false, 44100, 343, Layers, ref frequency, ref Angles, ref Trans_Loss, ref Reflection_Coefficient);
                     Z = AbsorptionModels.Operations.Transfer_Matrix_Divisible(true, false, 44100, 343, Layers, ref frequency, ref Angles, out Trans_Loss, out Reflection_Coefficient, CTS);
+                    if (CTS.IsCancellationRequested || Z == null) return;
                     Trans_Coefficient = new System.Numerics.Complex[Trans_Loss.Length][];
                     for (int i = 0; i < Trans_Loss.Length; i++)
                     {
@@ -1111,7 +1116,8 @@ namespace Pachyderm_Acoustic
                 else
                 {
                     //Z = AbsorptionModels.Operations.Transfer_Matrix_Explicit_Z(false, 44100, 343, Layers, ref frequency, ref Angles);
-                    Z = AbsorptionModels.Operations.Transfer_Matrix_Divisible(true, false, 44100, 343, Layers, ref frequency, ref Angles, out Trans_Loss, out Reflection_Coefficient, CTS);
+                    Z = AbsorptionModels.Operations.Transfer_Matrix_Divisible(false, false, 44100, 343, Layers, ref frequency, ref Angles, out Trans_Loss, out Reflection_Coefficient, CTS);
+                    if (CTS.IsCancellationRequested || Z == null) return;
                     Trans_Coefficient = new System.Numerics.Complex[36][];
                     for (int i = 0; i < Trans_Coefficient.Length; i++)
                     {
@@ -1201,71 +1207,7 @@ namespace Pachyderm_Acoustic
                 Ang_Coef_Oct = new double[8][];
                 Ang_tau_Oct = new double[8][];
 
-                //5 degree increments, in radians...
-                angle_incr = 5 * Math.PI / 180;
-
-                double root2 = Math.Sqrt(2);
-
-                int f = -1;
-
-                for (int oct = 0; oct < 8; oct++)
-                {
-                    double f_center = 62.5 * Math.Pow(2, oct);
-                    double f_lower = (int)((Math.Floor(f_center / root2)));// - min_freq)/df);
-                    double f_upper = (int)((Math.Floor(f_center * root2)));// - min_freq)/df);
-
-                    int f_id_l = 0;//(int)Math.Floor((double)((f_lower) / 5));
-
-                    for (int i = 0; i < frequency.Length; i++)
-                    {
-                        if (frequency[i] < f_lower) f_id_l = i;
-                        else break;
-                    }
-
-                    int f_id_u;//(int)Math.Floor((double)((f_upper) / 5));
-
-                    for (f_id_u = f_id_l; f_id_u < frequency.Length; f_id_u++)
-                    {
-                        if (frequency[f_id_u] > f_upper) break;
-                    }
-
-                    int count = 0;
-                    int RI_count = 0;
-
-                    Ang_Coef_Oct[oct] = new double[Angles.Length];
-                    Ang_tau_Oct[oct] = new double[Angles.Length];
-                    int[] fct = new int[Angular_Absorption.Length];
-
-                    do
-                    {
-                        f++;
-                        RI_count++;
-                        if (f < f_id_l) { f++; continue; }
-                        if (f >= frequency.Length) break;
-                        RI_Coef[oct] += RI_Averages[f];
-                        TI_Coef[oct] += TI_Averages[f].Real;
-                        for (int a = 0; a < 19; a++)
-                        {
-                            if (double.IsNaN(Angular_Absorption[a][f])) continue;
-                            fct[a]++;
-                            count++;
-                            Ang_Coef_Oct[oct][a] += Angular_Absorption[a][f];
-                            Ang_tau_Oct[oct][a] += Trans_Coefficient[a][f].Real;
-                        }
-                        for (int a = 19; a < Angles.Length; a++)
-                        {
-                            if (double.IsNaN(Angular_Absorption[35 - a][f])) continue;
-                            fct[a]++;
-                            count++;
-                            Ang_Coef_Oct[oct][a] += Angular_Absorption[35 - a][f];
-                            Ang_tau_Oct[oct][a] += Trans_Coefficient[35 - a][f].Real;
-                        }
-                    } while (frequency[f] < f_upper);
-
-                    for (int a = 0; a < Angles.Length; a++) Ang_Coef_Oct[oct][a] /= fct[a];
-                    RI_Coef[oct] /= RI_count;
-                    TI_Coef[oct] /= RI_count;
-                }
+                Average_Bands(Angular_Absorption, RI_Averages, TI_Averages, true);
             }
 
             public Smart_Material(bool Trans, List<AbsorptionModels.ABS_Layer> Layers, int Samplefreq, double Air_Density, double SoundSpeed)
@@ -1292,6 +1234,7 @@ namespace Pachyderm_Acoustic
                 {
                     //Z = AbsorptionModels.Operations.Transfer_Matrix_Explicit_Tau(false, 44100, 343, Layers, ref frequency, ref Angles, ref Trans_Loss, ref Reflection_Coefficient);
                     Z = AbsorptionModels.Operations.Transfer_Matrix_Divisible(true, false, 44100, 343, Layers, ref frequency, ref Angles, out Trans_Loss, out Reflection_Coefficient, CTS);
+                    if (CTS.IsCancellationRequested || Z == null) return;
                     Trans_Coefficient = new System.Numerics.Complex[Trans_Loss.Length][];
                     for (int i = 0; i < Trans_Loss.Length; i++)
                     {
@@ -1307,6 +1250,7 @@ namespace Pachyderm_Acoustic
                 {
                     //Z = AbsorptionModels.Operations.Transfer_Matrix_Explicit_Z(false, 44100, 343, Layers, ref frequency, ref Angles);
                     Z = AbsorptionModels.Operations.Transfer_Matrix_Divisible(false, false, 44100, 343, Layers, ref frequency, ref Angles, out Trans_Loss, out Reflection_Coefficient, CTS);
+                    if (CTS.IsCancellationRequested || Z == null) return;
                     Trans_Coefficient = new System.Numerics.Complex[36][];
                     for (int i = 0; i < Trans_Coefficient.Length; i++) Trans_Coefficient[i] = new System.Numerics.Complex[frequency.Length];
                 }
@@ -1397,6 +1341,15 @@ namespace Pachyderm_Acoustic
 
                 Ang_tau_Oct = new double[8][];
 
+                Average_Bands(Angular_Absorption, RI_Averages, TI_Averages, false);
+            }
+
+            private void Average_Bands(double[][] Angular_Absorption, double[] RI_Averages, System.Numerics.Complex[] TI_Averages, bool finite)
+            {
+                double[] centers = Utilities.AcousticalMath.ThirdOctaveCenters();
+                // The first eight iterations retain the established octave aggregation.
+                // Third octaves average the narrowband samples inside each band,
+                // without converting or interpolating the existing octave coefficients.
                 //5 degree increments, in radians...
                 angle_incr = 5 * Math.PI / 180;
 
@@ -1404,11 +1357,17 @@ namespace Pachyderm_Acoustic
 
                 int f = -1;
 
-                for (int oct = 0; oct < 8; oct++)
+                for (int oct = 0; oct < 32; oct++)
                 {
-                    double f_center = 62.5 * Math.Pow(2, oct);
-                    double f_lower = (int)((Math.Floor(f_center / root2)));// - min_freq)/df);
-                    double f_upper = (int)((Math.Floor(f_center * root2)));// - min_freq)/df);
+                    int band = oct < 8 ? oct : oct - 8;
+                    double[] ri = oct < 8 ? RI_Coef : RI_Coef_3rd;
+                    double[] ti = oct < 8 ? TI_Coef : TI_Coef_3rd;
+                    double[][] alpha = oct < 8 ? Ang_Coef_Oct : Ang_Coef_3rd;
+                    double[][] tau = oct < 8 ? Ang_tau_Oct : Ang_tau_3rd;
+                    double f_center = oct < 8 ? 62.5 * Math.Pow(2, oct) : centers[band];
+                    root2 = oct < 8 ? Math.Sqrt(2) : Math.Pow(2, 1.0 / 6);
+                    double f_lower = oct < 8 ? Math.Floor(f_center / root2) : f_center / root2;// - min_freq)/df);
+                    double f_upper = oct < 8 ? Math.Floor(f_center * root2) : f_center * root2;// - min_freq)/df);
 
                     int f_id_l = 0;//(int)Math.Floor((double)((f_lower) / 5));
 
@@ -1425,42 +1384,48 @@ namespace Pachyderm_Acoustic
                         if (frequency[f_id_u] > f_upper) break;
                     }
 
+                    if (oct >= 8)
+                    {
+                        while (f_id_l < frequency.Length && frequency[f_id_l] < f_lower) f_id_l++;
+                        f = f_id_l - 1;
+                    }
                     int count = 0;
                     int RI_count = 0;
 
-                    Ang_Coef_Oct[oct] = new double[Angles.Length];
-                    Ang_tau_Oct[oct] = new double[Angles.Length];
+                    alpha[band] = new double[Angles.Length];
+                    tau[band] = new double[Angles.Length];
                     int[] fct = new int[Angular_Absorption.Length];
 
                     do
                     {
                         f++;
+                        if (oct >= 8 && (f >= frequency.Length || frequency[f] > f_upper)) break;
                         RI_count++;
                         if (f < f_id_l) { f++; continue; }
                         if (f >= frequency.Length) break;
-                        RI_Coef[oct] += RI_Averages[f];
-                        TI_Coef[oct] += TI_Averages[f].Magnitude;
+                        ri[band] += RI_Averages[f];
+                        ti[band] += (finite ? TI_Averages[f].Real : TI_Averages[f].Magnitude);
                         for (int a = 0; a < 19; a++)
                         {
                             if (double.IsNaN(Angular_Absorption[a][f])) continue;
                             fct[a]++;
                             count++;
-                            Ang_Coef_Oct[oct][a] += Angular_Absorption[a][f];
-                            Ang_tau_Oct[oct][a] += Trans_Coefficient[a][f].Magnitude;
+                            alpha[band][a] += Angular_Absorption[a][f];
+                            tau[band][a] += (finite ? Trans_Coefficient[a][f].Real : Trans_Coefficient[a][f].Magnitude);
                         }
                         for (int a = 19; a < Angles.Length; a++)
                         {
                             if (double.IsNaN(Angular_Absorption[35 - a][f])) continue;
                             fct[a]++;
                             count++;
-                            Ang_Coef_Oct[oct][a] += Angular_Absorption[35 - a][f];
-                            Ang_tau_Oct[oct][a] += Trans_Coefficient[35 - a][f].Magnitude;
+                            alpha[band][a] += Angular_Absorption[35 - a][f];
+                            tau[band][a] += (finite ? Trans_Coefficient[35 - a][f].Real : Trans_Coefficient[35 - a][f].Magnitude);
                         }
                     } while (frequency[f] < f_upper);
 
-                    for (int a = 0; a < Angles.Length; a++) { Ang_Coef_Oct[oct][a] /= fct[a]; Ang_tau_Oct[oct][a] /= fct[a]; }
-                    RI_Coef[oct] /= RI_count;
-                    TI_Coef[oct] /= RI_count;
+                    for (int a = 0; a < Angles.Length; a++) { alpha[band][a] /= fct[a]; if (!finite || oct >= 8) tau[band][a] /= fct[a]; }
+                    ri[band] /= RI_count;
+                    ti[band] /= RI_count;
                 }
             }
 
@@ -1544,8 +1509,26 @@ namespace Pachyderm_Acoustic
             {
                 MathNet.Numerics.Interpolation.CubicSpline[] Zr_Curves_R;
                 MathNet.Numerics.Interpolation.CubicSpline[] Zr_Curves_I;
+                readonly double Xdim, Ydim, c_sound, air_density;
+                readonly double[] anglesdeg;
+
+                /// <summary>
+                /// Uses Thomasson's equivalent-square lookup directly at the requested
+                /// frequencies. The six-argument constructor retains numerical integration.
+                /// </summary>
+                public Finite_Field_Impedance(double Xdim, double Ydim, double c_sound, double air_density)
+                {
+                    this.Xdim = Xdim;
+                    this.Ydim = Ydim;
+                    this.c_sound = c_sound;
+                    this.air_density = air_density;
+                    anglesdeg = new double[(int)(180 / 5)];
+                    anglesdeg[0] = -87.5;
+                    for (int i = 1; i < anglesdeg.Length; i++) anglesdeg[i] = anglesdeg[i - 1] + 5;
+                }
 
                 public Finite_Field_Impedance(double Xdim, double Ydim, double freq_limit, double c_sound, double air_density, IReporting Graph)
+                    : this(Xdim, Ydim, c_sound, air_density)
                 {
                     List<double> freq = new List<double>();
                     double f = 15.625;
@@ -1556,10 +1539,6 @@ namespace Pachyderm_Acoustic
                         f = 15.625 * Math.Pow(2, (double)ct / 3f);
                         freq.Add(f);
                     }
-                    double[] anglesdeg = new double[(int)(180 / 5)];
-                    anglesdeg[0] = -87.5;
-                    for (int i = 1; i < anglesdeg.Length; i++) anglesdeg[i] = anglesdeg[i - 1] + 5;
-
                     System.Numerics.Complex[][] Zr = AbsorptionModels.Operations.Finite_Radiation_Impedance_Atalla_Rect(Xdim, Ydim, freq.ToArray(), anglesdeg, c_sound, air_density, Graph);
 
                     Zr_Curves_R = new MathNet.Numerics.Interpolation.CubicSpline[Zr[0].Length];
@@ -1580,6 +1559,9 @@ namespace Pachyderm_Acoustic
 
                 public System.Numerics.Complex[][] Interpolate(double[] freq)
                 {
+                    if (Zr_Curves_R == null)
+                        return AbsorptionModels.Operations.Finite_Radiation_Impedance_Thomasson_Rect(Xdim, Ydim, freq, anglesdeg, c_sound, air_density);
+
                     System.Numerics.Complex[][] Zr = new System.Numerics.Complex[freq.Length][];
 
                     for (int f = 0; f < freq.Length; f++)
@@ -2343,12 +2325,13 @@ namespace Pachyderm_Acoustic
                 return -0.5 * K * Math.Log(E);
             }
 
-            private static BottsSample SM_DrawPriorSample(Random rng, BottsModelSpec spec, System.Numerics.Complex[] Rtarget, double[] alphaTarget, double[] freqs, double[] weights, double fs)
+            private static BottsSample SM_DrawPriorSample(Random rng, BottsModelSpec spec, System.Numerics.Complex[] Rtarget, double[] alphaTarget, double[] freqs, double[] weights, double fs, CancellationToken CTS)
             {
                 SM_GetBounds(spec, fs, freqs.Last(), out double[] lower, out double[] upper);
 
                 for (int tries = 0; tries < 1000; tries++)
                 {
+                    if (CTS.IsCancellationRequested) return null;
                     double[] theta = SM_SampleFromPrior(rng, lower, upper);
                     double logL = SM_ComputeLogLikelihoodForReflection(spec, theta, Rtarget, alphaTarget, freqs, weights, fs);
                     if (!double.IsNegativeInfinity(logL) && !double.IsNaN(logL))
@@ -2362,7 +2345,7 @@ namespace Pachyderm_Acoustic
                 BottsSample seed, double logLmin, System.Numerics.Complex[] Rtarget, double[] alphaTarget, double[] freqs,
                 double[] weights,
                 double fs,
-                int mhSteps)
+                int mhSteps, CancellationToken CTS)
             {
                 double[] x = (double[])seed.Theta.Clone();
                 double[] step = new double[x.Length];
@@ -2375,6 +2358,7 @@ namespace Pachyderm_Acoustic
 
                 for (int t = 0; t < mhSteps; t++)
                 {
+                    if (CTS.IsCancellationRequested) return null;
                     double[] cand = new double[x.Length];
                     for (int i = 0; i < x.Length; i++)
                     {
@@ -2398,6 +2382,7 @@ namespace Pachyderm_Acoustic
                 {
                     for (int tries = 0; tries < 1000; tries++)
                     {
+                        if (CTS.IsCancellationRequested) return null;
                         double[] cand = SM_SampleFromPrior(rng, seed.Lower, seed.Upper);
                         double logL = SM_ComputeLogLikelihoodForReflection(spec, cand, Rtarget, alphaTarget, freqs, weights, fs);
                         if (logL > logLmin && !double.IsNaN(logL))
@@ -2432,11 +2417,14 @@ namespace Pachyderm_Acoustic
                 int nLive = 96,
                 int mhSteps = 100,
                 int maxIter = 12000,
-                double stopDeltaLogZ = 1e-7)
+                double stopDeltaLogZ = 1e-7, CancellationToken CTS = default)
             {
                 List<BottsSample> live = new List<BottsSample>();
                 for (int i = 0; i < nLive; i++)
-                    live.Add(SM_DrawPriorSample(rng, spec, Rtarget, alphaTarget, freqs, weights, fs));
+                {
+                    if (CTS.IsCancellationRequested) return (double.NegativeInfinity, null, 0);
+                    live.Add(SM_DrawPriorSample(rng, spec, Rtarget, alphaTarget, freqs, weights, fs, CTS));
+                }
 
                 List<BottsSample> dead = new List<BottsSample>();
                 List<double> deadLogWt = new List<double>();
@@ -2447,6 +2435,7 @@ namespace Pachyderm_Acoustic
 
                 for (iter = 0; iter < maxIter; iter++)
                 {
+                    if (CTS.IsCancellationRequested) return (double.NegativeInfinity, null, iter);
                     live.Sort((a, b) => a.LogL.CompareTo(b.LogL));
 
                     BottsSample worst = live[0];
@@ -2467,18 +2456,27 @@ namespace Pachyderm_Acoustic
 
                     int seedIndex = 1 + rng.Next(Math.Max(1, live.Count - 1));
                     BottsSample seed = live[seedIndex];
-                    BottsSample repl = SM_ConstrainedRandomWalk(rng, spec, seed, worst.LogL, Rtarget, alphaTarget, freqs, weights, fs, mhSteps);
+                    BottsSample repl = SM_ConstrainedRandomWalk(rng, spec, seed, worst.LogL, Rtarget, alphaTarget, freqs, weights, fs, mhSteps, CTS);
 
                     live[0] = repl;
                     logXPrev = logXNew;
                 }
 
+                if (CTS.IsCancellationRequested) return (double.NegativeInfinity, null, iter);
                 double[] thetaBest = SM_BestThetaFromSamples(dead, live);
                 return (logZ, thetaBest, iter + 1);
             }
 
             public override (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order = 0)
             {
+                return Estimate_IIR_Coefficients(sample_frequency, max_freq, out frequencies, filter_order, CancellationToken.None);
+            }
+
+            /// <summary>Cancellation returns null coefficients without publishing a partial fit.</summary>
+            public (double[] a, double[] b) Estimate_IIR_Coefficients(double sample_frequency, double max_freq, out double[] frequencies, int filter_order, CancellationToken CTS)
+            {
+                frequencies = null;
+                if (CTS.IsCancellationRequested) return (null, null);
                 double fs = sample_frequency;
                 frequencies = SM_BuildFitFrequencies(fs, max_freq);
 
@@ -2491,6 +2489,7 @@ namespace Pachyderm_Acoustic
 
                 lock (lock_IIR)
                 {
+                    if (CTS.IsCancellationRequested) return (null, null);
                     int requestedOrder = filter_order;
 
                     rec_fs = sample_frequency;
@@ -2589,6 +2588,7 @@ namespace Pachyderm_Acoustic
 
                     double ScoreTheta(BottsModelSpec spec, double[] theta)
                     {
+                        if (CTS.IsCancellationRequested) return double.NegativeInfinity;
                         return SM_ComputeLogLikelihoodForReflection(spec, theta, Rtarget, alphaTarget, fitFrequencies, weights, fs, resonanceTargets);
                     }
 
@@ -2597,7 +2597,7 @@ namespace Pachyderm_Acoustic
                     // resonant-section adjustment and the joint Nelder-Mead optimization.
                     double[] RefineTheta(BottsModelSpec spec, double[] startTheta)
                     {
-                        if (startTheta == null) return null;
+                        if (startTheta == null || CTS.IsCancellationRequested) return null;
 
                         double[] refined = (double[])startTheta.Clone();
                         double refinedLogL = ScoreTheta(spec, refined);
@@ -2654,6 +2654,7 @@ namespace Pachyderm_Acoustic
 
                                                 for (int g = 0; g < gainDb.Length; g++)
                                                 {
+                                                    if (CTS.IsCancellationRequested) return null;
                                                     double[] candidate = (double[])refined.Clone();
 
                                                     // Keep zero/pole center together during this coarse
@@ -2720,6 +2721,9 @@ namespace Pachyderm_Acoustic
 
                         var objective = MathNet.Numerics.Optimization.ObjectiveFunction.Value(v =>
                         {
+                            // A constant objective lets the optimizer finish promptly without
+                            // throwing; the canceled candidate is discarded below.
+                            if (CTS.IsCancellationRequested) return 0;
                             double[] candidate = v.ToArray();
                             for (int i = 0; i < candidate.Length; i++) candidate[i] = SM_ReflectToBounds(candidate[i], lower[i], upper[i]);
 
@@ -2730,6 +2734,7 @@ namespace Pachyderm_Acoustic
 
                         try
                         {
+                            if (CTS.IsCancellationRequested) return null;
                             var nm = MathNet.Numerics.Optimization.NelderMeadSimplex.Minimum(objective, initialVector, perturbationVector, 1e-6, 1000);
 
                             double[] nmTheta = nm.MinimizingPoint.ToArray();
@@ -2745,7 +2750,7 @@ namespace Pachyderm_Acoustic
                             // Retain the valid pre-Nelder-Mead solution.
                         }
 
-                        return refined;
+                        return CTS.IsCancellationRequested ? null : refined;
                     }
 
                     // Embed a lower-order solution into the next model of the same parity.
@@ -2813,12 +2818,15 @@ namespace Pachyderm_Acoustic
                         },
                         order =>
                         {
+                            if (CTS.IsCancellationRequested) return;
                             Random rngLocal = new Random(unchecked(7919 + order * 104729));
                             BottsModelSpec spec = SM_MakeSpec(order);
-                            var ns = SM_RunNestedSampling(rngLocal, spec, Rtarget, alphaTarget, freqs, weights, fs, nLive: 96, mhSteps: 100, maxIter: 12000, stopDeltaLogZ: 1e-7);
+                            var ns = SM_RunNestedSampling(rngLocal, spec, Rtarget, alphaTarget, freqs, weights, fs, nLive: 96, mhSteps: 100, maxIter: 12000, stopDeltaLogZ: 1e-7, CTS: CTS);
                             lock (nestedLock) nestedResults[order] = (ns.logZ, ns.thetaBest, spec);
                         });
 
+
+                    if (CTS.IsCancellationRequested) return (null, null);
 
                     // Now walk each parity chain. A higher-order model gets both:
                     // 1. its independently discovered Botts solution, and
@@ -2835,6 +2843,7 @@ namespace Pachyderm_Acoustic
 
                         foreach (int order in chain)
                         {
+                            if (CTS.IsCancellationRequested) return;
                             if (!nestedResults.TryGetValue(order, out var nested)) continue;
 
                             double[] bestOrderTheta = null;
@@ -2902,6 +2911,7 @@ namespace Pachyderm_Acoustic
                         ProcessChain(new int[] { 3, 5, 7, 9 });
                     }
 
+                    if (CTS.IsCancellationRequested) return (null, null);
                     if (finalResults.Count == 0)
                     {
                         rec_a = new double[] { 1.0 };
@@ -2938,6 +2948,7 @@ namespace Pachyderm_Acoustic
                     SM_BuildReflectionCoefficients(bestSpec, bestTheta, fs, out double[] bR, out double[] aR);
                     SM_ConvertReflectionToAdmittance(bR, aR, out double[] aY, out double[] bY);
 
+                    if (CTS.IsCancellationRequested) return (null, null);
                     rec_a = aY;
                     rec_b = bY;
 
