@@ -44,18 +44,7 @@
 		<None Remove="Resources\CLF_Read.dll" />
 		<None Remove="Wall_Assemblies_EC.csv" />
 	</ItemGroup>
-	<ItemGroup>
-		<Reference Include="SphericalVoronoiLib">
-			<HintPath>Resources\SphericalVoronoiLib.dll</HintPath>
-			<Private>true</Private>
-		</Reference>
-	</ItemGroup>
 
-	<ItemGroup>
-		<Content Include="Resources\SphericalVoronoiLib.dll">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-	</ItemGroup>
 	<ItemGroup>
 		<Content Include="Resources\libfftw3-3.dll">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
