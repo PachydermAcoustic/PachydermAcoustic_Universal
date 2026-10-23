@@ -36,6 +36,7 @@ namespace Pachyderm_Acoustic
         [Serializable]
         public class ABS_Layer
         {
+            private const string EncodedNamePrefix = "~PachName~";
             public LayerType T;
             public string Material_Name = "";
             public double depth;
@@ -75,6 +76,7 @@ namespace Pachyderm_Acoustic
                 Layer.Viscous_Characteristic_Length = Viscous_Characteristic_Length;
                 Layer.Thermal_Permeability = Thermal_Permeability;
                 Layer.Embodied_Carbon = Embodied_Carbon;
+                Layer.Material_Name = name;
                 return Layer;
             }
 
@@ -226,30 +228,33 @@ namespace Pachyderm_Acoustic
 
             public string LayerCode()
             {
+                string name = Material_Name;
+                if (name != null && (name.IndexOf(':') >= 0 || name.IndexOf(';') >= 0 || name.StartsWith(EncodedNamePrefix, StringComparison.Ordinal)))
+                    name = EncodedNamePrefix + Uri.EscapeDataString(name);
                 switch (T)
                 {
                     case LayerType.AirSpace:
                         return string.Format("0:{0};", depth);
                     case LayerType.PorousDB:
-                        return string.Format("1:{0}:{1}:{2}:{3};", depth, Flow_Resist, Embodied_Carbon, Material_Name);
+                        return string.Format("1:{0}:{1}:{2}:{3};", depth, Flow_Resist, Embodied_Carbon, name);
                     case LayerType.PorousCA:
-                        return string.Format("2:{0}:{1}:{2}:{3};", depth, Flow_Resist, Embodied_Carbon, Material_Name);
+                        return string.Format("2:{0}:{1}:{2}:{3};", depth, Flow_Resist, Embodied_Carbon, name);
                     case LayerType.PorousM:
-                        return string.Format("3:{0}:{1}:{2}:{3};", depth, Flow_Resist, Embodied_Carbon, Material_Name);
+                        return string.Format("3:{0}:{1}:{2}:{3};", depth, Flow_Resist, Embodied_Carbon, name);
                     case LayerType.Perforated_Modal:
-                        return string.Format("4:{0}:{1}:{2}:{3}:{4}:{5}:{6};", depth, width, pitch, Embodied_Carbon, Material_Name, (int)shape, (int)grid);
+                        return string.Format("4:{0}:{1}:{2}:{3}:{4}:{5}:{6};", depth, width, pitch, Embodied_Carbon, name, (int)shape, (int)grid);
                     case LayerType.Slotted_Modal:
-                        return string.Format("5:{0}:{1}:{2}:{3}:{4};", depth, width, pitch, Embodied_Carbon, Material_Name);
+                        return string.Format("5:{0}:{1}:{2}:{3}:{4};", depth, width, pitch, Embodied_Carbon, name);
                     case LayerType.Perforated_Panel:
-                        return string.Format("6:{0}:{1}:{2}:{3}:{4}:{5}:{6};", depth, width, pitch, Embodied_Carbon, Material_Name, (int)shape, (int)grid);
+                        return string.Format("6:{0}:{1}:{2}:{3}:{4}:{5}:{6};", depth, width, pitch, Embodied_Carbon, name, (int)shape, (int)grid);
                     case LayerType.Slotted_Panel:
-                        return string.Format("7:{0}:{1}:{2}:{3}:{4};", depth, width, pitch, Embodied_Carbon, Material_Name);
+                        return string.Format("7:{0}:{1}:{2}:{3}:{4};", depth, width, pitch, Embodied_Carbon, name);
                     case LayerType.SolidPlate:
-                        return string.Format("8:{0}:{1}:{2}:{3}:{4}:{5};", depth, density, YoungsModulus, PoissonsRatio, Embodied_Carbon, Material_Name);
+                        return string.Format("8:{0}:{1}:{2}:{3}:{4}:{5};", depth, density, YoungsModulus, PoissonsRatio, Embodied_Carbon, name);
                     case LayerType.BiotPorousAbsorber_Limp:
-                        return string.Format("9:false:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10};", depth, density, YoungsModulus, PoissonsRatio, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, Material_Name);
+                        return string.Format("9:false:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10};", depth, density, YoungsModulus, PoissonsRatio, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, name);
                     case LayerType.BiotPorousAbsorber_Rigid:
-                        return string.Format("10:true:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10};", depth, density, YoungsModulus, PoissonsRatio, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, Material_Name);
+                        return string.Format("10:true:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:{9}:{10};", depth, density, YoungsModulus, PoissonsRatio, tortuosity, Flow_Resist, porosity, Viscous_Characteristic_Length, Thermal_Permeability, Embodied_Carbon, name);
                     default:
                         throw new Exception("Unknown Layer Type");
                 }
@@ -257,42 +262,55 @@ namespace Pachyderm_Acoustic
 
             public static ABS_Layer LayerFromCode(string code)
             {
-                string[] elements = code.Split(':');
+                if (string.IsNullOrWhiteSpace(code)) throw new FormatException("The material layer code is empty.");
+                string[] elements = code.TrimEnd(';').Split(':');
+                elements[0] = elements[0].Trim();
+                int required;
+                switch (elements[0])
+                {
+                    case "0": required = 2; break;
+                    case "1": case "2": case "3": required = 3; break;
+                    case "4": case "5": case "6": case "7": required = 4; break;
+                    case "8": required = 5; break;
+                    case "9": case "10": required = 11; break;
+                    default: throw new FormatException("Unknown Layer Type: " + elements[0]);
+                }
+                if (elements.Length < required)
+                    throw new FormatException("Material layer type " + elements[0] + " requires at least " + required + " fields.");
+
+                // Names may contain the delimiters used by the layer and buildup formats.
+                // Ordinary names retain their existing representation.
+                int nameIndex = elements[0] == "0" ? -1 :
+                    (elements[0] == "1" || elements[0] == "2" || elements[0] == "3") ? 4 :
+                    elements[0] == "8" ? 6 : (elements[0] == "9" || elements[0] == "10") ? 12 : 5;
+                if (nameIndex >= 0 && nameIndex < elements.Length && elements[nameIndex].StartsWith(EncodedNamePrefix, StringComparison.Ordinal))
+                    elements[nameIndex] = Uri.UnescapeDataString(elements[nameIndex].Substring(EncodedNamePrefix.Length));
 
                 switch (elements[0])
                 {
                     case "0":
                         return new ABS_Layer(LayerType.AirSpace, double.Parse(elements[1]), 0, 0, 0, 0, 0, "Air");
                     case "1":
-                        if (elements.Length == 2) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.PorousDB, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, (elements.Length > 3) ? double.Parse(elements[3]) : 77, (elements.Length > 3) ? elements[4] : "Porous Material");
+                        return new ABS_Layer(LayerType.PorousDB, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, (elements.Length > 3) ? double.Parse(elements[3]) : 77, (elements.Length > 4) ? elements[4] : "Porous Material");
                     case "2":
-                        if (elements.Length == 2) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.PorousCA, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, (elements.Length > 3) ? double.Parse(elements[3]) : 77, (elements.Length > 3) ? elements[4] : "Porous Material");
+                        return new ABS_Layer(LayerType.PorousCA, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, (elements.Length > 3) ? double.Parse(elements[3]) : 77, (elements.Length > 4) ? elements[4] : "Porous Material");
                     case "3":
-                        if (elements.Length == 2) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.PorousM, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, (elements.Length > 3) ? double.Parse(elements[3]): 77, (elements.Length > 3) ? elements[4] : "Porous Material");
+                        return new ABS_Layer(LayerType.PorousM, double.Parse(elements[1]), 0, 0, double.Parse(elements[2]), 0, (elements.Length > 3) ? double.Parse(elements[3]): 77, (elements.Length > 4) ? elements[4] : "Porous Material");
                     case "4":
-                        if (elements.Length == 4) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.Perforated_Modal, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 4) ? elements[5] : "Perforated Material", (PerfShape)int.Parse(elements[6]), (PerfGrid)int.Parse(elements[7]));
+                        return new ABS_Layer(LayerType.Perforated_Modal, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 5) ? elements[5] : "Perforated Material", (elements.Length > 6) ? (PerfShape)int.Parse(elements[6]) : PerfShape.Circle, (elements.Length > 7) ? (PerfGrid)int.Parse(elements[7]) : PerfGrid.Square);
                     case "5":
-                        if (elements.Length == 5) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.Slotted_Modal, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 4) ? elements[5] : "Perforated Material");
+                        return new ABS_Layer(LayerType.Slotted_Modal, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 5) ? elements[5] : "Perforated Material");
                     case "6":
-                        if (elements.Length == 6) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.Perforated_Panel, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 4) ? elements[5] : "Perforated Material", (PerfShape)int.Parse(elements[6]), (PerfGrid)int.Parse(elements[7]));
+                        return new ABS_Layer(LayerType.Perforated_Panel, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 5) ? elements[5] : "Perforated Material", (elements.Length > 6) ? (PerfShape)int.Parse(elements[6]) : PerfShape.Circle, (elements.Length > 7) ? (PerfGrid)int.Parse(elements[7]) : PerfGrid.Square);
                     case "7":
-                        if (elements.Length == 7) Array.Resize(ref elements, elements.Length + 1);
-                        return new ABS_Layer(LayerType.Slotted_Panel, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 4) ? elements[5] : "Perforated Material");
+                        return new ABS_Layer(LayerType.Slotted_Panel, double.Parse(elements[1]), double.Parse(elements[3]), double.Parse(elements[2]), 0, 0, (elements.Length > 4) ? double.Parse(elements[4]) : 188, (elements.Length > 5) ? elements[5] : "Perforated Material");
                     case "8":
-                        if (elements.Length == 8) Array.Resize(ref elements, elements.Length + 1);
-                        return ABS_Layer.CreateSolid(double.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), (elements.Length > 5) ? double.Parse(elements[5]) : 188, (elements.Length > 5) ? elements[6] : "Solid Material");
+                        return ABS_Layer.CreateSolid(double.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), (elements.Length > 5) ? double.Parse(elements[5]) : 188, (elements.Length > 6) ? elements[6] : "Solid Material");
                     case "9":
                     case "10":
-                        if (elements.Length == 9) Array.Resize(ref elements, elements.Length + 1);
-                        return ABS_Layer.CreateBiot(bool.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), double.Parse(elements[5]), double.Parse(elements[6]), double.Parse(elements[7]), double.Parse(elements[8]), double.Parse(elements[9]), double.Parse(elements[10]), (elements.Length > 11) ? double.Parse(elements[11]) : 188, (elements.Length > 11) ? elements[12] : "Porous Matrix");
+                        return ABS_Layer.CreateBiot(bool.Parse(elements[1]), double.Parse(elements[2]), double.Parse(elements[3]), double.Parse(elements[4]), double.Parse(elements[5]), double.Parse(elements[6]), double.Parse(elements[7]), double.Parse(elements[8]), double.Parse(elements[9]), double.Parse(elements[10]), (elements.Length > 11) ? double.Parse(elements[11]) : 188, (elements.Length > 12) ? elements[12] : "Porous Matrix");
                     default:
-                        throw new Exception("Unknown Layer Type");
+                        throw new FormatException("Unknown Layer Type: " + elements[0]);
                 }
             }
 

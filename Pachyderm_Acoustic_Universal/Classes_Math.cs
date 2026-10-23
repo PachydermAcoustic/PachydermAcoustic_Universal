@@ -5681,6 +5681,8 @@ namespace Pachyderm_Acoustic
             public static bool DecodeAcoustics(string Code, ref double[] Absorption, ref double[] Scattering, ref double[] Transparency)
             {
                 if (Code == null) return false;
+                if (Code.Length != 32 && Code.Length != 40 && Code.Length != 48 && Code.Length != 56 && Code.Length != 88 && Code.Length != 104)
+                    throw new FormatException("Acoustics code must contain 32, 40, 48, 56, 88, or 104 characters.");
                 int abslength = Code.Length > 56 ? 24 : 8;
                 Absorption = new double[abslength];
                 Scattering = new double[8];
