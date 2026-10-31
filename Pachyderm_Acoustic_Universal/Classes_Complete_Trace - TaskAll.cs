@@ -55,6 +55,22 @@ namespace Pachyderm_Acoustic
         CancellationToken Cancelled;
         CancellationTokenSource Canceler;
 
+        /// <summary>Retained entry point; the constructor selects travel behavior from the scene.</summary>
+        public static SplitRayTracer Create(Source source, Receiver_Bank receivers, Scene scene, double cutoffTime, int[] octaveRange, int imageOrder, int rayCount, I_Conv_Progress feedback)
+        {
+            return new SplitRayTracer(source, receivers, scene, cutoffTime, octaveRange, imageOrder, rayCount, feedback);
+        }
+
+        protected virtual void TravelPath(BroadRay ray, Point end, double time, bool receive)
+        {
+            travelconfig.TravelPath(ray, end, time, receive);
+        }
+
+        protected virtual void TravelPath(OctaveRay ray, Point end, double time, bool receive)
+        {
+            travelconfig.TravelPath(ray, end, time, receive);
+        }
+
         /// <summary>
         /// Constructor for the general case ray tracer.
         /// </summary>
@@ -78,6 +94,7 @@ namespace Pachyderm_Acoustic
             IS_Order = isOrderIn;
             Room = roomIn;
             RecMain = receiverIn;
+            travelconfig = roomIn.Foliage == null ? new TravelConfig(receiverIn) : new FoliageTravelConfig(receiverIn, roomIn.Foliage);
             Raycount = rayCountIn;
 
             COTime = cutoffTime / Room.Sound_speed(0);
@@ -377,22 +394,16 @@ namespace Pachyderm_Acoustic
                 {
                     //Ray is lost... move on...
                     if (order > IS_Order)
-                        RecMain.CheckBroadbandRay(R, new Point(R.x + R.dx * 1000000, R.y + R.dy * 1000000, R.z + R.dz * 1000000));
+                        TravelPath(R, new Point(R.x + R.dx * 1000000, R.y + R.dy * 1000000, R.z + R.dz * 1000000), 0, true);
                     lock (lostlock)
                     {
                         for (int j = 0; j < R.Energy.Length; j++) _lost += R.Energy[j];
                     }
-                    BroadRayPool.Instance.release();
+                    R.Foliage = null; BroadRayPool.Instance.release();
                     goto Do_Scattered;
                 }
 
-                if (order > IS_Order)
-                {
-                    //Specular ray order exceeds order of image source calculation. Start logging specular part.
-                    RecMain.CheckBroadbandRay(R, Start[0]);
-                }
-                R.AddLeg(leg[0] / Room.Sound_speed(code[0]));
-                R.x = Start[0].x; R.y = Start[0].y; R.z = Start[0].z;
+                TravelPath(R, Start[0], leg[0] / Room.Sound_speed(code[0]), order > IS_Order);
 
                 order++;
 
@@ -426,7 +437,7 @@ namespace Pachyderm_Acoustic
                 Rays.Enqueue(OR);
             };//Split all rays into individual octaves.
 
-            BroadRayPool.Instance.release();
+            R.Foliage = null; BroadRayPool.Instance.release();
         Do_Scattered:
 
             if (Rays.Count > 0)
@@ -439,16 +450,13 @@ namespace Pachyderm_Acoustic
                         OR.Ray_ID = Rnd.Next();
                         if (!Room.shoot(OR, out u, out v, out OR.Surf_ID, out Start, out leg, out code))
                         {
-                            RecMain.CheckRay(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000));
+                            TravelPath(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000), 0, true);
                             lock (lostlock) { _lost += OR.Intensity; }
                             OctaveRayPool.Instance.release(OR);
                             goto Do_Scattered;
                         }
 
-                        RecMain.CheckRay(OR, Start[0]);
-
-                        OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
-                        OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
+                        TravelPath(OR, Start[0], leg[0] / Room.Sound_speed(code[0]), true);
 
                         ///Standard Energy Conservation Routine-
                         // 1. Multiply by Reflection energy. (1 - Absorption)
@@ -503,14 +511,12 @@ namespace Pachyderm_Acoustic
 
                 if (!Room.shoot(OR, out u, out v, out OR.Surf_ID, out Start, out leg, out code))
                 {
-                    RecMain.CheckRay(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000));
+                    TravelPath(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000), 0, true);
                     lock (lostlock) { _lost += OR.Intensity; }
                     break;
                 }
 
-                RecMain.CheckRay(OR, Start[0]);
-                OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
-                OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
+                TravelPath(OR, Start[0], leg[0] / Room.Sound_speed(code[0]), true);
                                                                                                       
                 ///Standard Energy Conservation Routine-
                 // 1. Multiply by Reflection energy. (1 - Absorption)
@@ -572,19 +578,13 @@ namespace Pachyderm_Acoustic
                 {
                     //Ray is lost... move on...
                     if (order > IS_Order)
-                        RecMain.CheckBroadbandRay(R, new Point(R.x + R.dx * 1000000, R.y + R.dy * 1000000, R.z + R.dz * 1000000));
+                        TravelPath(R, new Point(R.x + R.dx * 1000000, R.y + R.dy * 1000000, R.z + R.dz * 1000000), 0, true);
                     lock (lostlock) { for (int j = 0; j < R.Energy.Length; j++) _lost += R.Energy[j]; }
-                    BroadRayPool.Instance.release();
+                    R.Foliage = null; BroadRayPool.Instance.release();
                     goto Do_Scattered;
                 }
 
-                if (order > IS_Order)
-                {
-                    //Specular ray order exceeds order of image source calculation. Start logging specular part.
-                    RecMain.CheckBroadbandRay(R, Start[0]);
-                }
-                R.AddLeg(leg[0] / Room.Sound_speed(code[0]));
-                R.x = Start[0].x; R.y = Start[0].y; R.z = Start[0].z;
+                TravelPath(R, Start[0], leg[0] / Room.Sound_speed(code[0]), order > IS_Order);
 
                 order++;
 
@@ -612,7 +612,7 @@ namespace Pachyderm_Acoustic
             } while (R.OctaveEnergy(h_oct) > Threshold_Power_1);
 
             foreach (int o in _octaves) Rays.Enqueue(R.SplitRay(o));//Split all rays into individual octaves.
-            BroadRayPool.Instance.release();
+            R.Foliage = null; BroadRayPool.Instance.release();
         Do_Scattered:
 
             if (Rays.Count > 0)
@@ -626,16 +626,13 @@ namespace Pachyderm_Acoustic
                         OR.Ray_ID = Rnd.Next();
                         if (!Room.shoot(OR, out u, out v, out OR.Surf_ID, out Start, out leg, out code))
                         {
-                            RecMain.CheckRay(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000));
+                            TravelPath(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000), 0, true);
                             lock (lostlock) { _lost += OR.Intensity; }
                             OctaveRayPool.Instance.release(OR);
                             goto Do_Scattered;
                         }
 
-                        RecMain.CheckRay(OR, Start[0]);
-
-                        OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
-                        OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
+                        TravelPath(OR, Start[0], leg[0] / Room.Sound_speed(code[0]), true);
 
                         ///Standard Energy Conservation Routine-
                         // 1. Multiply by Reflection energy. (1 - Absorption)
@@ -666,16 +663,13 @@ namespace Pachyderm_Acoustic
 
                         if (!Room.shoot(OR, out u, out v, out OR.Surf_ID, out Start, out leg, out code))
                         {
-                            RecMain.CheckRay(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000));
+                            TravelPath(OR, new Point(OR.x + OR.dx * 1000000, OR.y + OR.dy * 1000000, OR.z + OR.dz * 1000000), 0, true);
                             lock (lostlock) { _lost += OR.Intensity; }
                             OctaveRayPool.Instance.release(OR);
                             goto Do_Scattered;
                         }
 
-                        RecMain.CheckRay(OR, Start[0]);
-                        //OctChecks.Enqueue(new object[] { OR.Clone(), new Hare.Geometry.Point(Start[0].x, Start[0].y, Start[0].z) });
-                        OR.AddLeg(leg[0] / Room.Sound_speed(code[0]));
-                        OR.x = Start[0].x; OR.y = Start[0].y; OR.z = Start[0].z;
+                        TravelPath(OR, Start[0], leg[0] / Room.Sound_speed(code[0]), true);
 
                         ///Standard Energy Conservation Routine-
                         // 1. Multiply by Reflection energy. (1 - Absorption)
@@ -701,6 +695,72 @@ namespace Pachyderm_Acoustic
                     OctaveRayPool.Instance.release(OR);
                 }
                 while (Rays.Count > 0);
+            }
+        }
+
+        readonly TravelConfig travelconfig;
+
+        // One configuration per simulation; ray histories remain on the individual rays.
+        class TravelConfig
+        {
+            readonly Receiver_Bank receivers;
+            internal TravelConfig(Receiver_Bank receivers) { this.receivers = receivers; }
+
+            public virtual void TravelPath(BroadRay ray, Point end, double time, bool receive)
+            {
+                if (receive) receivers.CheckBroadbandRay(ray, end);
+                if (time == 0) return; // The escape check has no endpoint to advance to.
+                ray.AddLeg(time);
+                ray.x = end.x; ray.y = end.y; ray.z = end.z;
+            }
+
+            public virtual void TravelPath(OctaveRay ray, Point end, double time, bool receive)
+            {
+                if (receive) receivers.CheckRay(ray, end);
+                if (time == 0) return;
+                ray.AddLeg(time);
+                ray.x = end.x; ray.y = end.y; ray.z = end.z;
+            }
+        }
+
+        sealed class FoliageTravelConfig : TravelConfig
+        {
+            readonly Foliage_Field foliage;
+            internal FoliageTravelConfig(Receiver_Bank receivers, Foliage_Field foliage) : base(receivers) { this.foliage = foliage; }
+
+            public override void TravelPath(BroadRay ray, Point end, double time, bool receive)
+            {
+                Foliage_Field.Path previous = ray.Foliage;
+                ray.Foliage = foliage.Trace(new Point(ray.x, ray.y, ray.z), end, previous);
+                bool completed = false;
+                try
+                {
+                    base.TravelPath(ray, end, time, receive);
+                    for (int band = 0; band < ray.Energy.Length; band++) ray.Energy[band] *= ray.Foliage.Gain(band, ray.ThirdOctave, double.PositiveInfinity);
+                    completed = true;
+                }
+                finally { ray.Foliage = completed ? ray.Foliage.Complete() : previous; }
+            }
+
+            public override void TravelPath(OctaveRay ray, Point end, double time, bool receive)
+            {
+                Foliage_Field.Path previous = ray.Foliage;
+                ray.Foliage = foliage.Trace(new Point(ray.x, ray.y, ray.z), end, previous);
+                bool completed = false;
+                try
+                {
+                    base.TravelPath(ray, end, time, receive);
+                    if (ray.BandCount == 1) ray.Intensity *= ray.Foliage.Gain(ray.BandStart, false, double.PositiveInfinity);
+                    else
+                    {
+                        double total = 0;
+                        for (int i = 0; i < ray.BandCount; i++) { ray.Fractions[i] *= ray.Foliage.Gain(ray.BandStart + i, true, double.PositiveInfinity); total += ray.Fractions[i]; }
+                        ray.Intensity *= total;
+                        for (int i = 0; i < ray.BandCount; i++) ray.Fractions[i] = total > 0 ? ray.Fractions[i] / total : 1.0 / ray.BandCount;
+                    }
+                    completed = true;
+                }
+                finally { ray.Foliage = completed ? ray.Foliage.Complete() : previous; }
             }
         }
 

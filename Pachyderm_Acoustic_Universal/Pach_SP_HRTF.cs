@@ -17,7 +17,6 @@
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
 
 using System;
-using System.Buffers;
 using System.Linq;
 using System.Numerics;
 using Vector = Hare.Geometry.Vector;

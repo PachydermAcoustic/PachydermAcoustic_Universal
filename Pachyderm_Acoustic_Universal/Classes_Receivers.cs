@@ -83,8 +83,8 @@ namespace Pachyderm_Acoustic
 
                 for (int i = 0; i < arrPts.Length; i++)
                 {
-                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT.Origin, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
-                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT.Origin, RayCount, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Stationary) Rec_List[i] = (Sc.Foliage == null ? new Spherical_Receiver(arrPts[i], SrcPT.Origin, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in) : new Foliage_Receiver(arrPts[i], SrcPT.Origin, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in));
+                    if (Type == Type.Variable) Rec_List[i] = (Sc.Foliage == null ? new Expanding_Receiver(arrPts[i], SrcPT.Origin, RayCount, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in) : new Foliage_Expanding_Receiver(arrPts[i], SrcPT.Origin, RayCount, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in));
 
                     if (arrPts[i].x > Max.x) Max.x = arrPts[i].x;
                     if (arrPts[i].y > Max.y) Max.y = arrPts[i].y;
@@ -157,8 +157,8 @@ namespace Pachyderm_Acoustic
 
                 for (int i = 0; i < arrPts.Length; i++)
                 {
-                    if (Type == Type.Stationary) Rec_List[i] = new Spherical_Receiver(arrPts[i], SrcPT.Origin, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
-                    if (Type == Type.Variable) Rec_List[i] = new Expanding_Receiver(arrPts[i], SrcPT.Origin, RayCount, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in);
+                    if (Type == Type.Stationary) Rec_List[i] = (Sc.Foliage == null ? new Spherical_Receiver(arrPts[i], SrcPT.Origin, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in) : new Foliage_Receiver(arrPts[i], SrcPT.Origin, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in));
+                    if (Type == Type.Variable) Rec_List[i] = (Sc.Foliage == null ? new Expanding_Receiver(arrPts[i], SrcPT.Origin, RayCount, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in) : new Foliage_Expanding_Receiver(arrPts[i], SrcPT.Origin, RayCount, Sc.Attenuation(arrPts[i], third_Oct), Sc.Sound_speed(arrPts[i]), Sc.Rho(arrPts[i]), SampleRate_in, COTime_in));
 
                     if (arrPts[i].x > Max.x) Max.x = arrPts[i].x;
                     if (arrPts[i].y > Max.y) Max.y = arrPts[i].y;
@@ -769,6 +769,10 @@ namespace Pachyderm_Acoustic
                 for (int oct = 0; oct < 8; oct++) { Reflection_Analysis_Data[0][oct] = new double[(int)(SampleRate * (CO_Time / 1000.0))]; Reflection_Analysis_Data[1][oct] = new double[(int)(SampleRate * (CO_Time / 1000.0))]; Reflection_Analysis_Data[2][oct] = new double[(int)(SampleRate * (CO_Time / 1000))]; }
             }
 
+            // Extra energy transmission after a confirmed receipt; ordinary receivers return unity.
+            protected virtual double MediumLoss(BroadRay ray, int band, double distance) { return 1; }
+            protected virtual double MediumLoss(OctaveRay ray, int band, double distance) { return 1; }
+
             /// <summary>
             /// This method checks a receiver for a ray using a Broadband Ray (these typically occur before rays are split in the Raytracing simulation.
             /// </summary>
@@ -796,7 +800,7 @@ namespace Pachyderm_Acoustic
                     for (int component = 0; component < (R.ThirdOctave ? 3 : 1); component++)
                     {
                         int oct = R.ThirdOctave ? 3 * group + component : group;
-                        double energy = R.Energy[oct] * Math.Pow(10, -.1 * Atten[oct] * raydist) * SizeMod * tsphere; //* t
+                        double energy = R.Energy[oct] * Math.Pow(10, -.1 * Atten[oct] * raydist) * SizeMod * tsphere * MediumLoss(R, oct, t); //* t
                         Recs.Add(RayTime, energy, -R.dx, -R.dy, -R.dz, Rho_C, oct);
                         int sample = (int)(RayTime * SampleRate);
                         if (sample >= 0 && sample < Reflection_Analysis_Data[0][oct].Length)
@@ -835,7 +839,7 @@ namespace Pachyderm_Acoustic
                         for (int cband = 0; cband < R.BandCount; cband++)
                         {
                             int band = R.BandStart + cband;
-                            double e = (R.Intensity * R.Fractions[cband]) * Math.Pow(10, -.1 * Atten[band] * Raytime * C_Sound) * SizeMod * tsphere;
+                            double e = (R.Intensity * R.Fractions[cband]) * Math.Pow(10, -.1 * Atten[band] * Raytime * C_Sound) * SizeMod * tsphere * MediumLoss(R, band, t);
                             Recs.Add(Raytime, e, -R.dx, -R.dy, -R.dz, Rho_C, band);
                             int kind = R.IsSpecular ? (R.WasScattered ? 2 : 0) : 1;
                             if (thirdSample >= 0 && thirdSample < Reflection_Analysis_Data[kind][band].Length)
@@ -843,7 +847,7 @@ namespace Pachyderm_Acoustic
                         }
                         return;
                     }
-                    double energy = R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * Raytime * C_Sound) * SizeMod * tsphere; // t
+                    double energy = R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * Raytime * C_Sound) * SizeMod * tsphere * MediumLoss(R, R.Octave, t); // t
                     Recs.Add(Raytime, energy, -R.dx, -R.dy, -R.dz, Rho_C, R.Octave);
                     int sample = (int)(Raytime * SampleRate);
                     if (sample < Reflection_Analysis_Data[0][0].Length)
@@ -1828,7 +1832,7 @@ namespace Pachyderm_Acoustic
                         for (int cband = 0; cband < R.BandCount; cband++)
                         {
                             int band = R.BandStart + cband;
-                            double energy = (R.Intensity * R.Fractions[cband]) * Math.Pow(10, -.1 * Atten[band] * t) / (Math.PI * Radius2);
+                            double energy = (R.Intensity * R.Fractions[cband]) * Math.Pow(10, -.1 * Atten[band] * t) / (Math.PI * Radius2) * MediumLoss(R, band, t);
                             Recs.Add(Raydist, energy, -R.dx, -R.dy, -R.dz, Rho_C, band);
                             int kind = R.IsSpecular ? (R.WasScattered ? 2 : 0) : 1;
                             int sample = (int)(Raydist * Recs.SampleRate);
@@ -1837,7 +1841,7 @@ namespace Pachyderm_Acoustic
                         }
                         return;
                     }
-                    double Ei = R.Intensity * Math.Pow(10,-.1 * Atten[R.Octave] * t) / (Math.PI * Radius2);
+                    double Ei = R.Intensity * Math.Pow(10,-.1 * Atten[R.Octave] * t) / (Math.PI * Radius2) * MediumLoss(R, R.Octave, t);
                     Recs.Add(Raydist, Ei, -R.dx, -R.dy, -R.dz, Rho_C, R.Octave);
                 }
                 return;
@@ -1876,7 +1880,7 @@ namespace Pachyderm_Acoustic
                         for (int component = 0; component < (R.ThirdOctave ? 3 : 1); component++)
                         {
                             int band = R.ThirdOctave ? 3 * group + component : group;
-                            double energy = R.Energy[band] * Math.Pow(10, -.1 * Atten[band] * t) / Area;
+                            double energy = R.Energy[band] * Math.Pow(10, -.1 * Atten[band] * t) / Area * MediumLoss(R, band, t);
                             Recs.Add(RayTime, energy, -R.dx, -R.dy, -R.dz, Rho_C, band);
                             if (R.ThirdOctave)
                             {

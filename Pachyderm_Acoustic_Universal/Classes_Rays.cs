@@ -36,6 +36,8 @@ namespace Pachyderm_Acoustic
             public double[] Fractions;
             // Intensity is the total; Fractions holds the pooled spectral shares.
             public int Octave;
+            // Active leg during receipts; completed estimated-stand distances between legs.
+            [System.NonSerialized] internal Foliage_Field.Path Foliage;
             public double t_sum;
             public int Surf_ID;
             public int Source_ID;
@@ -75,6 +77,7 @@ namespace Pachyderm_Acoustic
 
             public void reassign(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave, int SrcID, int srf_id = -1)
             {
+                Foliage = null;
                 poly_origin1 = poly_origin2 = 0;
                 x = StartPt.x; y = StartPt.y; z = StartPt.z;
                 dx = Direction.dx; dy = Direction.dy; dz = Direction.dz;
@@ -91,6 +94,7 @@ namespace Pachyderm_Acoustic
 
             public void reassign(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave, int SrcID, double Decimation_in, int srf_id = -1)
             {
+                Foliage = null;
                 poly_origin1 = poly_origin2 = 0;
                 x = StartPt.x; y = StartPt.y; z = StartPt.z;
                 dx = Direction.dx; dy = Direction.dy; dz = Direction.dz;
@@ -108,6 +112,7 @@ namespace Pachyderm_Acoustic
 
             public void reassign(Point StartPt, Vector Direction, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave, int SrcID, double Decimation_in, double Decimation_Inv, int srf_id = -1)
             {
+                Foliage = null;
                 poly_origin1 = poly_origin2 = 0;
                 x = StartPt.x; y = StartPt.y; z = StartPt.z;
                 dx = Direction.dx; dy = Direction.dy; dz = Direction.dz;
@@ -143,6 +148,7 @@ namespace Pachyderm_Acoustic
                 //OctaveRay O = new OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation_threshold, Decim_Inv, Surf_ID);
                 OctaveRay O = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation_threshold, Decim_Inv, Scatter_Mask, Surf_ID);
                 O.BandStart = BandStart; O.BandCount = BandCount;
+                O.Foliage = Foliage;
                 if (BandCount > 1)
                 {
                     if (O.Fractions == null || O.Fractions.Length < BandCount) O.Fractions = new double[BandCount];
@@ -163,6 +169,7 @@ namespace Pachyderm_Acoustic
                 //OctaveRay O = new OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation_threshold, Decim_Inv, Surf_ID);
                 OctaveRay O = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, Intensity * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation_threshold, Decim_Inv, Scatter_Mask, Surf_ID);
                 O.BandStart = BandStart; O.BandCount = BandCount;
+                O.Foliage = Foliage;
                 if (BandCount > 1)
                 {
                     if (O.Fractions == null || O.Fractions.Length < BandCount) O.Fractions = new double[BandCount];
@@ -219,6 +226,7 @@ namespace Pachyderm_Acoustic
                 //OctaveRay O = new OctaveRay(x, y, z, dx, dy, dz, this.Ray_ID, this.ThreadID, this.Intensity, this.t_sum, this.Octave, this.Source_ID, this.Decimation_threshold, this.Decim_Inv, this.Surf_ID);
                 OctaveRay O = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, this.Ray_ID, this.ThreadID, this.Intensity, this.t_sum, this.Octave, this.Source_ID, this.Decimation_threshold, this.Decim_Inv, this.Scatter_Mask, this.Surf_ID);
                 O.BandStart = BandStart; O.BandCount = BandCount;
+                O.Foliage = Foliage;
                 if (BandCount > 1)
                 {
                     if (O.Fractions == null || O.Fractions.Length < BandCount) O.Fractions = new double[BandCount];
@@ -264,6 +272,8 @@ namespace Pachyderm_Acoustic
         public class BroadRay : Ray
         {
             public double[] Energy = new double[8];
+            // Active leg during receipts; completed estimated-stand distances between legs.
+            [System.NonSerialized] internal Foliage_Field.Path Foliage;
             public double t_sum;
             public int Surf_ID;
             public int Source_ID;
@@ -291,6 +301,7 @@ namespace Pachyderm_Acoustic
                 Surf_ID = -1;
                 Decimation = new double[8];
                 Freq_Bands = new int[] { 0, 1, 2, 3, 4, 5, 6, 7 };
+                Foliage = null;
                 poly_origin1 = poly_origin2 = 0;
             }
 
@@ -306,6 +317,7 @@ namespace Pachyderm_Acoustic
                 Source_ID = SrcID;
                 Surf_ID = -1;
                 Decimation = new double[8];
+                Foliage = null;
                 poly_origin1 = poly_origin2 = 0;
                 Freq_Bands = _Octaves;
             }
@@ -323,6 +335,7 @@ namespace Pachyderm_Acoustic
                 Decimation = Decim;
                 Surf_ID = -1;
                 Freq_Bands = new int[] { 0, 1, 2, 3, 4, 5, 6, 7 };
+                Foliage = null;
                 poly_origin1 = poly_origin2 = 0;
             }
 
@@ -338,6 +351,7 @@ namespace Pachyderm_Acoustic
                 Source_ID = SrcID;
                 Decimation = Decim;
                 Surf_ID = -1;
+                Foliage = null;
                 poly_origin1 = poly_origin2 = 0;
                 Freq_Bands = _Octaves;
             }
@@ -420,6 +434,7 @@ namespace Pachyderm_Acoustic
             public BroadRay Clone()
             {
                 BroadRay ray = BroadRayPool.Instance.new_BroadRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, (double[])Energy.Clone(), t_sum, Source_ID, (int[])Freq_Bands.Clone(), Surf_ID);
+                ray.Foliage = Foliage;
                 ray.Decimation = (double[])Decimation.Clone();
                 return ray;
             }
@@ -434,6 +449,7 @@ namespace Pachyderm_Acoustic
                 int bandStart = Octave * BandsPerGroup;
                 OctaveRay O = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, OctaveEnergy(Octave), t_sum, Octave, Source_ID, Decimation[Octave], 0, Surf_ID);
                 O.BandStart = bandStart; O.BandCount = BandsPerGroup;
+                O.Foliage = Foliage;
                 if (O.BandCount > 1)
                 {
                     if (O.Fractions == null || O.Fractions.Length < O.BandCount) O.Fractions = new double[O.BandCount];
@@ -454,6 +470,7 @@ namespace Pachyderm_Acoustic
                 int bandStart = group * BandsPerGroup;
                 OctaveRay branch = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, 0, t_sum, group, Source_ID, Decimation[group], 0, Surf_ID);
                 branch.BandStart = bandStart; branch.BandCount = BandsPerGroup;
+                branch.Foliage = Foliage;
                 if (branch.BandCount == 1) branch.Intensity = Energy[bandStart] * coefficients[bandStart];
                 else
                 {
@@ -471,6 +488,7 @@ namespace Pachyderm_Acoustic
                 int bandStart = Octave * BandsPerGroup;
                 OctaveRay ray = OctaveRayPool.Instance.new_OctaveRay(x, y, z, dx, dy, dz, Ray_ID, ThreadID, OctaveEnergy(Octave) * E_Mod_Coef, t_sum, Octave, Source_ID, Decimation[Octave], 0, Surf_ID);
                 ray.BandStart = bandStart; ray.BandCount = BandsPerGroup;
+                ray.Foliage = Foliage;
                 if (ray.BandCount > 1)
                 {
                     if (ray.Fractions == null || ray.Fractions.Length < ray.BandCount) ray.Fractions = new double[ray.BandCount];
@@ -589,6 +607,7 @@ namespace Pachyderm_Acoustic
                     R.Source_ID = 0;
                     R.poly_origin1 = 0;
                     R.poly_origin2 = 0;
+                    R.Foliage = null;
                     R.ThreadID = 0;
                     return R;
                 }
@@ -721,6 +740,7 @@ namespace Pachyderm_Acoustic
                     R.Surf_ID = -1;
                     R.t_sum = 0;
                     R.Source_ID = 0;
+                    R.Foliage = null;
                     R.ThreadID = 0;
                     return R;
                 }
@@ -728,6 +748,7 @@ namespace Pachyderm_Acoustic
 
             public void release(OctaveRay R)
             {
+                R.Foliage = null;
                 Pool.Add(R);
                 ctr.Release();
             }

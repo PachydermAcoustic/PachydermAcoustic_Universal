@@ -933,6 +933,7 @@ namespace Pachyderm_Acoustic
                     B_oct[oct] = p * mod;
                 }
 
+                Room.AttenuatePath(B_oct, PathVertices[i], true);
                 Bs.Add(B_oct);
                 Tmin.Add(Math.Min(t_limits[0], t_limits[1]));
                 Tmax.Add(Math.Max(t_limits[0], t_limits[1]));

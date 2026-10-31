@@ -112,7 +112,7 @@ namespace Pachyderm_Acoustic
                     for (int i = 0; i < Map_Mesh.Vertex_Count; i++)
                     {
                         p = new Hare.Geometry.Point(Map_Mesh[i].x, Map_Mesh[i].y, Map_Mesh[i].z) + V;
-                        Rec_List[i] = new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p, Third_Oct), SampleRate, CutOffTime, no_of_boxes, Time1Pt, Directional);
+                        Rec_List[i] = (_Sc.Foliage == null ? new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p, Third_Oct), SampleRate, CutOffTime, no_of_boxes, Time1Pt, Directional) : new Foliage_Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p, Third_Oct), SampleRate, CutOffTime, no_of_boxes, Time1Pt, Directional));
                     }
                 }
                 else
@@ -130,7 +130,7 @@ namespace Pachyderm_Acoustic
                         else { center /= 3; }
 
                         p = center + V;
-                        Rec_List[i] = new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p, Third_Oct), SampleRate, CutOffTime, no_of_boxes, Time1Pt, Directional);
+                        Rec_List[i] = (_Sc.Foliage == null ? new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p, Third_Oct), SampleRate, CutOffTime, no_of_boxes, Time1Pt, Directional) : new Foliage_Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p, Third_Oct), SampleRate, CutOffTime, no_of_boxes, Time1Pt, Directional));
                     }
                 }
             }
@@ -142,7 +142,7 @@ namespace Pachyderm_Acoustic
                     {
                         Vector V = Map_Mesh.Vertex_Normals[i] * increment;
                         p = Map_Mesh[i] + V;
-                        Rec_List[i] = new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p, Third_Oct), SampleRate, CutOffTime, no_of_boxes, Time1Pt, Directional);
+                        Rec_List[i] = (_Sc.Foliage == null ? new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p, Third_Oct), SampleRate, CutOffTime, no_of_boxes, Time1Pt, Directional) : new Foliage_Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p, Third_Oct), SampleRate, CutOffTime, no_of_boxes, Time1Pt, Directional));
                     }
                 }
                 else
@@ -161,7 +161,7 @@ namespace Pachyderm_Acoustic
                         Vector V = Map_Mesh.Normal(i);
 
                         p = center + V;
-                        Rec_List[i] = new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p, Third_Oct), SampleRate, CutOffTime, no_of_boxes, Time1Pt, Directional);
+                        Rec_List[i] = (_Sc.Foliage == null ? new Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p, Third_Oct), SampleRate, CutOffTime, no_of_boxes, Time1Pt, Directional) : new Foliage_Map_Receiver(increment, i, p, Src_Pt, _Sc.Sound_speed(p), _Sc.Rho(p), _Sc.Attenuation(p, Third_Oct), SampleRate, CutOffTime, no_of_boxes, Time1Pt, Directional));
                     }
                 }
 
@@ -1902,7 +1902,7 @@ namespace Pachyderm_Acoustic
                         {
                             int band = r.ThirdOctave ? 3 * group + component : group;
                             double attenuationDistance = raytime * C_Sound;
-                            double energy = r.Energy[band] * Math.Pow(10, -.1 * Atten[band] * attenuationDistance) * SizeMod;
+                            double energy = r.Energy[band] * Math.Pow(10, -.1 * Atten[band] * attenuationDistance) * SizeMod * MediumLoss(r, band, t);
                             Recs.Add(Time1PtHistogram ? 0 : raytime, energy, -r.dx, -r.dy, -r.dz, Rho_C, band);
                             if (Reflection_Analysis_Data != null)
                             {
@@ -1938,7 +1938,7 @@ namespace Pachyderm_Acoustic
                         for (int cband = 0; cband < R.BandCount; cband++)
                         {
                             int band = R.BandStart + cband;
-                            double energy = (R.Intensity * R.Fractions[cband]) * Math.Pow(10, -.1 * Atten[band] * raytime * C_Sound) * SizeMod;
+                            double energy = (R.Intensity * R.Fractions[cband]) * Math.Pow(10, -.1 * Atten[band] * raytime * C_Sound) * SizeMod * MediumLoss(R, band, t);
                             Recs.Add(Time1PtHistogram ? 0 : raytime, energy, -R.dx, -R.dy, -R.dz, Rho_C, band);
                             int kind = R.IsSpecular ? (R.WasScattered ? 2 : 0) : 1;
                             int sample = Time1PtHistogram ? 0 : (int)(raytime * Recs.SampleRate);
@@ -1947,7 +1947,7 @@ namespace Pachyderm_Acoustic
                         }
                         return;
                     }
-                    double energyOctave = R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * raytime * C_Sound) * SizeMod;
+                    double energyOctave = R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * raytime * C_Sound) * SizeMod * MediumLoss(R, R.Octave, t);
                     Recs.Add(Time1PtHistogram ? 0 : raytime, energyOctave, -R.dx, -R.dy, -R.dz, Rho_C, R.Octave);// / (1.33333333333333 * Math.PI * Min_Radius2 * Min_Radius), EndPt - R.Origin, R.Octave);//R.Scat_Mod * // - Direct_Time
                     int kindOctave = R.IsSpecular ? (R.WasScattered ? 2 : 0) : 1;
                     int sampleOctave = Time1PtHistogram ? 0 : (int)(raytime * Recs.SampleRate);

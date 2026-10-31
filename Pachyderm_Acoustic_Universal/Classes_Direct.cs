@@ -934,8 +934,9 @@ namespace Pachyderm_Acoustic
                                 for (int oct = 0; oct < BandCount; oct++)
                                 {
                                     arrivalEnergy[oct] = Power[oct] * Atten[oct] * transmod[oct] * Math.Pow(10, -.1 * Room.Attenuation(0, ThirdOctave)[oct] * dist) / (4 * Math.PI * dist * dist);
-                                    if (!coherentSpeaker) Io[i][oct][t] += arrivalEnergy[oct];
                                 }
+
+                                if (path != null) Room.AttenuatePath(arrivalEnergy, path);
 
                                 if (path != null && path.Length > 1)
                                 {
@@ -954,9 +955,11 @@ namespace Pachyderm_Acoustic
                                 for (int oct = 0; oct < BandCount; oct++)
                                 {
                                     arrivalEnergy[oct] = Power[oct] * Math.Pow(10, -.1 * Room.Attenuation(0, ThirdOctave)[oct] * Length) * transmod[oct] / (4 * Math.PI * Length * Length);
-                                    if (!coherentSpeaker) Io[i][oct][t] += arrivalEnergy[oct];
                                 }
                             }
+
+                            if (Validity[i] || !Screen_atten) Room.AttenuatePath(arrivalEnergy, s.Origin, Receiver[i]);
+                            if (!coherentSpeaker) for (int band = 0; band < BandCount; band++) Io[i][band][t] += arrivalEnergy[band];
 
                             if (this.SPL_Only) t = 0;
                             if (coherentSpeaker)
@@ -2190,6 +2193,7 @@ namespace Pachyderm_Acoustic
                             // Clear Path - Apply Attenuation
                             for (int oct = 0; oct < BandCount; oct++) W_temp[oct] *= Math.Pow(10, -.1 * Room.Attenuation(0, ThirdOctave)[oct] * dist) / (4 * Math.PI * dist * dist * local_trib);
 
+                            Room.AttenuatePath(W_temp, height_samples[j], Receiver[rec_id]);
                             double[] result = new double[BandCount];
                             Array.Copy(W_temp, result, BandCount);
 
@@ -2223,6 +2227,7 @@ namespace Pachyderm_Acoustic
                                     W_temp[oct] *= Math.Pow(10, -.1 * Room.Attenuation(0, ThirdOctave)[oct] * dist) / spread;
                                 }
 
+                                if (path != null) Room.AttenuatePath(W_temp, path);
                                 double[] result = new double[BandCount];
                                 Array.Copy(W_temp, result, BandCount);
 
@@ -2328,6 +2333,10 @@ namespace Pachyderm_Acoustic
                     for (int oct = 0; oct < BandCount; oct++)
                     {
                         Io_t[oct] = Math.Pow(10, Ssrc.DomainLevel[oct] / 10) * 1E-12 * Math.Exp(-0.2302 * Room.Attenuation(0, ThirdOctave)[oct] * dist[rec_id][j]) / (4 * Math.PI * dist[rec_id][j] * dist[rec_id][j]) / Ssrc.Samples.Length;
+                    }
+                    Room.AttenuatePath(Io_t, Ssrc.Samples[j], R[rec_id]);
+                    for (int oct = 0; oct < BandCount; oct++)
+                    {
                         Io[rec_id][oct][tau[rec_id][j]] += Io_t[oct];
                         Vector direction = R[rec_id] - Ssrc.Samples[j];
                         direction.Normalize();

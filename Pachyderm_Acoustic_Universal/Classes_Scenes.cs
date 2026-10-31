@@ -235,6 +235,18 @@ namespace Pachyderm_Acoustic
             }
             #endregion
 
+            /// <summary>Optional foliage propagation; ordinary scenes have no volume data.</summary>
+            public virtual Foliage_Field Foliage => null;
+
+            /// <summary>Additional path loss. Pressure amplitudes use half the energy exponent.</summary>
+            public virtual void AttenuatePath(double[] spectrum, Point start, Point end, bool pressure = false) { }
+
+            /// <summary>Complete path overload for propagation models with distance-dependent cumulative loss.</summary>
+            public virtual void AttenuatePath(double[] spectrum, Point[] vertices, bool pressure = false)
+            {
+                for (int leg = 1; leg < vertices.Length; leg++) AttenuatePath(spectrum, vertices[leg - 1], vertices[leg], pressure);
+            }
+
             public abstract double Sound_speed(int arg);
             public abstract double Sound_speed(Hare.Geometry.Point pt);
             
