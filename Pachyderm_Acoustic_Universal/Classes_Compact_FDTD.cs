@@ -239,14 +239,14 @@ namespace Pachyderm_Acoustic
                                 List<Environment.Material> abs;
                                 List<Bound_Node.Boundary> BDir;
                                 Point Loc = Acoustic_Compact_FDTD.RDD_Location(MinPt, x, y, z, dx, dy, dz); //new Point(MinPt.x + 2 * (((double)x - 0.5) * dx), MinPt.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), MinPt.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
-                                if (!Intersect_13Pt(Loc, SD.frequency, out BDir, out abs, ref Rnd))
+                                if (!Intersect_13Pt(Loc, SD.frequency, out BDir, out abs, out List<double> faceWeights, ref Rnd))
                                 {
                                     PFrame[x][y][z] = new RDD_Node(Loc);//, rho0, dt, dx, Rm.Sound_speed, new int[] { x, y, z });
                                 }
                                 else
                                 {
-                                    //PFrame[x][y][z] = new Bound_Node_RDD_MaterialFilter(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, abs, BDir); // abs,
-                                    PFrame[x][y][z] = new Bound_Node_RDD_MaterialFilter(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, abs, BDir); // abs,
+                                    //PFrame[x][y][z] = new Bound_Node_RDD_MaterialFilter(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, abs, faceWeights, BDir); // abs,
+                                    PFrame[x][y][z] = new Bound_Node_RDD_MaterialFilter(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, abs, faceWeights, BDir); // abs,
                                     Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
                                 }
                             }
@@ -424,13 +424,13 @@ namespace Pachyderm_Acoustic
                                             List<Environment.Material> abs;
                                             List<Bound_Node.Boundary> BDir;
 
-                                            if (!Intersect_13Pt(Loc, SD.frequency, out BDir, out abs, ref Rnd))
+                                            if (!Intersect_13Pt(Loc, SD.frequency, out BDir, out abs, out List<double> faceWeights, ref Rnd))
                                             {
                                                 PFrame[x][y][z] = new RDD_Node(Loc);//, rho0, dt, dx, Rm.Sound_speed, new int[] { x, y, z });
                                             }
                                             else
                                             {
-                                                PFrame[x][y][z] = new Bound_Node_RDD_MaterialFilter(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, abs, BDir); //abs,
+                                                PFrame[x][y][z] = new Bound_Node_RDD_MaterialFilter(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, abs, faceWeights, BDir); //abs,
                                                 //PFrame[x][y][z] = new Bound_Node_RDD(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, BDir); //abs,
                                                 lock (Bound) Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
                                             }
@@ -586,13 +586,13 @@ namespace Pachyderm_Acoustic
                                 List<Environment.Material> abs;
                                 List<Bound_Node.Boundary> BDir;
                                 Point Loc = Acoustic_Compact_FDTD.RDD_Location(MinPt, x, y, z, dx, dy, dz); //new Point(MinPt.x + 2 * (((double)x - 0.5) * dx), MinPt.y + 2 * (((double)y + (0.5 - 0.5 * mod)) * dy), MinPt.z + 2 * (((double)z + (0.5 - 0.5 * mod)) * dz));
-                                if (!Intersect_13Pt(Loc, SD.frequency, out BDir, out abs, ref Rnd))
+                                if (!Intersect_13Pt(Loc, SD.frequency, out BDir, out abs, out List<double> faceWeights, ref Rnd))
                                 {
                                     PFrame[x][y][z] = new RDD_Node(Loc);//, rho0, dt, dx, Rm.Sound_speed, new int[] { x, y, z });
                                 }
                                 else
                                 {
-                                    PFrame[x][y][z] = new Bound_Node_RDD_MaterialFilter(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, abs, BDir);
+                                    PFrame[x][y][z] = new Bound_Node_RDD_MaterialFilter(Loc, rho0, dt, dx, Rm.Sound_speed(0), new int[] { x, y, z }, abs, faceWeights, BDir);
                                     Bound.Add(PFrame[x][y][z] as Bound_Node_RDD);
                                 }
                             }
@@ -1043,10 +1043,23 @@ namespace Pachyderm_Acoustic
                 //    return Bout.Count > 0;
                 //}
 
-                public bool Intersect_13Pt(Point Center, double frequency, out List<Bound_Node.Boundary> Bout, out List<Environment.Material> mat, ref Random Rnd)
+                /// <summary>Admittance weight of one cut link: its rhombic-dodecahedron face area projected onto the wall, (sqrt2 / 8)|cos(theta)|.</summary>
+                private double BoundaryFaceWeight(Vector linkDirection, int polyId)
+                {
+                    const double faceArea = 0.1767766952966369; // sqrt(2) / 8
+                    Vector n = Rm.Normal(polyId);
+                    double nLength = Math.Sqrt(n.dx * n.dx + n.dy * n.dy + n.dz * n.dz);
+                    double lLength = Math.Sqrt(linkDirection.dx * linkDirection.dx + linkDirection.dy * linkDirection.dy + linkDirection.dz * linkDirection.dz);
+                    if (!(nLength > 1e-12) || !(lLength > 1e-12)) return faceArea / Math.Sqrt(2); // no normal: axis-aligned diagonal value
+                    double cosTheta = (linkDirection.dx * n.dx + linkDirection.dy * n.dy + linkDirection.dz * n.dz) / (nLength * lLength);
+                    return faceArea * Math.Abs(cosTheta);
+                }
+
+                public bool Intersect_13Pt(Point Center, double frequency, out List<Bound_Node.Boundary> Bout, out List<Environment.Material> mat, out List<double> weights, ref Random Rnd)
                 {
                     Bout = new List<Bound_Node.Boundary>();
                     mat = new List<Environment.Material>();
+                    weights = new List<double>();
 
                     Center += new Point((Rnd.NextDouble() - .5) * 1E-6, (Rnd.NextDouble() - .5) * 1E-6, (Rnd.NextDouble() - .5) * 1E-6);
 
@@ -1061,6 +1074,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[1] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.AYPos);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
+                        weights.Add(BoundaryFaceWeight(-1 * Dir[1], XPt.Poly_id));
                     }
                     XPt = new X_Event();
                     if (Rm.shoot(new Ray(Center, Dir[1], 0, Rnd.Next()), 0, out XPt) && XPt.t < 2 * dy)
@@ -1068,6 +1082,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[1] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.AYNeg);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
+                        weights.Add(BoundaryFaceWeight(Dir[1], XPt.Poly_id));
                     }
 
                     XPt = new X_Event();
@@ -1077,6 +1092,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[2] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.AZPos);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
+                        weights.Add(BoundaryFaceWeight(-1 * Dir[2], XPt.Poly_id));
                     }
                     XPt = new X_Event();
                     if (Rm.shoot(new Ray(Center, Dir[2], 0, Rnd.Next()), 0, out XPt) && XPt.t < 2 * dz)
@@ -1084,6 +1100,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[2] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.AZNeg);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
+                        weights.Add(BoundaryFaceWeight(Dir[2], XPt.Poly_id));
                     }
 
                     XPt = new X_Event();
@@ -1093,6 +1110,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[9] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXNegYNegZPos);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
+                        weights.Add(BoundaryFaceWeight(Dir[9], XPt.Poly_id));
                     }
                     XPt = new X_Event();
                     if (Rm.shoot(new Ray(Center, Dir[9] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < diagonalLength)
@@ -1100,6 +1118,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[9] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXPosYPosZNeg);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
+                        weights.Add(BoundaryFaceWeight(Dir[9] * -1, XPt.Poly_id));
                     }
 
                     XPt = new X_Event();
@@ -1109,6 +1128,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[10] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXPosYNegZPos);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
+                        weights.Add(BoundaryFaceWeight(Dir[10], XPt.Poly_id));
                     }
                     XPt = new X_Event();
                     if (Rm.shoot(new Ray(Center, Dir[10] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < diagonalLength)
@@ -1116,6 +1136,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[10] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXNegYPosZNeg);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
+                        weights.Add(BoundaryFaceWeight(Dir[10] * -1, XPt.Poly_id));
                     }
 
                     XPt = new X_Event();
@@ -1125,6 +1146,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[11] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXPosYPosZPos);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
+                        weights.Add(BoundaryFaceWeight(Dir[11], XPt.Poly_id));
                     }
                     XPt = new X_Event();
                     if (Rm.shoot(new Ray(Center, Dir[11] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < diagonalLength)
@@ -1132,6 +1154,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[11] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXNegYNegZNeg);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
+                        weights.Add(BoundaryFaceWeight(Dir[11] * -1, XPt.Poly_id));
                     }
 
                     XPt = new X_Event();
@@ -1141,6 +1164,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center + Dir[12] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXNegYPosZPos);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
+                        weights.Add(BoundaryFaceWeight(Dir[12], XPt.Poly_id));
                     }
                     XPt = new X_Event();
                     if (Rm.shoot(new Ray(Center, Dir[12] * -1, 0, Rnd.Next()), 0, out XPt) && XPt.t < diagonalLength)
@@ -1148,6 +1172,7 @@ namespace Pachyderm_Acoustic
                         //Rhino.RhinoDoc.ActiveDoc.Objects.AddLine(new Rhino.Geometry.Line(Utilities.PachTools.HPttoRPt(Center), Utilities.PachTools.HPttoRPt(Center - Dir[12] * 2 * dx)));
                         Bout.Add(Bound_Node.Boundary.DXPosYNegZNeg);
                         mat.Add(Rm.AbsorptionValue[XPt.Poly_id]);
+                        weights.Add(BoundaryFaceWeight(Dir[12] * -1, XPt.Poly_id));
                     }
                     return Bout.Count > 0;
                 }
