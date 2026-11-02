@@ -1501,8 +1501,20 @@ namespace Pachyderm_Acoustic
 
             public override System.Numerics.Complex Reflection_Narrow(double frequency, Hare.Geometry.Vector Dir, Hare.Geometry.Vector Normal)
             {
-                int a = (int)(Math.Acos(Math.Abs(Hare.Geometry.Hare_math.Dot(Dir, Normal))) * 180 / Math.PI / 18);
+                int a = AngleIndex(Hare.Geometry.Hare_math.Dot(Dir, Normal));
                 return new System.Numerics.Complex(Transfer_FunctionR[a].Interpolate(frequency), Transfer_FunctionI[a].Interpolate(frequency));
+            }
+
+            /// <summary>
+            /// Maps cos(incidence) to the Transfer_FunctionR/I index (index k covers incidence k*5 .. (k+1)*5 deg).
+            /// </summary>
+            private int AngleIndex(double cosTheta)
+            {
+                int n = Transfer_FunctionR.Length;
+                double incr = angle_incr > 0 ? angle_incr : 5 * Math.PI / 180;
+                double theta = Math.Acos(Math.Min(1.0, Math.Abs(cosTheta)));
+                int a = (int)(theta / incr);
+                return Math.Max(0, Math.Min(n - 1, a));
             }
 
             public class Finite_Field_Impedance
@@ -1622,15 +1634,36 @@ namespace Pachyderm_Acoustic
                 for (int a = 0; a < s.Count; a++) { error += Math.Pow((Y0 + Y2 * s[a] - y[a]).Magnitude, 2); scale += y[a].Magnitude * y[a].Magnitude; }
                 return (Y0, Y2, Math.Sqrt(error / Math.Max(scale, 1e-30)));
             }
+            /// <summary>
+            /// Index into Transfer_FunctionR/I of the sampled angle closest to normal incidence.
+            /// The constructors store Reflection_Coefficient[i] (angle Angles[i]) at index n - i - 1;
+            /// with the default TMM grid (87.5 deg .. 2.5 deg) index 0 is 2.5 deg and index 17 is 87.5 deg (grazing).
+            /// </summary>
+            private int NormalIncidenceIndex()
+            {
+                if (Transfer_FunctionR == null || Transfer_FunctionR.Length == 0) return 0;
+                int n = Transfer_FunctionR.Length;
+                if (Angles == null || Angles.Length < n) return 0;
+                int best = 0;
+                double bestAbs = double.PositiveInfinity;
+                for (int i = 0; i < n; i++)
+                {
+                    double a = Math.Abs(Angles[i].Real);
+                    if (a < bestAbs) { bestAbs = a; best = n - i - 1; }
+                }
+                return best;
+            }
+
             public System.Numerics.Complex Admittance(double frequency)
             {
-                System.Numerics.Complex R = new System.Numerics.Complex(Transfer_FunctionR[17].Interpolate(frequency), Transfer_FunctionI[17].Interpolate(frequency));
+                int idx = NormalIncidenceIndex();
+                System.Numerics.Complex R = new System.Numerics.Complex(Transfer_FunctionR[idx].Interpolate(frequency), Transfer_FunctionI[idx].Interpolate(frequency));
                 return (1 - R) / (rho * c * (1 + R));
             }
 
             public override System.Numerics.Complex[] Reflection_Spectrum(int sample_frequency, int length, Hare.Geometry.Vector Normal, Hare.Geometry.Vector Dir, int threadid)
             {
-                int a = (int)(Math.Abs(Hare.Geometry.Hare_math.Dot(Dir, Normal)) * 180 / Math.PI / 18);
+                int a = AngleIndex(Hare.Geometry.Hare_math.Dot(Dir, Normal));
 
                 System.Numerics.Complex[] Ref_trns = new System.Numerics.Complex[length];
 
@@ -2496,10 +2529,8 @@ namespace Pachyderm_Acoustic
                     rec_maxfreq = max_freq;
                     rec_order = requestedOrder;
 
-                    // Keep this aligned with your current Admittance(double frequency) convention.
-                    int idx = 17;
-                    if (Transfer_FunctionR == null || Transfer_FunctionR.Length == 0) idx = 0;
-                    idx = Math.Max(0, Math.Min(idx, Transfer_FunctionR.Length - 1));
+                    // Fit the normal-incidence reflection (locally reacting FVM boundary).
+                    int idx = NormalIncidenceIndex();
 
                     System.Numerics.Complex[] Rtarget = new System.Numerics.Complex[frequencies.Length];
                     double[] alphaTarget = new double[frequencies.Length];
