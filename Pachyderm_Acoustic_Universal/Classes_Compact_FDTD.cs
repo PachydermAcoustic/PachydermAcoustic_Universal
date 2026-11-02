@@ -624,13 +624,6 @@ namespace Pachyderm_Acoustic
                     Layers = new Acoustic_Compact_FDTD.PML(no_of_Layers, max_Layer, PFrame, true);
                 }
 
-                public void RuntoCompletion()
-                {
-                    for (time_ms = 0; time_ms < tmax / 1000; time_ms += dt)
-                    {
-                        Increment();
-                    }
-                }
 
                 public double SampleFrequency
                 {

@@ -24,7 +24,6 @@ using MathNet.Numerics;
 using Pachyderm_Acoustic.Pach_Graphics;
 using Pachyderm_Acoustic.Utilities;
 using System.CodeDom;
-using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using Eto.Forms;
 
@@ -571,43 +570,51 @@ namespace Pachyderm_Acoustic
 
             private bool CreatingFilter = false;
 
-            public async virtual void Create_Filter(IProgressFeedback VB = null)
+            public virtual void Create_Filter(IProgressFeedback VB = null)
             {
                 CreatingFilter = true;
-                //if (VB != null) VB.Report((int)(100 * (1f - ((float)CDE.CurrentCount / (float)IR.Length))));
-                //if (VB != null) VB.change_title(string.Format("Filter Progress: Creating Positive {0}.", new string[3] { "X", "Y", "Z" }[dir]));
-                //if (VB != null) VB.change_title(string.Format("Filter Progress: Creating Negative {0}.", new string[3] { "X", "Y", "Z" }[dir]));
-
-                //VB.change_title(string.Format("Filter Progress: Creating Positive {0}.", new string[3] { "X", "Y", "Z" }[dir]));
-                //VB.change_title(string.Format("Filter Progress: Creating Negative {0}.", new string[3] { "X", "Y", "Z" }[dir]));
-
-                Task[] t = new Task[Rec_List.Length];
-
-                for (int rec = 0; rec < Rec_List.Length; rec++)
+                try
                 {
-                    if (VB != null)
+                    for (int rec = 0; rec < Rec_List.Length; rec++)
                     {
-                        VB.change_title(string.Format("Creating Pressure for receiver {0}", rec));
-                        VB.Report((int)(((double)(rec + 1) * 100) / ((double)Rec_List.Length)));
+                        if (VB != null)
+                        {
+                            VB.change_title(string.Format("Creating Pressure for receiver {0}", rec));
+                            VB.Report((int)(((double)(rec + 1) * 100) / ((double)Rec_List.Length)));
+                        }
+                        Rec_List[rec].Create_Filter();
                     }
-                    //t[rec] = Task.Run(() => { Rec_List[rec].Create_Filter(); });
-                    //while (t[rec].Status != TaskStatus.RanToCompletion) System.Threading.Thread.Sleep(300);//await Task.Delay(500);
-                    Rec_List[rec].Create_Filter();
                 }
-                //await Task.WhenAll(t);
-                CreatingFilter = false;
+                finally
+                {
+                    CreatingFilter = false;
+                }
             }
 
             public double[] Create_Filter(double[] SWL, int Rec_ID, int dim, IProgressFeedback VB = null)
             {
                 CreatingFilter = true;
-                return Rec_List[Rec_ID].Create_Filter(SWL, dim);
+                try
+                {
+                    return Rec_List[Rec_ID].Create_Filter(SWL, dim);
+                }
+                finally
+                {
+                    CreatingFilter = false;
+                }
             }
 
             public double[][] Create_Filter(double[] SWL, int Rec_ID, IProgressFeedback VB = null)
             {
                 CreatingFilter = true;
-                return Rec_List[Rec_ID].Create_Filter(SWL);
+                try
+                {
+                    return Rec_List[Rec_ID].Create_Filter(SWL);
+                }
+                finally
+                {
+                    CreatingFilter = false;
+                }
             }
 
             public double[][] Filter_3Axis(int rec_id)
@@ -850,24 +857,9 @@ namespace Pachyderm_Acoustic
                     double energy = R.Intensity * Math.Pow(10, -.1 * Atten[R.Octave] * Raytime * C_Sound) * SizeMod * tsphere * MediumLoss(R, R.Octave, t); // t
                     Recs.Add(Raytime, energy, -R.dx, -R.dy, -R.dz, Rho_C, R.Octave);
                     int sample = (int)(Raytime * SampleRate);
-                    if (sample < Reflection_Analysis_Data[0][0].Length)
-                    {
-                        if (R.IsSpecular)
-                        {
-                            if (R.WasScattered)
-                            {
-                                Reflection_Analysis_Data[2][R.Octave][sample] += energy;
-                            }
-                            else
-                            {
-                                Reflection_Analysis_Data[0][R.Octave][sample] += energy;
-                            }
-                        }
-                        else
-                        {
-                            Reflection_Analysis_Data[1][R.Octave][sample] += energy;
-                        }
-                    }
+                    int kindOctave = R.IsSpecular ? (R.WasScattered ? 2 : 0) : 1;
+                    if (sample >= 0 && sample < Reflection_Analysis_Data[kindOctave][R.Octave].Length)
+                        lock (Reflection_Analysis_Data[kindOctave][R.Octave]) Reflection_Analysis_Data[kindOctave][R.Octave][sample] += energy;
                 }
             }
 
@@ -1450,12 +1442,6 @@ namespace Pachyderm_Acoustic
                 {
                     SampleRate = SampleRate_in;
                     this.SampleCT = SampleCT;
-                    Energy = new double[bandCount][];
-
-                    for (int o = 0; o < Energy.Length; o++)
-                    {
-                        Energy[o] = new double[SampleCT];
-                    }
                     Dir_Rec_Pos = new double[3][][];
                     Dir_Rec_Neg = new double[3][][];
                     for (int i = 0; i < 3; i++)
@@ -1486,11 +1472,6 @@ namespace Pachyderm_Acoustic
                     SampleRate = SampleRate_in;
                     CO_Time = COTime_in / 1000;
                     SampleCT = (int)(CO_Time * SampleRate);
-                    Energy = new double[bandCount][];
-                    for (int o = 0; o < Energy.Length; o++)
-                    {
-                        Energy[o] = new double[(int)(SampleRate * CO_Time)];
-                    }
                     Dir_Rec_Pos = new double[3][][];
                     Dir_Rec_Neg = new double[3][][];
                     for (int i = 0; i < 3; i++)

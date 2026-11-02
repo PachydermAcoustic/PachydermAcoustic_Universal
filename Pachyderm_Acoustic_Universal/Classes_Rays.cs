@@ -17,6 +17,7 @@
 //'Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
 
 using Hare.Geometry;
+using System;
 using System.Collections.Concurrent;
 using System.Threading;
 
@@ -506,23 +507,17 @@ namespace Pachyderm_Acoustic
             protected int count;
             protected int position = 0;
             private SemaphoreSlim ctr;
-            private static BroadRayPool instance = null;
-            protected object insLock = new object();
-            protected bool initialized;
+            private static readonly Lazy<BroadRayPool> instance = new Lazy<BroadRayPool>(() => new BroadRayPool(), LazyThreadSafetyMode.ExecutionAndPublication);
+            /// <summary>Ensures the pool exists. Idempotent: never replaces an existing pool or resets its capacity, position, semaphore, or borrowed rays.</summary>
             public static void Initialize()
             {
-                instance = new BroadRayPool();
-                instance.initialized = true;
+                _ = instance.Value;
             }
             public static BroadRayPool Instance
             {
                 get
                 {
-                    if (instance == null)
-                    {
-                        instance = new BroadRayPool();
-                    }
-                    return instance;
+                    return instance.Value;
                 }
             }
 
@@ -531,7 +526,7 @@ namespace Pachyderm_Acoustic
 
             private BroadRayPool(int capacity = 200000) 
             {
-                instance = this;
+                // Lazy<BroadRayPool> publishes this instance only after construction completes.
                 count = capacity; 
                 ctr = new SemaphoreSlim(0, count);
                 Pool = new BroadRay[capacity];
@@ -630,18 +625,17 @@ namespace Pachyderm_Acoustic
             protected int count;
             private SemaphoreSlim ctr;
             private SemaphoreSlim memmod;
-            private static OctaveRayPool instance = null;
-            protected bool initialized;
+            private static readonly Lazy<OctaveRayPool> instance = new Lazy<OctaveRayPool>(() => new OctaveRayPool(), LazyThreadSafetyMode.ExecutionAndPublication);
             private ConcurrentBag<OctaveRay> Pool;
+            /// <summary>Ensures the pool exists. Idempotent: never replaces an existing pool or resets its capacity, semaphore, or borrowed rays.</summary>
             public static void Initialize()
             {
-                instance = new OctaveRayPool();
-                instance.initialized = true;
+                _ = instance.Value;
             }
 
             private OctaveRayPool(int capacity = 5000)
             {
-                instance = this;
+                // Lazy<OctaveRayPool> publishes this instance only after construction completes.
                 count = capacity;
                 ctr = new SemaphoreSlim(0,10000000);
                 memmod = new SemaphoreSlim(1, 1);
@@ -653,13 +647,9 @@ namespace Pachyderm_Acoustic
             {
                 get
                 {
-                    if (instance == null)
-                    {
-                        instance = new OctaveRayPool();
-                    }
-                    return instance;
+                    return instance.Value;
                 }
-            }            
+            }
 
             public OctaveRay new_OctaveRay(double x, double y, double z, double dx, double dy, double dz, int ID, int ThreadID_IN, double Intensity_in, double Time, int octave, int SrcID, double Decimation_in, double Decimation_Inv, short ScatterMask, int srf_id = -1)
             {

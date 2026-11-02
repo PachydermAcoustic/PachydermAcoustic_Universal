@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Pachyderm_Acoustic_Universal\Pachyderm_Acoustic_Universal.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Ticket 08 (spec D7): compile the Rhino repo's production RunSimulation.cs against Rhino
+         stubs to prove the wait contract headlessly. Production files are not modified by this
+         project. Requires the sibling clone at ..\..\..\PachydermAcoustic_Rhinoceros (true for the
+         main clones and the rt-08 worktrees); this exe is standalone and not part of the shared
+         AnalysisCancellation harness, whose repo must stay self-contained. -->
+    <Compile Include="..\..\..\PachydermAcoustic_Rhinoceros\RunSimulation.cs" Link="Rhino\RunSimulation.cs" />
+  </ItemGroup>
+</Project>

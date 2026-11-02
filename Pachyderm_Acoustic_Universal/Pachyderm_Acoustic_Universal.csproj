@@ -20,7 +20,7 @@
 		<EnableSourceControlManagerQueries>true</EnableSourceControlManagerQueries>
 	</PropertyGroup>
 	<ItemGroup>
-		<ProjectReference Include="..\..\..\Hare\Hare.csproj" />
+		<ProjectReference Include="..\..\Hare\Hare.csproj" />
 	</ItemGroup>
 	<ItemGroup>
 		<PackageReference Include="HDF.PInvoke.1.10" Version="1.10.612" />
@@ -52,7 +52,7 @@
 	</ItemGroup>
 	<ItemGroup>
 		<Reference Include="Eto">
-			<HintPath>..\..\..\..\..\..\..\..\Program Files\Rhino 8\System\Eto.dll</HintPath>
+			<HintPath>$(RhinoSystemDir)\Eto.dll</HintPath>
 		</Reference>
 	</ItemGroup>
 	<PropertyGroup>

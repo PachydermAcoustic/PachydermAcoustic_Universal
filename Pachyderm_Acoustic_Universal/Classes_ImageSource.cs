@@ -185,6 +185,7 @@ namespace Pachyderm_Acoustic
             int[] Sequence = new int[1];
             for (CurrentSrf[Params.ThreadID] = 0; CurrentSrf[Params.ThreadID] < Params.EndIndex - Params.StartIndex; CurrentSrf[Params.ThreadID]++)
             {
+                if (Cancellation.IsCancellationRequested) return;
                 if (System.Threading.Volatile.Read(ref calculationError) != null) return;
                 List<Hare.Geometry.Point[]> Images = new List<Hare.Geometry.Point[]>();
                 List<int[]> sub = new List<int[]>();

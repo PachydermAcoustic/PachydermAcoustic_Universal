@@ -227,7 +227,16 @@ namespace Pachyderm_Acoustic
         }
 
         ValueTask Prime;
-        List<ValueTask> MainRays = new List<ValueTask>();
+
+        private Exception failure;
+
+        /// <summary>
+        /// The first exception thrown by a convergence round's ray task, if any (spec D6).
+        /// The failing round is fully settled before the simulation stops, and ThreadState()
+        /// rethrows it once, so a caller polling the state observes the failure instead of
+        /// treating the partial run as a finished one. Null on normal or cancelled completion.
+        /// </summary>
+        public Exception Failure { get { return Volatile.Read(ref failure); } }
 
         /// <summary>
         /// Inherited member. Divides the simulation into tasks, and begins.
@@ -235,12 +244,16 @@ namespace Pachyderm_Acoustic
         public override void Begin()
         {
             conclude = false;
+            failure = null;
             _st = DateTime.Now;
             Random Rnd = new Random((int)DateTime.Now.ToFileTimeUtc());
             _processorCt = System.Environment.ProcessorCount;
 
             if (Raycount > 0)
             {
+                // This run's own task set; it is awaited exactly once and not shared with
+                // the convergence path (spec D6 keeps the two lifecycles separate).
+                List<ValueTask> FixedRays = new List<ValueTask>(_processorCt);
                 for (int P_I = 0; P_I < _processorCt; P_I++)
                 {
                     int start = (int)Math.Floor((double)P_I * Raycount / _processorCt);
@@ -249,12 +262,21 @@ namespace Pachyderm_Acoustic
                     else end = (int)Math.Floor((double)(P_I + 1) * Raycount / _processorCt);
                     Calc_Params T = new Calc_Params(Room, start, end, P_I, Rnd.Next());
                     ValueTask t = new ValueTask(Task.Run(async () => await Calculate(T)));
-                    MainRays.Add(t);
+                    FixedRays.Add(t);
                 }
 
-                Task.Run(async () => 
-                {   
-                    for (int i = 0; i < MainRays.Count; i++) await MainRays[i];
+                Task.Run(async () =>
+                {
+                    // Settle every worker even if one faults, record the first failure for
+                    // ThreadState() to rethrow, and always conclude: a faulted run must not
+                    // report success, and must not leave a caller polling forever.
+                    Exception roundFailure = null;
+                    for (int i = 0; i < FixedRays.Count; i++)
+                    {
+                        try { await FixedRays[i]; }
+                        catch (Exception ex) { if (roundFailure == null) roundFailure = ex; }
+                    }
+                    if (roundFailure != null) failure = roundFailure;
                     conclude = true;
                     _ts = DateTime.Now - _st;
                 });
@@ -272,6 +294,12 @@ namespace Pachyderm_Acoustic
         public override System.Threading.ThreadState ThreadState()
         {
             if (!conclude) return System.Threading.ThreadState.Running;
+            // Same contract as ImageSourceData: once the workers have settled, a stored failure
+            // is rethrown to whoever polls the state instead of reporting a stopped run whose
+            // receivers were only partly written (spec D6). The failure is kept, not consumed,
+            // so the caller can still read Failure after observing the throw.
+            Exception error = Volatile.Read(ref failure);
+            if (error != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
             return System.Threading.ThreadState.Stopped;
         }
 
@@ -326,10 +354,13 @@ namespace Pachyderm_Acoustic
                 if (conclude)
                     break;
 
+                // Only this round's ray tasks; nothing from previous rounds is retained
+                // or awaited again (spec D6).
+                List<ValueTask> RoundRays = new List<ValueTask>(Source.Revolution_Period());
                 for (int P_I = 0; P_I < Source.Revolution_Period(); P_I++)
-                {    
+                {
                     Calc_Params T = new Calc_Params(Room, P_I, P_I + 1, P_I, rnd.Next());
-                    ValueTask t = new ValueTask(Task.Run(async () =>
+                    RoundRays.Add(new ValueTask(Task.Run(async () =>
                     {
                         Random Rnd = new Random(T.RandomSeed);
                         await cast_ray_distributed(T.Room, T.ThreadID, Rnd);
@@ -337,11 +368,28 @@ namespace Pachyderm_Acoustic
                         {
                             _currentRay[0]++;
                         }
-                    }));
-                    MainRays.Add(t);
+                    })));
                 }
 
-                for (var j = 0; j < MainRays.Count; j++) await MainRays[j];
+                // Settle the entire round — including faulted tasks — before checking
+                // convergence, so a failure is never read as convergence and no unobserved
+                // task is left writing receivers (spec D6).
+                Exception roundFailure = null;
+                foreach (ValueTask t in RoundRays)
+                {
+                    try { await t; }
+                    catch (Exception ex) { if (roundFailure == null) roundFailure = ex; }
+                }
+                RoundRays = null;
+
+                if (roundFailure != null)
+                {
+                    // Failure cleanup (spec D6): the round is fully settled; record the
+                    // first failure for the caller, stop without checking convergence,
+                    // and let no further rounds start.
+                    failure = roundFailure;
+                    break;
+                }
 
                 GC.Collect();
                 conv = true;

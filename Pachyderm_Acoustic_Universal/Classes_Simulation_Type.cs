@@ -26,6 +26,15 @@ namespace Pachyderm_Acoustic
     /// </summary>
     public abstract class Simulation_Type
     {
+        public CancellationToken Cancellation { get; set; } = CancellationToken.None;
+        /// <summary>
+        /// Monotonic clock (Stopwatch) measuring the compute window of the most recent run.
+        /// The simulation coordinator restarts it immediately before Begin() and stops it once
+        /// Combine_ThreadLocal_Results has settled, so stage timers can report work time
+        /// separately from the await/polling time that contains it. Purely additive: it is
+        /// never read by the acoustic calculations.
+        /// </summary>
+        public readonly System.Diagnostics.Stopwatch _workClock = new System.Diagnostics.Stopwatch();
         public abstract string Sim_Type();
         public abstract void Begin();
         public abstract string ProgressMsg();

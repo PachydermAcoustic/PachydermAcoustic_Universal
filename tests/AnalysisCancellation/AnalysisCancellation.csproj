@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net8.0;net7.0;net48</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- x64: matches libfftw3-3.dll; AnyCPU net48 exes run 32-bit and FFTW then fails to load (ticket 03). -->
+    <PlatformTarget>x64</PlatformTarget>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <!-- No net7.0 runtime is installed; roll the net7.0 exe forward onto the newer
+         installed runtime so the ticket-01 "runs on net7.0" criterion is met for real. -->
+    <RollForward>Major</RollForward>
+    <!-- Suites exercise the FFTW-backed filter creation on file read; the bundled libfftw3-3.dll is x64-only,
+         so the net48 flavor must not run as 32-bit-preferred. -->
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Shared deterministic-assertion harness (ticket 01). Accesses Universal through a
+         project reference only: no Rhino dependency, no test packages, no private reflection. -->
+    <ProjectReference Include="..\..\Pachyderm_Acoustic_Universal\Pachyderm_Acoustic_Universal.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- T6 fixed-count regression (ticket 09): scenario + comparator compiled in from the
+         standalone runner project, so the harness suite and tests/T6Baseline (whose copy in
+         the baseline worktree produces the BEFORE fixture) run identical code. -->
+    <Compile Include="..\T6Baseline\T6Scenario.cs" Link="T6Scenario.cs" />
+    <Compile Include="..\T6Baseline\T6Shared.cs" Link="T6Shared.cs" />
+  </ItemGroup>
+</Project>

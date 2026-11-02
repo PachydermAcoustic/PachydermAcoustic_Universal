@@ -91,37 +91,37 @@ namespace Pachyderm_Acoustic
                     if (!AngularDistancePass && !GlobeCoveragePass)
                     {
                         ValidationMessage = "HRTF failed both angular distance and globe coverage checks:\n" +
-                                            $"Average angular distance in front hemisphere: {AvgAngularDistanceFrontal:F2}° (tolerance: 8°)\n" +
-                                            $"Average angular distance in back hemisphere: {AvgAngularDistanceRear:F2}°";
+                                            $"Average angular distance in front hemisphere: {AvgAngularDistanceFrontal:F2}Â° (tolerance: 8Â°)\n" +
+                                            $"Average angular distance in back hemisphere: {AvgAngularDistanceRear:F2}Â°";
 
                         if (AvgAngularDistanceRear >= 150)
                         {
                             ValidationMessage += " (Warning: rear hemisphere appears to be effectively empty)";
                         }
 
-                        ValidationMessage += $"\nMaximum coverage gap found: {MaxCoverageGap:F2}° (tolerance: 15°)\n" +
+                        ValidationMessage += $"\nMaximum coverage gap found: {MaxCoverageGap:F2}Â° (tolerance: 15Â°)\n" +
                                              "For more detailed diagnostics and a visualisation of the sampling density of your .SOFA file, please see: \n" +
                                              "https://github.com/domfrbassett/HRTF_Diagnostic_Tool";
                     }
                     else if (!AngularDistancePass)
                     {
                         ValidationMessage = "HRTF failed angular distance check.\n" +
-                                            $"Average angular distance in front hemisphere: {AvgAngularDistanceFrontal:F2}° (tolerance: 8°)\n" +
-                                            $"Average angular distance in back hemisphere: {AvgAngularDistanceRear:F2}°";
+                                            $"Average angular distance in front hemisphere: {AvgAngularDistanceFrontal:F2}Â° (tolerance: 8Â°)\n" +
+                                            $"Average angular distance in back hemisphere: {AvgAngularDistanceRear:F2}Â°";
 
                         if (AvgAngularDistanceRear >= 150)
                         {
                             ValidationMessage += " (Warning: rear hemisphere appears to be effectively empty)";
                         }
 
-                        ValidationMessage += " (tolerance: 8°)\n" +
+                        ValidationMessage += " (tolerance: 8Â°)\n" +
                                              "For more detailed diagnostics and a visualisation of the sampling density of your .SOFA file, please see:\n" +
                                              "https://github.com/domfrbassett/HRTF_Diagnostic_Tool";
                     }
                     else if (!GlobeCoveragePass)
                     {
                         ValidationMessage = "HRTF failed globe coverage check.\n" +
-                                            $"Maximum coverage gap found: {MaxCoverageGap:F2}° (tolerance: 15°)\n" +
+                                            $"Maximum coverage gap found: {MaxCoverageGap:F2}Â° (tolerance: 15Â°)\n" +
                                             "For more detailed diagnostics and a visualisation of the sampling density of your .SOFA file, please see: \n" +
                                             "https://github.com/domfrbassett/HRTF_Diagnostic_Tool";
                     }
@@ -273,7 +273,7 @@ namespace Pachyderm_Acoustic
                 AvgAngularDistanceFrontal = AverageMinAngularDistance(frontVectors);
                 AvgAngularDistanceRear = AverageMinAngularDistance(backVectors);
 
-                // Check against threshold (8°)
+                // Check against threshold (8Â°)
                 return AvgAngularDistanceFrontal <= 8 && AvgAngularDistanceRear <= 8;
             }
 
@@ -283,8 +283,8 @@ namespace Pachyderm_Acoustic
                     .Select(i => PachTools.SphericalToCartesian(emitterdirs[i, 0], emitterdirs[i, 1]))
                     .ToArray();
 
-                int N_az = 73; // Number of azimuthal divisions - approximately 5° spacing
-                int N_el = 19; // Number of elevation divisions - approximately 5° spacing
+                int N_az = 73; // Number of azimuthal divisions - approximately 5Â° spacing
+                int N_el = 19; // Number of elevation divisions - approximately 5Â° spacing
 
                 var refPoints = new List<Hare.Geometry.Vector>();
 

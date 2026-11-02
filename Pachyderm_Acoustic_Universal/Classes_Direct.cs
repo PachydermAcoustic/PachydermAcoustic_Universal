@@ -825,6 +825,7 @@ namespace Pachyderm_Acoustic
 
                 System.Threading.Tasks.Parallel.For(0, Receiver.Count, (i) =>
                 {
+                    if (Cancellation.IsCancellationRequested) return;
                     Random i_rnd = new Random(i * 1000 + 1);
                     Rho_C[i] = Room.Rho_C(Receiver[i]);
                     if (coherent) SpeakerArrivals[i] = new List<SpeakerArrival>();
@@ -2283,6 +2284,7 @@ namespace Pachyderm_Acoustic
             //for (int k = 0; k < R.Count; k++)
             System.Threading.Tasks.Parallel.For(0, R.Count, k =>
             {
+                if (Cancellation.IsCancellationRequested) return;
                 Random RndGen = new Random(rndList[0]);
                 tau[k] = new int[Ssrc.Samples.Length];
                 dist[k] = new double[Ssrc.Samples.Length];
