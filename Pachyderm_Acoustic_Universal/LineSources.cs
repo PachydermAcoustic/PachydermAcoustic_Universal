@@ -421,12 +421,9 @@ namespace Pachyderm_Acoustic
                     double[] energy = Utilities.AcousticalMath.ConvertBandEnergy(Level[group].Select(level => 1E-12 * Math.Pow(10, .1 * level)).ToArray(), thirdOctave);
                     Level[group] = energy.Select(power => 10 * Math.Log10(power / 1E-12)).ToArray();
                 }
-                if (thirdOctave)
-                {
-                    SourcePower = new double[24];
-                    foreach (double[] group in Power) for (int band = 0; band < 24; band++) SourcePower[band] += group[band];
-                    SPL = SourcePower.Select(power => 10 * Math.Log10(power / 1E-12)).ToArray();
-                }
+                SourcePower = new double[thirdOctave ? 24 : 8];
+                foreach (double[] group in Power) for (int band = 0; band < SourcePower.Length; band++) SourcePower[band] += group[band];
+                SPL = SourcePower.Select(power => 10 * Math.Log10(power / 1E-12)).ToArray();
             }
 
             public override BroadRay Directions(int thread, ref Random random, int[] Octaves)
