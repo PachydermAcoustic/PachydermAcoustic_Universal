@@ -269,26 +269,26 @@ namespace Pachyderm_Acoustic.Simulation
             }
             return true;
         }
-        private Complex Green(Point observation, Point source, double k)
+        private static Complex Green(Point observation, Point source, double k)
         {
             double distance = (observation - source).Length();
             if (!(distance > 0)) throw new InvalidOperationException("BEM observation coincides with a monopole or quadrature point.");
             return Complex.Exp(-Complex.ImaginaryOne * k * distance) / (4 * Math.PI * distance);
         }
 
-        private Complex ComputeNormalDerivative(Point observation, Point source, Vector normal, double k)
+        private static Complex ComputeNormalDerivative(Point observation, Point source, Vector normal, double k)
         {
             Vector delta = observation - source;
             double distance = delta.Length();
             return Green(observation, source, k) * (1 + Complex.ImaginaryOne * k * distance) * Hare_math.Dot(delta, normal) / (distance * distance);
         }
 
-        private (Complex G, Complex D) IntegrateElement(Point observation, BoundaryElement element, double k, bool self)
+        internal static (Complex G, Complex D) IntegrateElement(Point observation, BoundaryElement element, double k, bool self)
         {
             Complex single = 0, dual = 0;
-            // Duffy radial mapping about the panel centroid removes the 1/r self singularity.
+            // Duffy radial mapping about the self observation removes the 1/r singularity. Room collocation uses the centroid.
             // This is regular Gauss quadrature for other panels; near-boundary receivers need refinement.
-            Point center = element.CollocationPoint;
+            Point center = self ? observation : element.CollocationPoint;
             for (int edge = 0; edge < element.Vertices.Length; edge++)
             {
                 Vector a = element.Vertices[edge] - center, b = element.Vertices[(edge + 1) % element.Vertices.Length] - center;
