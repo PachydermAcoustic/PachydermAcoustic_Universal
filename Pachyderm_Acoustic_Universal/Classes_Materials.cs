@@ -1079,6 +1079,8 @@ namespace Pachyderm_Acoustic
             public double[][] Ang_tau_3rd = new double[24][];
             public double[] RI_Averages;
             private double angle_incr;
+            private bool transmission;
+            public bool Transmitting { get { return transmission; } }
 
             public Smart_Material(bool Trans, List<AbsorptionModels.ABS_Layer> Layers, int Samplefreq, double Air_Density, double SoundSpeed, Finite_Field_Impedance Zr, double step)
             : this(Trans, Layers, Samplefreq, Air_Density, SoundSpeed, Zr, step, CancellationToken.None)
@@ -1088,6 +1090,7 @@ namespace Pachyderm_Acoustic
             public Smart_Material(bool Trans, List<AbsorptionModels.ABS_Layer> Layers, int Samplefreq, double Air_Density, double SoundSpeed, Finite_Field_Impedance Zr, double step, CancellationToken CTS = default)
             {
                 Buildup = Layers;
+                transmission = Trans;
                 Fs = Samplefreq;
                 rho = Air_Density;
                 c = SoundSpeed;
@@ -1109,7 +1112,8 @@ namespace Pachyderm_Acoustic
                         Trans_Coefficient[i] = new System.Numerics.Complex[Trans_Loss[i].Length];
                         for (int j = 0; j < Trans_Coefficient[i].Length; j++)
                         {
-                            Trans_Coefficient[i][j] = Trans_Loss[i][j] * Trans_Loss[i][j];
+                            double t = Trans_Loss[i][j].Magnitude;
+                            Trans_Coefficient[i][j] = t * t;
                         }
                     }
                 }
@@ -1218,6 +1222,7 @@ namespace Pachyderm_Acoustic
             public Smart_Material(bool Trans, List<AbsorptionModels.ABS_Layer> Layers, int Samplefreq, double Air_Density, double SoundSpeed, CancellationToken CTS = default)
             {
                 Buildup = Layers;
+                transmission = Trans;
                 Fs = Samplefreq;
                 rho = Air_Density;
                 c = SoundSpeed;
@@ -1391,6 +1396,7 @@ namespace Pachyderm_Acoustic
                     }
                     int count = 0;
                     int RI_count = 0;
+                    int TI_count = 0;
 
                     alpha[band] = new double[Angles.Length];
                     tau[band] = new double[Angles.Length];
@@ -1404,6 +1410,7 @@ namespace Pachyderm_Acoustic
                         if (f < f_id_l) { f++; continue; }
                         if (f >= frequency.Length) break;
                         ri[band] += RI_Averages[f];
+                        TI_count++;
                         ti[band] += (finite ? TI_Averages[f].Real : TI_Averages[f].Magnitude);
                         for (int a = 0; a < 19; a++)
                         {
@@ -1423,72 +1430,102 @@ namespace Pachyderm_Acoustic
                         }
                     } while (frequency[f] < f_upper);
 
-                    for (int a = 0; a < Angles.Length; a++) { alpha[band][a] /= fct[a]; if (!finite || oct >= 8) tau[band][a] /= fct[a]; }
+                    for (int a = 0; a < Angles.Length; a++) { alpha[band][a] /= fct[a]; tau[band][a] /= fct[a]; }
                     ri[band] /= RI_count;
-                    ti[band] /= RI_count;
+                    ti[band] /= TI_count;
                 }
+            }
+
+            // The existing air-termination constructor supplies transmission data. Absorption
+            // uses the same Abs adjustment as a lab TL assignment; reflection data stays intact.
+            private double Surviving_Energy(int band, bool thirdOctave, int index, Hare.Geometry.Vector normal, Hare.Geometry.Vector direction, out double tau)
+            {
+                double reflected = thirdOctave ? Math.Pow(Reflection_Narrow(Utilities.AcousticalMath.ThirdOctaveCenters()[band], direction, normal).Magnitude, 2) : 1 - Ang_Coef_Oct[band][index];
+                tau = transmission ? (thirdOctave ? Ang_tau_3rd[band][index] : Ang_tau_Oct[band][index]) : 0;
+                if (!transmission) return reflected;
+                double Abs = Math.Max(0, (1 - reflected) - tau);
+                return 1 - Abs;
+            }
+
+            /// <summary>Fraction of non-absorbed energy transmitted, as used by the existing scene/scattering interface.</summary>
+            public double[] Transmission_Coefficients(bool thirdOctave, Hare.Geometry.Vector direction = null, Hare.Geometry.Vector normal = null)
+            {
+                double[] spectrum = new double[thirdOctave ? 24 : 8];
+                if (!transmission) return spectrum;
+                int index = direction == null ? 0 : 18 - (int)Math.Round(Math.Acos(Math.Abs(Hare.Geometry.Hare_math.Dot(direction, normal))) / angle_incr);
+                for (int band = 0; band < spectrum.Length; band++)
+                {
+                    if (direction == null)
+                    {
+                        double tau = thirdOctave ? TI_Coef_3rd[band] : TI_Coef[band];
+                        double Abs = Math.Max(0, (thirdOctave ? RI_Coef_3rd[band] : RI_Coef[band]) - tau);
+                        double surviving = 1 - Abs;
+                        spectrum[band] = surviving != 0 ? tau / surviving : 0;
+                    }
+                    else
+                    {
+                        double surviving = Surviving_Energy(band, thirdOctave, index, normal, direction, out double tau);
+                        spectrum[band] = surviving != 0 ? tau / surviving : 0;
+                    }
+                }
+                return spectrum;
             }
 
             public override double[] Coefficient_A_Broad()
             {
-                return RI_Coef;
+                if (!transmission) return RI_Coef;
+                double[] Abs = new double[8];
+                for (int band = 0; band < Abs.Length; band++) Abs[band] = Coefficient_A_Broad(band);
+                return Abs;
+            }
+
+            public override double Coefficient_A_Broad(int band)
+            {
+                return transmission ? Math.Max(0, RI_Coef[band] - TI_Coef[band]) : RI_Coef[band];
+            }
+
+            public override double Coefficient_A_Broad(int band, bool thirdOctave)
+            {
+                if (!thirdOctave) return Coefficient_A_Broad(band);
+                return transmission ? Math.Max(0, RI_Coef_3rd[band] - TI_Coef_3rd[band]) : base.Coefficient_A_Broad(band, true);
             }
 
             public override void Absorb(ref BroadRay Ray, Hare.Geometry.Vector Normal)
             {
-                double cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
-                int index = 18 - (int)Math.Round(Math.Acos(Math.Abs(cos_theta)) / angle_incr);
-
-                for (int band = 0; band < Ray.Energy.Length; band++)
-                    Ray.Energy[band] *= Ray.ThirdOctave ? Math.Pow(Reflection_Narrow(Utilities.AcousticalMath.ThirdOctaveCenters()[band], new Hare.Geometry.Vector(Ray.dx, Ray.dy, Ray.dz), Normal).Magnitude, 2) : (1 - Ang_Coef_Oct[band][index]);
+                Absorb(ref Ray, out _, Normal);
             }
 
             public override void Absorb(ref BroadRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
             {
                 cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
                 int index = 18 - (int)Math.Round(Math.Acos(Math.Abs(cos_theta)) / angle_incr);
-
+                Hare.Geometry.Vector direction = Ray.ThirdOctave ? new Hare.Geometry.Vector(Ray.dx, Ray.dy, Ray.dz) : null;
                 for (int band = 0; band < Ray.Energy.Length; band++)
-                    Ray.Energy[band] *= Ray.ThirdOctave ? Math.Pow(Reflection_Narrow(Utilities.AcousticalMath.ThirdOctaveCenters()[band], new Hare.Geometry.Vector(Ray.dx, Ray.dy, Ray.dz), Normal).Magnitude, 2) : (1 - Ang_Coef_Oct[band][index]);
+                    Ray.Energy[band] *= Surviving_Energy(band, Ray.ThirdOctave, index, Normal, direction, out _);
             }
 
             public override void Absorb(ref OctaveRay Ray, Hare.Geometry.Vector Normal)
             {
-                double cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
-                int index = 18 - (int)Math.Round(Math.Acos(Math.Abs(cos_theta)) / angle_incr);
-
-                if (Ray.ThirdOctave)
-                {
-                    double[] f = Utilities.AcousticalMath.ThirdOctaveCenters();
-                    Hare.Geometry.Vector direction = new Hare.Geometry.Vector(Ray.dx, Ray.dy, Ray.dz);
-                    double total = 0;
-                    for (int i = 0; i < Ray.BandCount; i++) { Ray.Fractions[i] = Ray.Intensity * Ray.Fractions[i] * Math.Pow(Reflection_Narrow(f[Ray.BandStart + i], direction, Normal).Magnitude, 2); total += Ray.Fractions[i]; }
-                    Ray.Intensity = total;
-                    for (int i = 0; i < Ray.BandCount; i++) Ray.Fractions[i] = total > 0 ? Ray.Fractions[i] / total : 1.0 / Ray.BandCount;
-                }
-                else Ray.Intensity *= (1 - Ang_Coef_Oct[Ray.Octave][index]);
+                Absorb(ref Ray, out _, Normal);
             }
 
             public override void Absorb(ref OctaveRay Ray, out double cos_theta, Hare.Geometry.Vector Normal)
             {
                 cos_theta = Hare.Geometry.Hare_math.Dot(Ray.dx, Ray.dy, Ray.dz, Normal.dx, Normal.dy, Normal.dz);
                 int index = 18 - (int)Math.Round(Math.Acos(Math.Abs(cos_theta)) / angle_incr);
-
+                Hare.Geometry.Vector direction = Ray.ThirdOctave ? new Hare.Geometry.Vector(Ray.dx, Ray.dy, Ray.dz) : null;
                 if (Ray.ThirdOctave)
                 {
-                    double[] f = Utilities.AcousticalMath.ThirdOctaveCenters();
-                    Hare.Geometry.Vector direction = new Hare.Geometry.Vector(Ray.dx, Ray.dy, Ray.dz);
                     double total = 0;
-                    for (int i = 0; i < Ray.BandCount; i++) { Ray.Fractions[i] = Ray.Intensity * Ray.Fractions[i] * Math.Pow(Reflection_Narrow(f[Ray.BandStart + i], direction, Normal).Magnitude, 2); total += Ray.Fractions[i]; }
+                    for (int i = 0; i < Ray.BandCount; i++)
+                    {
+                        Ray.Fractions[i] = Ray.Intensity * Ray.Fractions[i] * Surviving_Energy(Ray.BandStart + i, true, index, Normal, direction, out _);
+                        total += Ray.Fractions[i];
+                    }
                     Ray.Intensity = total;
                     for (int i = 0; i < Ray.BandCount; i++) Ray.Fractions[i] = total > 0 ? Ray.Fractions[i] / total : 1.0 / Ray.BandCount;
                 }
-                else Ray.Intensity *= (1 - Ang_Coef_Oct[Ray.Octave][index]);
-            }
-
-            public override double Coefficient_A_Broad(int Octave)
-            {
-                return RI_Coef[Octave];
+                else Ray.Intensity *= Surviving_Energy(Ray.Octave, false, index, Normal, direction, out _);
             }
 
             public override System.Numerics.Complex Reflection_Narrow(double frequency)
@@ -2954,6 +2991,24 @@ namespace Pachyderm_Acoustic
 
                     return (rec_a, rec_b);
                 }
+            }
+        }
+
+        /// <summary>Lambert scattering with the associated smart material's angular transmission.</summary>
+        public class Smart_Material_Scattering : Lambert_Scattering
+        {
+            private readonly Smart_Material material;
+
+            public Smart_Material_Scattering(double[] Scattering, Smart_Material material)
+                : base(Scattering)
+            {
+                this.material = material;
+            }
+
+            public override void Scatter_Early(ref BroadRay Ray, ref Queue<OctaveRay> Rays, ref Random rand, Hare.Geometry.Vector Normal, double Cos_Theta, double[] Transmission = null)
+            {
+                Transmission = material.Transmission_Coefficients(Ray.ThirdOctave, new Hare.Geometry.Vector(Ray.dx, Ray.dy, Ray.dz), Normal);
+                base.Scatter_Early(ref Ray, ref Rays, ref rand, Normal, Cos_Theta, Transmission);
             }
         }
 

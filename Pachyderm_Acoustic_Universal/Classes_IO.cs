@@ -183,7 +183,13 @@ namespace Pachyderm_Acoustic
 
             public static bool Read_Pac1(string filename, ref Direct_Sound[] Direct_Data, ref ImageSourceData[] IS_Data, ref Environment.Receiver_Bank[] Receiver, IProgressFeedback VB = null)
             {
-                System.IO.BinaryReader sr = new System.IO.BinaryReader(System.IO.File.Open(filename, System.IO.FileMode.Open));
+                return Read_Pac1(filename, ref Direct_Data, ref IS_Data, ref Receiver, VB, true);
+            }
+
+            /// <summary>Read saved simulation data, optionally propagating read errors to the caller.</summary>
+            public static bool Read_Pac1(string filename, ref Direct_Sound[] Direct_Data, ref ImageSourceData[] IS_Data, ref Environment.Receiver_Bank[] Receiver, IProgressFeedback VB, bool showReadErrors)
+            {
+                System.IO.BinaryReader sr = new System.IO.BinaryReader(System.IO.File.OpenRead(filename));
                 try
                 {
                     //1. Date & Time
@@ -263,7 +269,7 @@ namespace Pachyderm_Acoustic
                 catch (System.Exception X)
                 {
                     sr.Close();
-                    if (Eto.Forms.Application.Instance == null) throw;
+                    if (!showReadErrors || Eto.Forms.Application.Instance == null) throw;
                     Eto.Forms.MessageBox.Show("File Read Failed...", String.Format("Results file was corrupt or incomplete. We apologize for this inconvenience. Please report this to the software author. It will be much appreciated. \r\n Exception Message: {0}. \r\n Method: {1}", X.Message, X.TargetSite));
                     return false;
                 }
