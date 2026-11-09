@@ -198,16 +198,21 @@ namespace Pachyderm_Acoustic
                 new double[] { 20, 45, 55, 69, 75, 72, 70, 58 }
             };
 
+            public static double[] A_Weighting_Factors(bool ThirdOctave)
+            {
+                if (!ThirdOctave) return new double[] { Math.Pow(10, (-26.2 / 10)), Math.Pow(10, (-16.1 / 10)), Math.Pow(10, (-8.6 / 10)), Math.Pow(10, (-3.2 / 10)), 1, Math.Pow(10, (1.2 / 10)), Math.Pow(10, (1 / 10)), Math.Pow(10, (-1.1 / 10)) };
+                // IEC 61672 frequency responses, evaluated at the existing third-octave centers.
+                return ThirdOctaveCenters().Select(frequency =>
+                {
+                    double f2 = frequency * frequency;
+                    double response = 12194 * 12194 * f2 * f2 / ((f2 + 20.6 * 20.6) * Math.Sqrt((f2 + 107.7 * 107.7) * (f2 + 737.9 * 737.9)) * (f2 + 12194 * 12194));
+                    return response * response * Math.Pow(10, .2);
+                }).ToArray();
+            }
+
             public static double Sound_Pressure_Level_A(double[] unweighted_SPL)
             {
-                double[] AFactors = new double[8] { Math.Pow(10, (-26.2 / 10)), Math.Pow(10, (-16.1 / 10)), Math.Pow(10, (-8.6 / 10)), Math.Pow(10, (-3.2 / 10)), 1, Math.Pow(10, (1.2 / 10)), Math.Pow(10, (1 / 10)), Math.Pow(10, (-1.1 / 10)) };
-                if (unweighted_SPL.Length == 24)
-                    AFactors = ThirdOctaveCenters().Select(frequency =>
-                    {
-                        double f2 = frequency * frequency;
-                        double response = 12194 * 12194 * f2 * f2 / ((f2 + 20.6 * 20.6) * Math.Sqrt((f2 + 107.7 * 107.7) * (f2 + 737.9 * 737.9)) * (f2 + 12194 * 12194));
-                        return response * response * Math.Pow(10, .2);
-                    }).ToArray();
+                double[] AFactors = A_Weighting_Factors(unweighted_SPL.Length == 24);
                 double SW = 0;
                 for (int f = 0; f < unweighted_SPL.Length; f++)
                 {
@@ -230,7 +235,7 @@ namespace Pachyderm_Acoustic
                 return 10 * Math.Log10(sum);
             }
 
-            internal static double[] C_Weighting_Factors(bool ThirdOctave)
+            public static double[] C_Weighting_Factors(bool ThirdOctave)
             {
                 if (!ThirdOctave) return C_Weights.Select(weight => Math.Pow(10, weight / 10)).ToArray();
                 // IEC 61672 frequency responses, evaluated at the existing third-octave centers.
