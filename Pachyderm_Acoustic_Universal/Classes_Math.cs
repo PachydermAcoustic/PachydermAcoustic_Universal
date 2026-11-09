@@ -1530,6 +1530,131 @@ namespace Pachyderm_Acoustic
                 return result;
             }
 
+            /// <summary>
+            /// Historic NC tangency rating, interpolated in the existing NC-15 to NC-70 table.
+            /// Input is unweighted SPL: 8 octaves (63 Hz to 8 kHz) or 24 thirds (50 Hz to 10 kHz).
+            /// Outside the table, linearly extrapolate each band's first or last segment and label the result.
+            /// ASHRAE Handbook, HVAC Applications (2023), Chapter 49, Indoor Sound Criteria.
+            /// https://handbook.ashrae.org/Handbooks/A23/IP/A23_Ch49/a23_ch49_ip.aspx
+            /// </summary>
+            public static double Noise_Criteria(double[] spectrum, out string designation, out double limitingFrequency)
+            {
+                double[] levels = Criteria_Spectrum(spectrum, false);
+                const double tolerance = 1e-9;
+                double rating = double.NegativeInfinity;
+                int limitingBand = 0;
+                for (int band = 0; band < 8; band++)
+                {
+                    int row = 1;
+                    while (row < nc.Length - 1 && levels[band] > nc[row][band] + tolerance) row++;
+                    double value = 15 + 5 * (row - 1 + (levels[band] - nc[row - 1][band]) /
+                        (nc[row][band] - nc[row - 1][band]));
+                    if (value > rating) { rating = value; limitingBand = band; }
+                }
+                if (Math.Abs(rating - 15) <= tolerance) rating = 15;
+                if (Math.Abs(rating - 70) <= tolerance) rating = 70;
+                limitingFrequency = OctaveCenters()[limitingBand];
+                designation = "NC " + rating.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) +
+                    (rating < 15 || rating > 70 ? " (extrapolated)" : "");
+                return rating;
+            }
+
+            /// <summary>
+            /// RC spectral balance or ASHRAE RC Mark II (Blazier 1997), using unweighted SPL.
+            /// The number is the rounded arithmetic mean at 500, 1000 and 2000 Hz.
+            /// Continue the existing reference-curve equations outside RC-25 to RC-50, retaining the Mark II LF floor.
+            /// With includesLowFrequency=false, accept 8 octaves or 24 thirds and return only the number;
+            /// quality and vibration are null and QAI is NaN because the LF data are missing.
+            /// With true, accept 10 octaves (16 Hz to 8 kHz) or 30 thirds (12.5 Hz to 10 kHz).
+            /// RC uses R/H/N balance; Mark II uses energy-averaged LF/MF/HF deviations and QAI.
+            /// The 8 kHz band does not enter these diagnostics. Rattle thresholds (16/31.5/63 Hz):
+            /// moderate 65/65/70 dB; clear 75/75/80 dB (ANSI/ASA S12.2, Table 6).
+            /// https://www.mathworks.com/help/audio/ref/roomcriteria.html
+            /// https://handbook.ashrae.org/Handbooks/A23/IP/A23_Ch49/a23_ch49_ip.aspx
+            /// </summary>
+            public static double Room_Criteria(double[] spectrum, bool markII, bool includesLowFrequency,
+                out string quality, out double qualityAssessmentIndex, out double[] spectralDeviations, out string vibration)
+            {
+                double[] levels = Criteria_Spectrum(spectrum, includesLowFrequency);
+                int offset = includesLowFrequency ? 2 : 0;
+                double rating = Math.Round(levels[offset + 3] / 3 + levels[offset + 4] / 3 + levels[offset + 5] / 3,
+                    MidpointRounding.AwayFromZero);
+                quality = null;
+                vibration = null;
+                qualityAssessmentIndex = double.NaN;
+                spectralDeviations = new double[0];
+                if (!includesLowFrequency) return rating;
+
+                double[] curve = Room_Criteria(rating);
+                const double tolerance = 1e-9;
+                double lowReference = markII ? Math.Max(55, rating + 25) : rating + 25;
+                var deviations = new double[9];
+                deviations[0] = levels[0] - (markII ? lowReference : rating + 30);
+                deviations[1] = levels[1] - lowReference;
+                for (int band = 0; band < 7; band++) deviations[band + 2] = levels[band + 2] - curve[band];
+
+                bool moderate = levels[0] > 65 + tolerance || levels[1] > 65 + tolerance || levels[2] > 70 + tolerance;
+                bool clear = levels[0] > 75 + tolerance || levels[1] > 75 + tolerance || levels[2] > 80 + tolerance;
+                vibration = clear ? "A: clearly perceptible vibration/rattle likely" :
+                    moderate ? "B: moderately perceptible vibration/rattle likely" : "None indicated";
+                if (markII)
+                {
+                    spectralDeviations = new double[3];
+                    for (int group = 0; group < 3; group++)
+                    {
+                        double maximum = deviations.Skip(3 * group).Take(3).Max();
+                        double energy = 0;
+                        for (int band = 0; band < 3; band++)
+                            energy += Math.Pow(10, (deviations[3 * group + band] - maximum) / 10);
+                        spectralDeviations[group] = maximum + 10 * Math.Log10(energy / 3);
+                    }
+                    qualityAssessmentIndex = spectralDeviations.Max() - spectralDeviations.Min();
+                    quality = qualityAssessmentIndex <= 5 + tolerance ? "N" :
+                        new[] { "LF", "MF", "HF" }[Array.IndexOf(spectralDeviations, spectralDeviations.Max())];
+                    if (moderate)
+                        quality = (quality == "N" || quality == "LF" ? "LFV" : quality + ", V") + (clear ? "_A" : "_B");
+                }
+                else
+                {
+                    bool rumble = deviations.Take(6).Any(value => value > 5 + tolerance);
+                    bool hiss = deviations.Skip(6).Any(value => value > 3 + tolerance);
+                    quality = rumble ? (hiss ? "R, H" : "R") : hiss ? "H" : "N";
+                    if (moderate) quality = quality == "N" ? "RV" : quality + ", RV";
+                }
+                return rating;
+            }
+
+            private static double[] Criteria_Spectrum(double[] spectrum, bool includesLowFrequency)
+            {
+                int count = includesLowFrequency ? 10 : 8;
+                if (spectrum == null || (spectrum.Length != count && spectrum.Length != 3 * count))
+                    throw new ArgumentException(includesLowFrequency ?
+                        "With low-frequency bands enabled, supply 10 octaves (16 Hz to 8 kHz) or 30 thirds (12.5 Hz to 10 kHz)." :
+                        "Supply 8 octaves (63 Hz to 8 kHz) or 24 thirds (50 Hz to 10 kHz); enable low-frequency bands for an extended spectrum.", nameof(spectrum));
+                if (spectrum.Any(value => double.IsNaN(value) || double.IsInfinity(value)))
+                    throw new ArgumentException("Supply finite, unweighted sound pressure levels in dB re 20 micropascals.", nameof(spectrum));
+                if (spectrum.Length == count) return (double[])spectrum.Clone();
+                var result = new double[count];
+                // Reuse the existing three-to-one energy conversion. Normalize each triplet to
+                // preserve negative SPLs and avoid overflow; the final block may contain two octaves.
+                for (int start = 0; start < count; start += 8)
+                {
+                    var energy = new double[24];
+                    var maximum = new double[8];
+                    int bands = Math.Min(8, count - start);
+                    for (int band = 0; band < bands; band++)
+                    {
+                        int first = 3 * (start + band);
+                        maximum[band] = Math.Max(spectrum[first], Math.Max(spectrum[first + 1], spectrum[first + 2]));
+                        for (int third = 0; third < 3; third++)
+                            energy[3 * band + third] = Math.Pow(10, (spectrum[first + third] - maximum[band]) / 10);
+                    }
+                    double[] octaves = ConvertBandEnergy(energy, false);
+                    for (int band = 0; band < bands; band++) result[start + band] = maximum[band] + 10 * Math.Log10(octaves[band]);
+                }
+                return result;
+            }
+
             public static double Est_SEL_from_Leq(double Leq_dB, double N_events, double T_seconds)
             {
                 // SEL = Leq - 10 log10(N/T)
