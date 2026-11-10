@@ -528,6 +528,9 @@ namespace Pachyderm_Acoustic
                     }
                 }
                 ////////////////////////////////////////
+                // Unrounded copies of the polygons, in the same order, for solvers that need the exact surface
+                // (the topology rounds vertices to 0.01 m).
+                Source_Polygons = PTS.Select(poly => poly.Select(q => new Point(q.x, q.y, q.z)).ToArray()).ToArray();
                 Topo = new Hare.Geometry.Topology[1];
                 Topo[0] = new Topology(PTS.ToArray(), 2);// Utilities.Pach_Tools.RPttoHPt(Box.Min), Utilities.PachTools.RPttoHPt(Box.Max));
                 ////////////////////////////////////////
@@ -699,6 +702,16 @@ namespace Pachyderm_Acoustic
             public override void Scatter_Simple(ref OctaveRay Ray, ref Random rand, double cos_theta, double u, double v, bool Transmission = false)
             {
                 ScatteringData[Ray.Surf_ID].Scatter_VeryLate(ref Ray, ref rand, Normal(Ray.Surf_ID, u, v), cos_theta, Transmission);
+            }
+
+            /// <summary>The polygons as they were given, before the topology rounded their vertices (null if the scene was built another way).</summary>
+            public Point[][] Source_Polygons;
+
+            /// <summary>Polygon `id` with its vertices as given, not rounded; the rounded polygon if the original is not kept.</summary>
+            public Point[] polygon_unrounded(int id)
+            {
+                if (Source_Polygons != null && id < Source_Polygons.Length) return Source_Polygons[id];
+                return polygon(id);
             }
 
             public Point[] polygon(int id)

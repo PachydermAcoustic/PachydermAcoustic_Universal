@@ -338,10 +338,12 @@ namespace Pachyderm_Acoustic
                     private readonly double kappaMinus1; // kappaTotal - 1
                     private int activeNeighborCount;     // number of non-null neighbors
 
-                    public Bound_Node_RDD_MaterialFilter(Point loc, double rho0, double dt, double dx, double C, int[] id_in, List<Environment.Material> materials, List<Bound_Node.Boundary> B_in)
+                    /// <param name="faceWeights">Admittance weight of each cut link, parallel to materials (see Intersect_13Pt).</param>
+                    public Bound_Node_RDD_MaterialFilter(Point loc, double rho0, double dt, double dx, double C, int[] id_in, List<Environment.Material> materials, List<double> faceWeights, List<Bound_Node.Boundary> B_in)
                     :base(loc, rho0, dt, dx, C, id_in, B_in)
                     {
-                        const double M = 0.25;
+                        // Used only when no weights are supplied.
+                        const double DefaultWeight = 0.125;
 
                         double lambda = (dx > 0.0) ? (C * dt / dx) : 1.0;
                         if (lambda <= 0.0) lambda = 1.0;
@@ -353,7 +355,8 @@ namespace Pachyderm_Acoustic
 
                         for (int i = 0; i < filters.Length; i++)
                         {
-                            filters[i] = new DIF_IWB_2p(materials[i], fs, M, lambda);
+                            double weight = (faceWeights != null && i < faceWeights.Count) ? faceWeights[i] : DefaultWeight;
+                            filters[i] = new DIF_IWB_2p(materials[i], fs, weight, lambda);
                             ksum += filters[i].a_b;
                         }
 
@@ -387,9 +390,9 @@ namespace Pachyderm_Acoustic
                         double mem = 0.0;
                         for (int i = 0; i < filters.Length; i++) mem += filters[i].g_b_term();
 
-                        // Boundary update:
-                        // Pnf = (0.25*p2 - Pn + (κ - 1)*Pn_1 + mem) / (1 + κ)
-                        Pnf = (0.25 * p2 - Pn + kappaMinus1 * Pn_1 + mem) * denom;
+                        // Pnf = (w*p2 + (2 - 12w)*Pn + (kappa - 1)*Pn_1 + mem) / (1 + kappa), w the link weight
+                        double w = Weight;
+                        Pnf = (w * p2 + (2 - 12 * w) * Pn + kappaMinus1 * Pn_1 + mem) * denom;
 
                         // Advance filter states
                         for (int i = 0; i < filters.Length; i++) filters[i].Update(Pnf, Pn_1);
